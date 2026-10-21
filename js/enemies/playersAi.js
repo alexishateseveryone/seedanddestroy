@@ -151,7 +151,7 @@ export function stepBot(b,dt,W){
   b.vx=(b.x-px0)/Math.max(dt,1e-3);b.vz=(b.z-pz0)/Math.max(dt,1e-3);
   // sync the avatar (same calls as the player's loop)
   b.slashing=cu.isSlashing();
-  b.cat.position.set(b.x,0,b.z);b.cat.rotation.y=b.yaw;cu.setAim(0,true);cu.holster(false);cu.update(dt,b.mv&&b.roll<=0,b.rel);
+  b.cat.position.set(b.x,W.h?W.h(b.x,b.z):0,b.z);b.cat.rotation.y=b.yaw;cu.setAim(0,true);cu.holster(false);cu.update(dt,b.mv&&b.roll<=0,b.rel);
 }
 // an idle / frozen avatar (buy phase, round end, dead bots are simply hidden)
-export function idleBot(b,dt){b.cat.position.set(b.x,0,b.z);b.cat.rotation.y=b.yaw;b.cat.userData.setAim(0,true);b.cat.userData.update(dt,false,1)}
+export function idleBot(b,dt,W){b.cat.position.set(b.x,W&&W.h?W.h(b.x,b.z):0,b.z);b.cat.rotation.y=b.yaw;b.cat.userData.setAim(0,true);b.cat.userData.update(dt,false,1)}
