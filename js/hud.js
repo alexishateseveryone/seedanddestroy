@@ -1,4 +1,4 @@
-// In-game HUD: player card, wave/score, minimap, crosshair, and touch controls for mobile.
+// In-game HUD: player card, wave/score, minimap, crosshair. (Touch controls live in js/mobile.js.)
 import * as T from 'three';
 import {WEAPONS} from './weapons/index.js';
 
@@ -17,21 +17,6 @@ const ICONS={
 };
 const slotHTML=WEAPONS.map((w,i)=>`<div class="slot${i===0?' on':''}" data-w="${i}"><kbd>${i+1}</kbd>${ICONS[w.id]||BLASTER}<span>${w.name}</span></div>`).join('');
 
-const mobileCSS = document.createElement('style');
-mobileCSS.textContent = `
-  #mob-ctrls { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 990; }
-  body.mobile #mob-ctrls { display: block; }
-  .m-joy-base { position: absolute; bottom: 30px; left: 30px; width: 130px; height: 130px; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; pointer-events: auto; touch-action: none; }
-  .m-joy-thumb { position: absolute; top: 35px; left: 35px; width: 60px; height: 60px; background: rgba(255,255,255,0.5); border-radius: 50%; pointer-events: none; transition: transform 0.05s linear; }
-  .m-btn { position: absolute; pointer-events: auto; touch-action: none; background: rgba(43,33,80,0.75); border: 2px solid rgba(255,255,255,0.4); color: #fff; border-radius: 50%; display: grid; place-items: center; font-weight: bold; font-family: 'Baloo 2', sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
-  .m-btn:active { background: rgba(255,213,74,0.85); color: #2b2150; transform: scale(0.92); }
-  #mob-fire { bottom: 35px; right: 35px; width: 80px; height: 80px; font-size: 16px; background: rgba(239,68,68,0.85); border-color: #fca5a5; }
-  #mob-tumble { bottom: 135px; right: 45px; width: 55px; height: 55px; font-size: 11px; }
-  #mob-weapon { bottom: 35px; right: 135px; width: 60px; height: 60px; font-size: 12px; }
-  #mob-pause { top: 20px; right: 20px; width: 45px; height: 45px; font-size: 14px; border-radius: 12px; }
-  #mob-look-zone { position: absolute; top: 0; right: 0; width: 60%; height: 70%; pointer-events: auto; touch-action: none; }
-`;
-document.head.appendChild(mobileCSS);
 const css=document.createElement('style');css.textContent='#wpn .slot span{display:none}#wpn .slot.on span{display:inline}#wpn{gap:6px}';document.head.appendChild(css);
 
 export function createHUD(root=document.body){
@@ -53,16 +38,6 @@ export function createHUD(root=document.body){
   const extra=el(`<div id="hudx"><div id="fps-crosshair"><i class="dot"></i><i class="t t1"></i><i class="t t2"></i><i class="t t3"></i><i class="t t4"></i><div id="hitm"><i></i><i></i><i></i><i></i></div></div>
     <div id="scope-ov"></div><div id="hurt"></div><div id="lowhp"></div><div id="banner"><b id="bnT"></b><span id="bnS"></span></div><div id="ebars"></div>
     
-    <!-- Mobile Touch Controls Overlay -->
-    <div id="mob-ctrls">
-      <div id="mob-look-zone"></div>
-      <div class="m-joy-base" id="mob-joystick"><div class="m-joy-thumb" id="mob-thumb"></div></div>
-      <button class="m-btn" id="mob-fire">FIRE</button>
-      <button class="m-btn" id="mob-tumble">DASH</button>
-      <button class="m-btn" id="mob-weapon">WPN</button>
-      <button class="m-btn" id="mob-pause">⏸</button>
-    </div>
-
     <div id="pause" hidden><div class="card"><h2>Paused</h2><p class="pk">Click anywhere to jump back in</p>
       <div class="keys"><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div><div><kbd>Mouse</kbd><span>aim</span></div><div><kbd>LMB</kbd><span>shoot / slash</span></div><div><kbd>RMB</kbd><span>scope</span></div><div><kbd>SPACE</kbd><span>tumble</span></div><div><kbd>1-8</kbd><span>weapons (or mouse wheel)</span></div><div><kbd>G</kbd><span>graphics</span></div></div>
       <div class="row"><button id="resume" class="btn green">Resume</button><button id="pgfx" class="btn pink">Graphics</button><button id="quit" class="btn gold">Title</button></div></div></div></div>`);
