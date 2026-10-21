@@ -26,23 +26,23 @@ function bumpTex(){const S=256,c=document.createElement('canvas');c.width=c.heig
   const t=new T.CanvasTexture(c);t.wrapS=t.wrapT=T.RepeatWrapping;t.repeat.set(260,260);t.anisotropy=4;return t}
 function groundMaterial(env){
   const m=new T.MeshStandardMaterial({color:'#ffffff',roughness:.97,metalness:0,envMap:env,envMapIntensity:.4,bumpMap:bumpTex(),bumpScale:1.4});
-  const U={uG1:{value:col('#4a903c')},uG2:{value:col('#88c45a')},uG3:{value:col('#a8b45a')},uD1:{value:col('#c9a46b')},uD2:{value:col('#9b7646')},uMud:{value:col('#4b3a28')},uSand:{value:col('#d8c48d')},
+  const U={uG1:{value:col('#4a903c')},uG2:{value:col('#88c45a')},uG3:{value:col('#a8b45a')},uD1:{value:col('#c9a46b')},uD2:{value:col('#9b7646')},uMud:{value:col('#4b3a28')},uSand:{value:col('#d8c48d')},uDetail:{value:1},
     uPonds:{value:PONDS.map(p=>new T.Vector3(p[0],p[1],p[2]))}};
   m.onBeforeCompile=sh=>{Object.assign(sh.uniforms,U);
     sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nvarying vec3 vWP;').replace('#include <begin_vertex>','#include <begin_vertex>\nvWP=(modelMatrix*vec4(transformed,1.)).xyz;');
     sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
-      varying vec3 vWP;uniform vec3 uG1,uG2,uG3,uD1,uD2,uMud,uSand;uniform vec3 uPonds[${PONDS.length}];${NOISE_GLSL}`)
+      varying vec3 vWP;uniform float uDetail;uniform vec3 uG1,uG2,uG3,uD1,uD2,uMud,uSand;uniform vec3 uPonds[${PONDS.length}];${NOISE_GLSL}`)
     .replace('#include <color_fragment>',`#include <color_fragment>
       {vec2 p=vWP.xz;float cd=length(p-cameraPosition.xz),far=smoothstep(30.,110.,cd);
-       float n1=fbm2(p*.04),n2=fbm2(p*.17+11.),n3=mix(vn(p*1.7),.5,far),n4=mix(vn(p*7.),.5,far);
+       float n1,n2,n3=.5,n4=.5;if(uDetail>.5){n1=fbm2(p*.04);n2=fbm2(p*.17+11.);n3=mix(vn(p*1.7),.5,far);n4=mix(vn(p*7.),.5,far);}else{n1=vn(p*.05);n2=vn(p*.2+11.);}
        vec3 grass=mix(uG1,uG2,smoothstep(.3,.7,n1));
        grass=mix(grass,uG3,smoothstep(.6,.86,n2)*.5);
        grass*=.84+.3*n3;grass*=.92+.16*n4;
-       grass=mix(grass,uG2*1.3,step(.94,vn(p*8.))*.3*(1.-far));                       // clover flecks
+       if(uDetail>.5)grass=mix(grass,uG2*1.3,step(.94,vn(p*8.))*.3*(1.-far));                       // clover flecks
        float d=pathD(p)+(n2-.5)*1.0+(n3-.5)*.4;
        float pm=1.-smoothstep(1.3,2.1,d);
        vec3 dirt=mix(uD1,uD2,smoothstep(.25,.75,n2));dirt*=.86+.28*n4;
-       dirt=mix(dirt,uD2*.55,step(.87,vn(p*15.))*.55*(1.-far));                        // pebbles
+       if(uDetail>.5)dirt=mix(dirt,uD2*.55,step(.87,vn(p*15.))*.55*(1.-far));                        // pebbles
        dirt=mix(dirt,uMud,smoothstep(.55,.0,abs(d-1.6))*.0);
        grass*=1.-.28*smoothstep(1.3,1.9,d)*(1.-smoothstep(1.9,2.6,d));                 // shaded rim where the path meets the grass
        vec3 c=mix(grass,dirt,pm);
@@ -50,7 +50,7 @@ function groundMaterial(env){
          c=mix(c,uSand,(1.-smoothstep(.2,1.6,dd))*.85);                                   // sandy shore
          c=mix(c,uMud,1.-smoothstep(-.3,.5,dd));}                                         // wet mud
        diffuseColor.rgb=c;}`)};
-  m.customProgramCacheKey=()=>'ground';return m}
+  m.userData.U=U;m.customProgramCacheKey=()=>'ground';return m}
 
 // ------------------------------------------------------------------------------------------------ water
 function waterMaterial(r,env){
@@ -88,7 +88,7 @@ export function buildMap(seed=7,env=null){
   const R=rng(seed),g=new T.Group(),obs=[],free=(x,z,m=0)=>Math.hypot(x,z)>6&&pathD(x,z)>2.4+m&&PONDS.every(p=>Math.hypot(x-p[0],z-p[1])>p[2]+2+m);
   const B=new Batch(),dyn=[];
   // ---- ground (one huge plane: everything is computed from world position in the shader)
-  const ground=new T.Mesh(new T.PlaneGeometry(900,900,1,1).rotateX(-Math.PI/2),groundMaterial(env));ground.receiveShadow=true;g.add(ground);
+  const gMat=groundMaterial(env),bump=gMat.bumpMap,ground=new T.Mesh(new T.PlaneGeometry(900,900,1,1).rotateX(-Math.PI/2),gMat);ground.receiveShadow=true;g.add(ground);
   // ---- ponds
   PONDS.forEach(([x,z,r],k)=>{const w=new T.Mesh(new T.CircleGeometry(r+.35,56).rotateX(-Math.PI/2),waterMaterial(r+.35,env));w.position.set(x,.045,z);w.renderOrder=2;w.userData.dyn=1;g.add(w);dyn.push(w);obs.push({x,z,r:r+.2});
     for(let i=0;i<9;i++){const q=R()*6.28,d=R()*(r-1.1),lx=x+Math.cos(q)*d,lz=z+Math.sin(q)*d,lr=.28+R()*.22;
@@ -128,13 +128,13 @@ export function buildMap(seed=7,env=null){
     const clump=vnoise(x*.12,z*.12,3);if(R()>.28+.85*clump)continue;const s=.6+R()*.9+clump*.5;
     d.position.set(x,0,z);d.scale.set(s*.8*(.8+R()*.5),s*.34*(.45+R()*.45),s*.8*(.8+R()*.5));d.rotation.set(0,R()*6.28,0);d.updateMatrix();gr.setMatrixAt(gi,d.matrix);
     gr.setColorAt(gi,a.set('#3d8a38').lerp(b.set('#a6d65a'),R()*.8+clump*.2));gi++}
-  gr.count=gi;gr.receiveShadow=true;gr.frustumCulled=false;g.add(gr);
+  const grassN=gi;gr.count=gi;gr.receiveShadow=true;gr.frustumCulled=false;g.add(gr);
   const FN=700,stemG=new T.CylinderGeometry(.008,.012,1,4,1).translate(0,.5,0),headG=new T.IcosahedronGeometry(1,1),FC=['#ff7ab0','#ffe066','#ffffff','#b9a2ff','#ff9a3c'];
   const stems=new T.InstancedMesh(stemG,windGrass(new T.MeshStandardMaterial({color:'#4f9a45',roughness:.9}),{push:.4}),FN),heads=new T.InstancedMesh(headG,windGrass(new T.MeshStandardMaterial({roughness:.6,emissive:'#ffffff',emissiveIntensity:.0,envMap:env,envMapIntensity:.6}),{push:.4}),FN);
   let fi=0;for(let i=0;i<FN*3&&fi<FN;i++){const x=(R()-.5)*(W+10),z=(R()-.5)*(H+10);if(pathD(x,z)<1.7||PONDS.some(p=>Math.hypot(x-p[0],z-p[1])<p[2]+.6))continue;const hh=.22+R()*.22;
     d.position.set(x,0,z);d.scale.set(1,hh,1);d.rotation.set(0,0,0);d.updateMatrix();stems.setMatrixAt(fi,d.matrix);
     d.position.set(x,hh,z);d.scale.set(.06+R()*.03,.045,.06+R()*.03);d.updateMatrix();heads.setMatrixAt(fi,d.matrix);heads.setColorAt(fi,a.set(FC[fi%5]));fi++}
-  stems.count=heads.count=fi;[stems,heads].forEach(m=>{m.frustumCulled=false;g.add(m)});
+  const flowerN=fi;stems.count=heads.count=fi;[stems,heads].forEach(m=>{m.frustumCulled=false;g.add(m)});
   // ---- distant forested hills (atmospheric perspective comes from the scene fog)
   const hills=(Rr,h0,h1,seedK,tone)=>{const SEG=180,pos=[],cl=[],idx=[],prof=[[Rr+16,-6,0],[Rr,1,1],[Rr-10,.55,.5],[Rr-26,-.5,.05]];   // [radius, height factor, colour]
     const crest=a=>h0+h1*fbm3(Math.cos(a)*1.4+seedK,Math.sin(a)*1.4,seedK)+h1*.5*vnoise(a*9,seedK,1);
@@ -154,10 +154,16 @@ export function buildMap(seed=7,env=null){
   const ff=new T.Points(new T.BufferGeometry().setAttribute('position',new T.BufferAttribute(fp,3)),new T.PointsMaterial({size:.3,map:glow,transparent:true,blending:T.AdditiveBlending,depthWrite:false,color:'#fff3a0',sizeAttenuation:true}));ff.frustumCulled=false;ff.userData.dyn=1;g.add(ff);
   const MN=160,mp=new Float32Array(MN*3),mb=[];for(let i=0;i<MN;i++)mb.push([(R()-.5)*(W+10),.4+R()*5,(R()-.5)*(H+10),R()*6,.3+R()*.5]);
   const motes=new T.Points(new T.BufferGeometry().setAttribute('position',new T.BufferAttribute(mp,3)),new T.PointsMaterial({size:.09,map:glow,transparent:true,blending:T.AdditiveBlending,depthWrite:false,color:'#ffeccc',opacity:.55,sizeAttenuation:true}));motes.frustumCulled=false;motes.userData.dyn=1;g.add(motes);
-  const update=(t,P,E)=>{WIND.uTime.value=t;if(P)WIND.uPlayer.value.set(P.x,0,P.z);
+  let windOn=true;
+  const update=(t,P,E)=>{if(windOn)WIND.uTime.value=t;if(P)WIND.uPlayer.value.set(P.x,0,P.z);
     for(let i=0;i<FF;i++){const f=fb[i];fp[i*3]=f[0]+Math.sin(t*.5+f[3])*1.5;fp[i*3+1]=f[1]+Math.sin(t*1.3+f[3]*2)*.4;fp[i*3+2]=f[2]+Math.cos(t*.4+f[3])*1.5}ff.geometry.attributes.position.needsUpdate=true;ff.material.opacity=.35+.25*Math.sin(t*2)*Math.sin(t*.7);
     for(let i=0;i<MN;i++){const m=mb[i];mp[i*3]=m[0]+Math.sin(t*.2*m[4]+m[3])*2.2;mp[i*3+1]=.4+((m[1]+t*.12*m[4])%5.4);mp[i*3+2]=m[2]+Math.cos(t*.17*m[4]+m[3])*2.2}motes.geometry.attributes.position.needsUpdate=true;
     dyn.forEach(w=>{w.material.uniforms.uTime.value=t;if(E){w.material.uniforms.uSun.value.copy(E.sun);w.material.uniforms.uSky.value.copy(E.sky)}})};
   g.traverse(o=>{if(!o.userData.dyn&&o.matrixAutoUpdate&&o!==g){o.updateMatrix();o.matrixAutoUpdate=false}});
-  return{group:g,obs,update,ponds:PONDS,W,H};
+  /** graphics options: grass 0..1 (share of tufts/flowers), detail (ground shader + bump), wind (sway animation), particles (fireflies + pollen) */
+  const setQuality=q=>{if(q.grass!==undefined){gr.count=Math.floor(grassN*q.grass);gr.visible=q.grass>0;stems.count=heads.count=Math.floor(flowerN*q.grass);stems.visible=heads.visible=q.grass>0}
+    if(q.detail!==undefined){gMat.userData.U.uDetail.value=q.detail?1:0;const b=q.detail?bump:null;if(gMat.bumpMap!==b){gMat.bumpMap=b;gMat.needsUpdate=true}}
+    if(q.wind!==undefined)windOn=!!q.wind;
+    if(q.particles!==undefined)ff.visible=motes.visible=!!q.particles};
+  return{group:g,obs,update,setQuality,ponds:PONDS,W,H};
 }
