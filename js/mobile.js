@@ -20,7 +20,7 @@ export function createMobile(o){
   body.mobile #c{touch-action:none}
   body.mobile .kb,body.mobile .hud-bl,body.mobile .hud-bc{display:none!important}
   body.mobile .hud-br{bottom:auto!important;right:auto!important;top:96px!important;left:6px!important;transform:scale(.55);transform-origin:top left}
-  body.mobile .hud-tr{margin-right:62px}
+  body.mobile #hud .hud-tr{right:calc(64px + env(safe-area-inset-right))!important}   /* keep the score clear of the pause button */
   #mob{position:fixed;inset:0;z-index:960;pointer-events:none;display:none;touch-action:none;font-family:'Bungee',sans-serif}
   #mob .z{position:absolute;pointer-events:auto;touch-action:none}
   #mzL{left:0;top:22%;bottom:0;width:42%}#mzR{right:0;top:0;bottom:0;width:58%}
