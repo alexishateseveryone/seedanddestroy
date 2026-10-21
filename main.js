@@ -7,6 +7,7 @@ import {createFX} from './js/effects.js';
 import {createAtmosphere} from './js/atmosphere.js';
 import {createHUD} from './js/hud.js';
 import {WEAPONS} from './js/weapons/index.js';
+import {createSettings} from './js/settings.js';
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
@@ -16,9 +17,11 @@ const atm=createAtmosphere(renderer,scene,cam);let curMode='';
 const hud=createHUD();
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
 [[1.7,.4],[1.25,.5]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
-addEventListener('resize',resize);function resize(){renderer.setSize(innerWidth,innerHeight);atm.resize(innerWidth,innerHeight,Math.min(devicePixelRatio,1.5));cam.aspect=innerWidth/innerHeight;const f=cam.userData.off||0;f?cam.setViewOffset(innerWidth,innerHeight,innerWidth*f,0,innerWidth,innerHeight):cam.clearViewOffset();cam.updateProjectionMatrix()}
+addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
+function resize(){renderer.setPixelRatio(prr());renderer.setSize(innerWidth,innerHeight);atm.resize(innerWidth,innerHeight,prr());cam.aspect=innerWidth/innerHeight;const f=cam.userData.off||0;f?cam.setViewOffset(innerWidth,innerHeight,innerWidth*f,0,innerWidth,innerHeight):cam.clearViewOffset();cam.updateProjectionMatrix()}
 function setView(f){cam.userData.off=f;resize()}resize();
 const map=buildMap(7,atm.envMap);scene.add(map.group);
+gfx=createSettings({atm,map,onResolution:resize});   // graphics options (presets + per-option, saved, applied live)
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
 let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0;
 let elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
@@ -223,7 +226,7 @@ function update(dt){
 }
 let last=performance.now();
 setCat();enterTitle();
-(function loop(now){requestAnimationFrame(loop);const dt=Math.min((now-last)/1000,.05);last=now;clock+=dt;update(dt);fx.update(dt);
+(function loop(now){requestAnimationFrame(loop);const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;update(dt);fx.update(dt);
   const mode=state==='maker'?'maker':'play';if(mode!==curMode){curMode=mode;atm.setMode(mode)}
   if(state!=='maker')map.update(clock,P,{sun:atm.sunDir,sky:atm.fogColor});atm.update(dt,clock,P);
   if(state!=='play')hud.scope(0);
@@ -251,11 +254,11 @@ setCat();enterTitle();
     else{cat.position.set(0,0,3);if(mk){if(!spinHeld){spin=Math.atan2(Math.sin(spin),Math.cos(spin));spin-=spin*Math.min(1,dt*4)}cat.rotation.y=spin}else cat.rotation.y=Math.sin(clock*.7)*.6}
     cat.visible=true;cat.userData.holster(performance.now()>gunUntil);cat.userData.update(dt,mv,1);if(mk){if(cam.fov!==38){cam.fov=38;cam.updateProjectionMatrix()}cam.position.set(0,1.0,6.0);cam.lookAt(0,.74,3)}else{cam.position.set(0,2.4,8);cam.lookAt(0,1,3)}}
   atm.render()})(last);
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='play'&&!paused)setPaused(true);else if(e.code==='KeyP'&&state==='play')setPaused(!paused);if(e.code==='KeyR'&&state==='over')start();if(/^Digit[1-8]$/.test(e.code))setWeapon(+e.code[5]-1);if(e.code==='Space'){e.preventDefault();tumble()}});addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='play'&&!paused)setPaused(true);else if(e.code==='KeyP'&&state==='play')setPaused(!paused);if(e.code==='KeyR'&&state==='over')start();if(e.code==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(e.code))setWeapon(+e.code[5]-1);if(e.code==='Space'){e.preventDefault();tumble()}});addEventListener('keyup',e=>keys[e.code]=false);
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
 addEventListener('mousedown',e=>{if(state!=='play')return;
-  if(e.button===0){if(paused){if(!(e.target.closest&&e.target.closest('#quit')))setPaused(false);return}if(!document.pointerLockElement)lockPtr();mouse.l=true}
+  if(e.button===0){if(paused){if(!(e.target.closest&&e.target.closest('#quit,#pgfx,#gfx')))setPaused(false);return}if(!document.pointerLockElement)lockPtr();mouse.l=true}
   if(e.button===2&&isGunW()&&WP().stats.zoom&&!paused)P.scope=true});
 addEventListener('mouseup',e=>{if(e.button===0)mouse.l=false;if(e.button===2)P.scope=false});
 addEventListener('mousemove',e=>{if(state==='play'&&!paused&&document.pointerLockElement){P.camYaw-=e.movementX*.0026;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-e.movementY*.0022))}});
@@ -263,7 +266,7 @@ addEventListener('wheel',e=>{if(state==='play'&&!paused)setWeapon(P.wpn+(e.delta
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&state==='play'&&!paused)setPaused(true)});
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('pointermove',e=>{if(state==='maker'&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
-$('#play').onclick=start;$('#again').onclick=start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#quit').onclick=enterTitle;
+$('#play').onclick=start;$('#again').onclick=start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
 $('#make').onclick=()=>{clearAll();P.x=0;P.z=0;backup=JSON.stringify(cfg);$('#title').hidden=true;state='maker';spin=0;spinHeld=false;run=false;setView(.17);map.group.visible=false;stage.visible=true;document.body.classList.add('mk');
   const close=()=>{state='title';run=false;setView(-.17);map.group.visible=true;stage.visible=false;document.body.classList.remove('mk');$('#title').hidden=false};
   openMaker(cfg,{change:c=>{cfg=c;setCat()},run:v=>run=v,shoot:()=>{gunUntil=performance.now()+900;cat.userData.kick();fx.muzzle(cat.userData.muzzle(tmp),cat.rotation.y)},
