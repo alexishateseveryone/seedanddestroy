@@ -18,7 +18,7 @@ const ICONS={
 };
 const slotHTML=WEAPONS.map((w,i)=>`<div class="slot${i===0?' on':''}" data-w="${i}"><kbd>${i+1}</kbd>${ICONS[w.id]||BLASTER}<span>${w.name}</span></div>`).join('');
 // 8 slots: only the selected weapon shows its name
-const css=document.createElement('style');css.textContent='#wpn .slot span{display:none}#wpn .slot.on span{display:inline}#wpn{gap:6px}';document.head.appendChild(css);
+
 
 export function createHUD(root=document.body){
   const $=s=>root.querySelector(s),el=(h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
@@ -38,8 +38,8 @@ export function createHUD(root=document.body){
   const extra=el(`<div id="hudx"><div id="fps-crosshair"><i class="dot"></i><i class="t t1"></i><i class="t t2"></i><i class="t t3"></i><i class="t t4"></i><div id="hitm"><i></i><i></i><i></i><i></i></div></div>
     <div id="scope-ov"></div><div id="hurt"></div><div id="lowhp"></div><div id="banner"><b id="bnT"></b><span id="bnS"></span></div><div id="ebars"></div>
     <div id="pause" hidden><div class="card"><h2>Paused</h2><p class="pk">Click anywhere to jump back in</p>
-      <div class="keys"><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div><div><kbd>Mouse</kbd><span>aim</span></div><div><kbd>LMB</kbd><span>shoot / slash</span></div><div><kbd>RMB</kbd><span>scope</span></div><div><kbd>SPACE</kbd><span>tumble</span></div><div><kbd>1-8</kbd><span>weapons (or mouse wheel)</span></div></div>
-      <div class="row"><button id="resume" class="btn green">Resume</button><button id="quit" class="btn gold">Title</button></div></div></div></div>`);
+      <div class="keys"><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div><div><kbd>Mouse</kbd><span>aim</span></div><div><kbd>LMB</kbd><span>shoot / slash</span></div><div><kbd>RMB</kbd><span>scope</span></div><div><kbd>SPACE</kbd><span>tumble</span></div><div><kbd>1-8</kbd><span>weapons (or mouse wheel)</span></div><div><kbd>G</kbd><span>graphics</span></div></div>
+      <div class="row"><button id="resume" class="btn green">Resume</button><button id="pgfx" class="btn pink">Graphics</button><button id="quit" class="btn gold">Title</button></div></div></div></div>`);
   document.body.appendChild(extra);
   const cross=$('#fps-crosshair'),hitm=$('#hitm'),scopeEl=$('#scope-ov'),hurtEl=$('#hurt'),lowEl=$('#lowhp'),bn=$('#banner'),ebars=$('#ebars'),pauseEl=$('#pause');
   const mini=$('#mini'),mc=mini.getContext('2d'),slots=[...root.querySelectorAll('#wpn .slot')];
