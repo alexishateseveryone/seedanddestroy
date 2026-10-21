@@ -4,6 +4,7 @@
 // The AI players live in enemies/playersAi.js and use the same controls as the human player.
 import * as T from 'three';
 import {createBot,stepBot,idleBot,TEAM_COL,NAMES} from './enemies/playersAi.js';
+import {SPAWN,SITES as ST,heightAt as HA} from './arenaTerrain.js';   // layout + terrain of the hilly 5v5 arena (js/arenaMap.js)
 
 const rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[(Math.random()*a.length)|0],shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]]}return a};
 const WIN=4,BUY=4,ROUND=90,SPIKE=25,PLANT=2.5,DEFUSE=4,BULLET={A:'#7ec8ff',B:'#ff7a6a'};
@@ -14,7 +15,7 @@ export function createMode5v5(ctx){
   let bots=[],bl=[],snap=[],prevN=0,visuals=null,hudT=0,lastHitBy=null;
   const pe={id:'player',isPlayer:true,team:'A',x:0,z:0,vx:0,vz:0,hp:5,wpn:1,roll:0,slash:false,alive:true,name:'YOU'};
   const free=(x,z)=>{for(let r=0;r<12;r+=1.5)for(let a=0;a<6.28;a+=.7){const px=x+Math.cos(a)*r,pz=z+Math.sin(a)*r;if(!map.obs.some(o=>Math.hypot(o.x-px,o.z-pz)<o.r+3.2))return{x:px,z:pz}}return{x,z}};
-  let SITES=null;const SPAWN={atk:{x:-27},def:{x:27}};
+  let SITES=null;
 
   // ------------------------------------------------------------------ DOM (HUD, kill feed, prompt, result card)
   const css=document.createElement('style');css.textContent=`
@@ -42,8 +43,8 @@ export function createMode5v5(ctx){
   // ------------------------------------------------------------------ world dressing: site rings + letters, spawn pads, spike
   const letter=(ch,c)=>{const cv=document.createElement('canvas');cv.width=cv.height=128;const g=cv.getContext('2d');g.font='900 100px Bungee, Impact, sans-serif';g.textAlign='center';g.textBaseline='middle';g.fillStyle=c;g.globalAlpha=.85;g.fillText(ch,64,70);const t=new T.CanvasTexture(cv);t.colorSpace=T.SRGBColorSpace;return t};
   function dress(){
-    if(visuals)return;SITES={A:{id:'A',...free(8,-13),r:3.6},B:{id:'B',...free(8,13),r:3.6}};
-    const g=new T.Group(),flat=(geo,mat,x,z,y)=>{const m=new T.Mesh(geo,mat);m.rotation.x=-Math.PI/2;m.position.set(x,y,z);g.add(m);return m};
+    if(visuals)return;SITES={A:{id:'A',...ST.A,r:3.6},B:{id:'B',...ST.B,r:3.6}};
+    const g=new T.Group(),flat=(geo,mat,x,z,y)=>{const m=new T.Mesh(geo,mat);m.rotation.x=-Math.PI/2;m.position.set(x,y+HA(x,z),z);g.add(m);return m};
     const rings={};
     for(const k of['A','B']){const s=SITES[k];rings[k]=flat(new T.RingGeometry(s.r-.18,s.r,56),new T.MeshBasicMaterial({color:'#ffffff',transparent:true,opacity:.75,depthWrite:false,side:T.DoubleSide}),s.x,s.z,.06);
       flat(new T.CircleGeometry(s.r,56),new T.MeshBasicMaterial({color:'#ffd54a',transparent:true,opacity:.14,depthWrite:false}),s.x,s.z,.05);
@@ -62,20 +63,22 @@ export function createMode5v5(ctx){
   // ------------------------------------------------------------------ combat
   const alive=t=>bots.filter(b=>b.team===t&&b.alive).length+(t==='A'&&!P.dead?1:0);
   function noiseAt(x,z,team){for(const b of bots)if(b.alive&&b.team!==team&&b.tid==null&&Math.hypot(b.x-x,b.z-z)<28)b.hear={x:x+rnd(-3,3),z:z+rnd(-3,3),t:S.time}}
-  function damage(b,n,src){if(!b.alive||b.inv>0)return;b.hp-=n;const p=new T.Vector3(b.x,.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TEAM_COL[b.team],3);
+  function damage(b,n,src){if(!b.alive||b.inv>0)return;b.hp-=n;const p=new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TEAM_COL[b.team],3);
     if(src&&src.x!==undefined&&b.tid==null)b.last={x:src.x,z:src.z,t:S.time};plate(b);
-    if(b.hp<=0){b.alive=false;b.cat.visible=false;b.plate.sp.visible=false;fx.puff(new T.Vector3(b.x,.8,b.z),TEAM_COL[b.team],14);
+    if(b.hp<=0){b.alive=false;b.cat.visible=false;b.plate.sp.visible=false;fx.puff(new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z),TEAM_COL[b.team],14);
       const sn=src?(src.isPlayer||src==='player'?'YOU':src.name):'?',st=src&&(src.isPlayer||src==='player')?'A':src?src.team:'A';
       if(src==='player'||(src&&src.isPlayer))S.stats.k++;feed(sn,b.name,st,b.team,src&&src.slashing);dots();check()}}
   function playerHit(n,src){if(P.dead||P.frozen||P.inv>0||P.roll>0)return false;lastHitBy=src;return ctx.hurt(n)}
   function botMelee(b){const fxv=Math.sin(b.yaw),fzv=Math.cos(b.yaw);
     for(const e of snap){if(e.team===b.team||!e.alive)continue;const dx=e.x-b.x,dz=e.z-b.z,d=Math.hypot(dx,dz)||1;if(d<3.1&&(dx*fxv+dz*fzv)/d>-.05){
       if(e.isPlayer){playerHit(3,b)}else{damage(e.ref,3,b);e.ref.x+=dx/d*1.4;e.ref.z+=dz/d*1.4}fx.hit(new T.Vector3(e.x,.8,e.z),'#fff3b0',9)}}}
-  const world={hw,hh,obs:map.obs,time:()=>S.time,los:ctx.los,push:ctx.push,puff:(x,z)=>fx.puff(new T.Vector3(x,.2,z),'#ffffff',5),
+  const world={hw,hh,obs:map.obs,time:()=>S.time,los:ctx.los,push:ctx.push,h:HA,puff:(x,z)=>fx.puff(new T.Vector3(x,HA(x,z)+.2,z),'#ffffff',5),
     foes:b=>snap.filter(e=>e.team!==b.team&&e.alive),
     threats:b=>{const o=[];for(const t of bl)if(t.team!==b.team)o.push({x:t.m.position.x,z:t.m.position.z,vx:t.vx,vz:t.vz});if(b.team==='B')for(const t of ctx.bullets)o.push({x:t.m.position.x,z:t.m.position.z,vx:t.vx,vz:t.vz});return o},
     fire:b=>{const o=b.cat.userData.muzzle(tmp),yaw=b.yaw+(Math.random()-.5)*.12*(1.3-b.skill)*(b.scope?.3:1),dx=Math.sin(yaw),dz=Math.cos(yaw),m=fx.bullet(BULLET[b.team]);
-      m.position.copy(o);m.rotation.set(0,yaw,0);scene.add(m);bl.push({m,vx:dx*22,vy:0,vz:dz*22,life:1.1,team:b.team,owner:b});fx.muzzle(o,yaw);b.cat.userData.kick();noiseAt(b.x,b.z,b.team)},
+      m.position.copy(o);m.rotation.set(0,yaw,0);scene.add(m);
+      const tg=snap.find(e=>e.id===b.tid),dd=tg?Math.hypot(tg.x-b.x,tg.z-b.z)||1:0,vy=tg?Math.max(-8,Math.min(8,(HA(tg.x,tg.z)+.8-o.y)/dd*22)):0;   // aim up / down the slope at the target
+      bl.push({m,vx:dx*22,vy,vz:dz*22,life:1.1,team:b.team,owner:b});fx.muzzle(o,yaw);b.cat.userData.kick();noiseAt(b.x,b.z,b.team)},
     objective:b=>objective(b)};
 
   // objectives: attackers -> site (planter plants, the rest cover), post-plant spots; defenders -> hold angles, rotate on info, defuse
@@ -101,7 +104,7 @@ export function createMode5v5(ctx){
     atkBots.forEach((b,i)=>{b.plan=i===0?other:pl;b.slot=i});defBots.forEach((b,i)=>{b.plan=i<2?'A':i<4?'B':pick(['A','B']);b.slot=i});
     bots.forEach(b=>{const a=b.team===S.atk,x=a?SPAWN.atk.x:SPAWN.def.x,z=a?atk[ia++%5]:def[id++%5];
       Object.assign(b,{x,z,yaw:a?Math.PI/2:-Math.PI/2,hp:5,alive:true,wpn:1,roll:0,rcd:0,inv:0,cd:0,swap:0,scope:false,dash:0,tid:null,last:null,hear:null,react:0,burstT:0,shots:0,act:false,spot:null,mv:false,vx:0,vz:0});
-      b.cat.visible=true;b.cat.userData.setWeapon('gun');b.cat.position.set(x,0,z);plate(b);b.plate.sp.visible=true});
+      b.cat.visible=true;b.cat.userData.setWeapon('gun');b.cat.position.set(x,HA(x,z),z);plate(b);b.plate.sp.visible=true});
     const pa=S.atk==='A';ctx.resetPlayer(pa?SPAWN.atk.x:SPAWN.def.x,pa?atk[ia%5]:def[id%5],pa?Math.PI/2:-Math.PI/2);
   }
   function startRound(){
@@ -116,7 +119,7 @@ export function createMode5v5(ctx){
     ctx.endMatch();over.hidden=false}
   function check(){if(S.phase!=='live'&&S.phase!=='planted')return;const def=S.atk==='A'?'B':'A',a=alive(S.atk),d=alive(def);
     if(d===0)endRound(S.atk,'ELIMINATION');else if(a===0&&!S.spike.planted)endRound(def,'ELIMINATION')}
-  function plant(x,z,site){S.spike={planted:true,site,t:SPIKE,x,z};S.phase='planted';S.plant=0;visuals.spike.position.set(x,0,z);visuals.spike.visible=true;ringsColor();banner(`SPIKE PLANTED · ${site}`);fx.hit(new T.Vector3(x,.3,z),'#ff4d4d',10);check()}
+  function plant(x,z,site){S.spike={planted:true,site,t:SPIKE,x,z};S.phase='planted';S.plant=0;visuals.spike.position.set(x,HA(x,z),z);visuals.spike.visible=true;ringsColor();banner(`SPIKE PLANTED · ${site}`);fx.hit(new T.Vector3(x,.3,z),'#ff4d4d',10);check()}
   function nearestSite(x,z){let best=null,bd=1e9;for(const k of['A','B']){const s=SITES[k],d=Math.hypot(s.x-x,s.z-z);if(d<bd){bd=d;best=s}}return{s:best,d:bd}}
 
   // ------------------------------------------------------------------ frame
@@ -130,9 +133,9 @@ export function createMode5v5(ctx){
       if(!P.dead){const dx=a.x-P.x,dz=a.z-P.z,d=Math.hypot(dx,dz),m=.9;if(d<m&&d>0){a.x+=dx/d*(m-d)*.6;a.z+=dz/d*(m-d)*.6}}
       for(let j=i+1;j<all.length;j++){const b=all[j],dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz),m=.9;if(d<m&&d>0){const k=(m-d)/2/d;a.x-=dx*k;a.z-=dz*k;b.x+=dx*k;b.z+=dz*k}}}}
   function bullets(dt){
-    for(let i=bl.length-1;i>=0;i--){const t=bl[i],p=t.m.position;p.x+=t.vx*dt;p.z+=t.vz*dt;t.life-=dt;let dead=t.life<=0||Math.abs(p.x)>hw||Math.abs(p.z)>hh||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
-      if(!dead&&t.team==='B'&&!P.dead&&Math.hypot(p.x-P.x,p.z-P.z)<.5&&P.inv<=0&&P.roll<=0){if(playerHit(1,t.owner)){flesh=true;dead=true;fx.hit(p,'#ff7a3c',6)}}
-      if(!dead)for(const b of bots)if(b.alive&&b.team!==t.team&&Math.hypot(p.x-b.x,p.z-b.z)<.5&&b.inv<=0){damage(b,1,t.owner);dead=true;flesh=true;break}
+    for(let i=bl.length-1;i>=0;i--){const t=bl[i],p=t.m.position;p.x+=t.vx*dt;p.y+=t.vy*dt;p.z+=t.vz*dt;t.life-=dt;let dead=t.life<=0||p.y<HA(p.x,p.z)+.02||Math.abs(p.x)>hw||Math.abs(p.z)>hh||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
+      if(!dead&&t.team==='B'&&!P.dead&&Math.hypot(p.x-P.x,p.z-P.z)<.5&&Math.abs(p.y-(P.gy+.8))<1.2&&P.inv<=0&&P.roll<=0){if(playerHit(1,t.owner)){flesh=true;dead=true;fx.hit(p,'#ff7a3c',6)}}
+      if(!dead)for(const b of bots)if(b.alive&&b.team!==t.team&&Math.hypot(p.x-b.x,p.z-b.z)<.5&&Math.abs(p.y-(HA(b.x,b.z)+.8))<1.2&&b.inv<=0){damage(b,1,t.owner);dead=true;flesh=true;break}
       if(dead){if(!flesh&&t.life>0){fx.hit(p,'#fff3b0',4);fx.dust(p)}scene.remove(t.m);bl.splice(i,1)}else fx.trail(p,t.vx,t.vz,BULLET[t.team])}}
   function playerSpike(dt){let acting=null;const atk=S.atk==='A',hold=keys.KeyF&&!P.dead&&!P.frozen&&!P.mv&&P.roll<=0;let prompt='',prog=0;
     if(!S.spike.planted){const {s,d}=nearestSite(P.x,P.z);if(atk&&!P.dead&&d<s.r){prompt='HOLD F · PLANT SPIKE';if(hold)acting={plant:true,s}}}
@@ -174,15 +177,16 @@ export function createMode5v5(ctx){
       if(!S.active)return;S.time+=dt;refresh(dt);
       if(ctx.bullets.length>prevN)noiseAt(P.x,P.z,'A');prevN=ctx.bullets.length;
       const live=S.phase==='live'||S.phase==='planted';
-      if(S.phase==='buy'){S.t-=dt;P.frozen=true;bots.forEach(b=>b.alive&&idleBot(b,dt));if(S.t<=0){S.phase='live';S.t=ROUND;P.frozen=false;banner('GO!')}}
+      if(S.phase==='buy'){S.t-=dt;P.frozen=true;bots.forEach(b=>b.alive&&idleBot(b,dt,world));if(S.t<=0){S.phase='live';S.t=ROUND;P.frozen=false;banner('GO!')}}
       else if(live){
         if(S.phase==='live'){S.t-=dt;if(S.t<=0)endRound(S.atk==='A'?'B':'A','TIME')}
         for(const b of bots)stepBot(b,dt,world);separate();bullets(dt);if(S.phase==='live'||S.phase==='planted')spikeTick(dt)}
-      else{S.t-=dt;bots.forEach(b=>b.alive&&idleBot(b,dt));bullets(dt);if(S.phase==='end'&&S.t<=0)startRound()}
-      for(const b of bots)if(b.plate){b.plate.sp.position.set(b.x,2.35,b.z);b.plate.sp.visible=b.alive}
+      else{S.t-=dt;bots.forEach(b=>b.alive&&idleBot(b,dt,world));bullets(dt);if(S.phase==='end'&&S.t<=0)startRound()}
+      for(const b of bots)if(b.alive)b.cat.position.y=HA(b.x,b.z);   // stand on the terrain whatever the avatar code did this frame
+      for(const b of bots)if(b.plate){b.plate.sp.position.set(b.x,HA(b.x,b.z)+2.35,b.z);b.plate.sp.visible=b.alive}
       hudT-=dt;if(hudT<=0){hudT=.2;const t=S.phase==='buy'?S.t:S.phase==='planted'?S.spike.t:S.t,m=Math.max(0,Math.ceil(t));$('#v5t').textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0');$('#v5t').style.color=S.phase==='planted'?'#ff5a5a':'#fff';dots()}
     },
-    bulletHit(p,b){for(const e of bots)if(e.alive&&e.team==='B'&&Math.hypot(p.x-e.x,p.z-e.z)<.55&&e.inv<=0&&Math.abs(p.y-.8)<1.1){damage(e,1,'player');return true}return false},
+    bulletHit(p,b){for(const e of bots)if(e.alive&&e.team==='B'&&Math.hypot(p.x-e.x,p.z-e.z)<.55&&e.inv<=0&&Math.abs(p.y-(HA(e.x,e.z)+.8))<1.1){damage(e,1,'player');return true}return false},
     playerMelee(fx_,fz_){let hit=false;for(const e of bots){if(!e.alive||e.team!=='B'||e.inv>0)continue;const dx=e.x-P.x,dz=e.z-P.z,d=Math.hypot(dx,dz)||1;if(d<3.2&&(dx*fx_+dz*fz_)/d>-.05){damage(e,3,'player');e.x+=dx/d*1.4;e.z+=dz/d*1.4;hit=true}}return hit},
     onPlayerDown(){if(P.dead)return;P.dead=true;S.stats.d++;const k=lastHitBy;feed(k&&k.name||'?','YOU',k?k.team:'B','A',k&&k.slashing);dots();check()},
     prog(){const t=S.phase==='buy'?S.t/BUY:S.phase==='planted'?S.spike.t/SPIKE:S.t/ROUND;return Math.max(0,Math.min(1,t))*100+'%'},
