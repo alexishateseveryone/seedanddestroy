@@ -17,66 +17,24 @@ const ICONS={
 };
 const slotHTML=WEAPONS.map((w,i)=>`<div class="slot${i===0?' on':''}" data-w="${i}"><kbd>${i+1}</kbd>${ICONS[w.id]||BLASTER}<span>${w.name}</span></div>`).join('');
 
-// ---- device detection: touch screens (phones, tablets) get the on-screen controls. ?touch=1 forces them on, ?touch=0 off (for testing on PC)
-const QS=new URLSearchParams(location.search),FORCE=QS.get('touch');
-export const IS_MOBILE=FORCE!==null?FORCE!=='0':(matchMedia('(pointer: coarse)').matches||/Android|iPhone|iPad|iPod|Mobi|Silk/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1));
-if(IS_MOBILE)document.body.classList.add('mobile');
-
 const mobileCSS = document.createElement('style');
 mobileCSS.textContent = `
-  #mob-ctrls { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 990; user-select: none; -webkit-user-select: none; }
+  #mob-ctrls { display: none; position: fixed; inset: 0; pointer-events: none; z-index: 990; }
   body.mobile #mob-ctrls { display: block; }
-  body.mobile.is-paused #mob-ctrls { display: none; }
   .m-joy-base { position: absolute; bottom: 30px; left: 30px; width: 130px; height: 130px; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.3); border-radius: 50%; pointer-events: auto; touch-action: none; }
-  .m-joy-thumb { position: absolute; top: 35px; left: 35px; width: 60px; height: 60px; background: rgba(255,255,255,0.5); border-radius: 50%; pointer-events: none; }
-  .m-btn { position: absolute; pointer-events: auto; touch-action: none; background: rgba(43,33,80,0.75); border: 2px solid rgba(255,255,255,0.4); color: #fff; border-radius: 50%; display: grid; place-items: center; font: 800 14px 'Baloo 2', sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.4); -webkit-tap-highlight-color: transparent; }
+  .m-joy-thumb { position: absolute; top: 35px; left: 35px; width: 60px; height: 60px; background: rgba(255,255,255,0.5); border-radius: 50%; pointer-events: none; transition: transform 0.05s linear; }
+  .m-btn { position: absolute; pointer-events: auto; touch-action: none; background: rgba(43,33,80,0.75); border: 2px solid rgba(255,255,255,0.4); color: #fff; border-radius: 50%; display: grid; place-items: center; font-weight: bold; font-family: 'Baloo 2', sans-serif; box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
   .m-btn:active { background: rgba(255,213,74,0.85); color: #2b2150; transform: scale(0.92); }
-  #mob-fire { bottom: 35px; right: 35px; width: 84px; height: 84px; font-size: 17px; background: rgba(232,69,60,0.88); border-color: #fca5a5; }
-  #mob-tumble { bottom: 140px; right: 42px; width: 58px; height: 58px; font-size: 12px; }
-  #mob-weapon { bottom: 40px; right: 140px; width: 58px; height: 58px; font-size: 12px; }
-  #mob-look-zone { position: absolute; top: 0; right: 0; width: 60%; height: 72%; pointer-events: auto; touch-action: none; }
-
-  /* layout on touch screens: weapons + health centred at the bottom, minimap top-left with the pause button beside it */
-  body.mobile #hud .hint { display: none !important; }
-  body.mobile #hud .hud-bc { position: fixed !important; left: 50% !important; right: auto !important; top: auto !important; bottom: 176px !important; transform: translateX(-50%) !important; gap: 4px !important; pointer-events: none; }
-  body.mobile #hud .hud-bc .slot { padding: 4px 6px !important; }
-  body.mobile #hud .hud-bc kbd { display: none !important; }
-  body.mobile #hud .hud-bc .wi { width: 24px !important; height: 24px !important; }
-  body.mobile #hud .hud-tl { position: fixed !important; left: 50% !important; right: auto !important; top: auto !important; bottom: 232px !important; transform: translateX(-50%) !important; }
-  body.mobile #hud .hud-br { position: fixed !important; left: 12px !important; top: 12px !important; right: auto !important; bottom: auto !important; display: flex !important; align-items: flex-start !important; gap: 8px !important; }
-  body.mobile #hud .mini canvas { width: 104px !important; height: 104px !important; }
-  body.mobile #hud .mini .mn { font-size: 10px; }
-  body.mobile #mob-pause { position: static !important; width: 46px; height: 46px; font-size: 15px; border-radius: 14px; background: rgba(43,33,80,0.8); }
+  #mob-fire { bottom: 35px; right: 35px; width: 80px; height: 80px; font-size: 16px; background: rgba(239,68,68,0.85); border-color: #fca5a5; }
+  #mob-tumble { bottom: 135px; right: 45px; width: 55px; height: 55px; font-size: 11px; }
+  #mob-weapon { bottom: 35px; right: 135px; width: 60px; height: 60px; font-size: 12px; }
+  #mob-pause { top: 20px; right: 20px; width: 45px; height: 45px; font-size: 14px; border-radius: 12px; }
+  #mob-look-zone { position: absolute; top: 0; right: 0; width: 60%; height: 70%; pointer-events: auto; touch-action: none; }
 `;
 document.head.appendChild(mobileCSS);
 const css=document.createElement('style');css.textContent='#wpn .slot span{display:none}#wpn .slot.on span{display:inline}#wpn{gap:6px}';document.head.appendChild(css);
 
-// touch controls -> ctl.touch (move/fire state read by main.js) and ctl callbacks (look, roll, weapon cycle, pause)
-function wireTouch(root,ctl){
-  const $=s=>root.querySelector(s),TS=ctl.touch,R=55;
-  // left: virtual joystick, forward/back + strafe relative to where the camera looks
-  const joy=$('#mob-joystick'),thumb=$('#mob-thumb');let jid=null,cx=0,cy=0;
-  const jMove=e=>{let dx=e.clientX-cx,dy=e.clientY-cy;const d=Math.hypot(dx,dy),k=d>R?R/d:1;dx*=k;dy*=k;thumb.style.transform=`translate(${dx}px,${dy}px)`;
-    let f=-dy/R,s=dx/R;const m=Math.hypot(f,s);if(m<.15){f=0;s=0}else{const c=Math.min(1,m)/m;f*=c;s*=c}TS.fwd=f;TS.side=s};
-  const jEnd=e=>{if(e.pointerId!==jid)return;jid=null;thumb.style.transform='';TS.fwd=0;TS.side=0};
-  joy.addEventListener('pointerdown',e=>{e.preventDefault();jid=e.pointerId;joy.setPointerCapture(jid);const r=joy.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;jMove(e)});
-  joy.addEventListener('pointermove',e=>{if(e.pointerId===jid)jMove(e)});
-  joy.addEventListener('pointerup',jEnd);joy.addEventListener('pointercancel',jEnd);
-  // right: drag anywhere on the open area to look around (same as the mouse)
-  const lz=$('#mob-look-zone');let lid=null,lx=0,ly=0;
-  lz.addEventListener('pointerdown',e=>{e.preventDefault();lid=e.pointerId;lz.setPointerCapture(lid);lx=e.clientX;ly=e.clientY});
-  lz.addEventListener('pointermove',e=>{if(e.pointerId!==lid)return;ctl.look(e.clientX-lx,e.clientY-ly);lx=e.clientX;ly=e.clientY});
-  const lEnd=e=>{if(e.pointerId===lid)lid=null};lz.addEventListener('pointerup',lEnd);lz.addEventListener('pointercancel',lEnd);
-  // buttons
-  const hold=(el,on,off)=>{el.addEventListener('pointerdown',e=>{e.preventDefault();el.setPointerCapture(e.pointerId);on()});el.addEventListener('pointerup',off);el.addEventListener('pointercancel',off)};
-  hold($('#mob-fire'),()=>TS.fire=true,()=>TS.fire=false);
-  const tap=(el,fn)=>el.addEventListener('pointerdown',e=>{e.preventDefault();fn()});
-  tap($('#mob-tumble'),()=>ctl.tumble&&ctl.tumble());
-  tap($('#mob-weapon'),()=>ctl.cycle&&ctl.cycle(1));
-  tap($('#mob-pause'),()=>ctl.pause&&ctl.pause());
-}
-
-export function createHUD(root=document.body,ctl={}){
+export function createHUD(root=document.body){
   const $=s=>root.querySelector(s),el=(h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
   const hud=$('#hud');
   hud.innerHTML=`
@@ -88,7 +46,7 @@ export function createHUD(root=document.body,ctl={}){
     <div class="hud-tr"><div class="sbox"><span class="lbl">SCORE</span><b id="score">000000</b>
       <div class="combo" id="combo"><span id="comboTxt">x2</span><i id="comboBar"></i></div>
       <div class="subs"><span>KOs <b id="kos">0</b></span><span>BEST <b id="bestHud">0</b></span></div></div></div>
-    <div class="hud-br"><div class="mini"><canvas id="mini" width="220" height="220"></canvas><span class="mn">N</span></div><button class="m-btn" id="mob-pause" aria-label="Pause">II</button></div>
+    <div class="hud-br"><div class="mini"><canvas id="mini" width="220" height="220"></canvas><span class="mn">N</span></div></div>
     <div class="hud-bc" id="wpn">${slotHTML}</div>
     <div class="hud-bl"><div class="hint"><kbd>LMB</kbd> shoot <kbd>RMB</kbd> scope <kbd>SPACE</kbd> tumble <kbd>1-8</kbd> / wheel weapon</div></div>`;
   
@@ -100,8 +58,9 @@ export function createHUD(root=document.body,ctl={}){
       <div id="mob-look-zone"></div>
       <div class="m-joy-base" id="mob-joystick"><div class="m-joy-thumb" id="mob-thumb"></div></div>
       <button class="m-btn" id="mob-fire">FIRE</button>
-      <button class="m-btn" id="mob-tumble">ROLL</button>
+      <button class="m-btn" id="mob-tumble">DASH</button>
       <button class="m-btn" id="mob-weapon">WPN</button>
+      <button class="m-btn" id="mob-pause">⏸</button>
     </div>
 
     <div id="pause" hidden><div class="card"><h2>Paused</h2><p class="pk">Click anywhere to jump back in</p>
@@ -125,7 +84,7 @@ export function createHUD(root=document.body,ctl={}){
     banner(t,s='',cls=''){bn.className='';$('#bnT').textContent=t;$('#bnS').textContent=s;if(!t)return;void bn.offsetWidth;bn.className='on '+cls},
     hit(kill){hitm.className='';void hitm.offsetWidth;hitm.className=kill?'kill':'hit'},
     hurt(){hurtEl.style.transition='none';hurtEl.style.opacity=.95;void hurtEl.offsetWidth;hurtEl.style.transition='opacity .7s ease-out';hurtEl.style.opacity=0},
-    pause(b){pauseEl.hidden=!b;document.body.classList.toggle('is-paused',!!b)},
+    pause(b){pauseEl.hidden=!b},
     scope(a){scopeEl.style.opacity=a;cross.style.opacity=1-a*.7},
     crosshair(spread,vis){cross.style.display=vis?'block':'none';cross.style.setProperty('--sp',spread.toFixed(1)+'px')},
     tumble(frac){set('tmb',()=>{const f=$('#tmbFill');f.style.transform=`scaleX(${frac})`;f.parentNode.classList.toggle('rdy',frac>=1)},Math.round(frac*40))},
@@ -147,6 +106,5 @@ export function createHUD(root=document.body,ctl={}){
       const g=mc.createRadialGradient(c,c,0,c,c,c*.7);g.addColorStop(0,'rgba(255,255,255,.28)');g.addColorStop(1,'rgba(255,255,255,0)');mc.fillStyle=g;mc.beginPath();mc.moveTo(c,c);mc.arc(c,c,c*.7,-Math.PI/2-.55,-Math.PI/2+.55);mc.closePath();mc.fill();
       mc.fillStyle='#fff';mc.strokeStyle='#2b2150';mc.lineWidth=2.5;mc.beginPath();mc.moveTo(c,c-9);mc.lineTo(c+7,c+7);mc.lineTo(c,c+3);mc.lineTo(c-7,c+7);mc.closePath();mc.fill();mc.stroke();mc.restore()}
   };
-  if(IS_MOBILE){ctl.touch=ctl.touch||{fwd:0,side:0,fire:false};wireTouch(root,ctl)}
   api.show(false);
   return api}
