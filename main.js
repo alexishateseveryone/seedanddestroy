@@ -8,6 +8,8 @@ import {createAtmosphere} from './js/atmosphere.js';
 import {createHUD} from './js/hud.js';
 import {WEAPONS} from './js/weapons/index.js';
 import {createSettings} from './js/settings.js';
+import {createMode5v5} from './js/5v5.js';
+import {patchCat} from './js/enemies/playersAi.js';
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
@@ -24,8 +26,8 @@ const map=buildMap(7,atm.envMap);scene.add(map.group);
 gfx=createSettings({atm,map,onResolution:resize});   // graphics options (presets + per-option, saved, applied live)
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
 let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0;
-let elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
-const P={x:0,z:0,hp:5,max:5,inv:0,cd:0,mv:false,aim:0,shake:0,hx:0,hz:0,rel:1,camDist:2.8,camYaw:0,camPitch:0,roll:0,rcd:0,rdx:0,rdz:1,kick:0,wpn:0,blink:0,scope:false,hs:0,dash:0,dx:0,dz:1,fwd:0,side:0,viewYaw:0,chain:0,chainT:0},bullets=[],ebul=[],enemies=[],pickups=[],keys={},mouse={l:false};
+let gm='wave',elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
+const P={x:0,z:0,hp:5,max:5,inv:0,cd:0,mv:false,aim:0,shake:0,hx:0,hz:0,rel:1,camDist:2.8,camYaw:0,camPitch:0,roll:0,rcd:0,rdx:0,rdz:1,kick:0,wpn:0,blink:0,scope:false,hs:0,dash:0,dx:0,dz:1,fwd:0,side:0,viewYaw:0,chain:0,chainT:0,dead:false,frozen:false},bullets=[],ebul=[],enemies=[],pickups=[],keys={},mouse={l:false};
 // ---- waves: a wave is a fixed number of enemies; the next wave starts only once every one of them is defeated
 const WV={phase:'intro',t:0,left:0,total:0,spawnT:0};
 const quota=w=>Math.min(44,4+w*2),maxAlive=w=>Math.min(4+Math.floor(w*1.2),12);
@@ -35,13 +37,14 @@ const heartGeo=new T.ExtrudeGeometry(hs,{depth:.25,bevelEnabled:true,bevelSize:.
 const casts=o=>o.traverse(m=>{if(m.isMesh){m.castShadow=true;m.receiveShadow=true}});
 const WP=()=>WEAPONS[P.wpn],isGunW=()=>WP().kind==='gun';
 function equipIdx(i){P.wpn=i;P.scope=false;cat.userData.equip(WEAPONS[i]);hud.weapon(i)}
-function setCat(){if(cat)scene.remove(cat);cat=createCatAvatar(cfg);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.equip(WP());hud.weapon(P.wpn)}
+function setCat(){if(cat)scene.remove(cat);cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.equip(WP());hud.weapon(P.wpn)}
 function setWeapon(i){i=(i+WEAPONS.length)%WEAPONS.length;if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
 function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false;
   enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;e.hbT=2.5;e.fl=.2;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;fx.hit(new T.Vector3(e.x,.8,e.z),'#fff3b0',9);hitAny=true}});
   for(let i=ebul.length-1;i>=0;i--){const b=ebul[i],p=b.m.position;if(Math.hypot(p.x-P.x,p.z-P.z)<Math.min(2.4,st.range)){fx.hit(p,'#ffd8a0',5);scene.remove(b.m);ebul.splice(i,1)}}
+  if(gm==='v5'&&mode5.playerMelee(fx_,fz_))hitAny=true;
   P.shake=Math.max(P.shake,hitAny?.38:.12);if(hitAny){P.hs=.07;hud.hit(false)}}
-function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>0)return;let f=P.fwd,s=P.side;if(!f&&!s)f=1;
+function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>0||P.dead||P.frozen)return;let f=P.fwd,s=P.side;if(!f&&!s)f=1;
   const fxv=Math.sin(P.camYaw),fzv=Math.cos(P.camYaw),rx=-Math.cos(P.camYaw),rz=Math.sin(P.camYaw);let dx=fxv*f+rx*s,dz=fzv*f+rz*s;const l=Math.hypot(dx,dz)||1;
   if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.puff(new T.Vector3(P.x,.2,P.z),'#ffffff',5)}}
 function hudAll(){hud.hp(P.hp,P.max);hud.wave(wave);hud.foes(WV.left+enemies.length,WV.total);hud.score(score,kills,best)}
@@ -50,10 +53,10 @@ function lockPtr(){try{const r=$('#c').requestPointerLock&&$('#c').requestPointe
 function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
 function clearAll(){[enemies,pickups].forEach(a=>{a.forEach(e=>scene.remove(e.g||e.m));a.length=0});[bullets,ebul].forEach(a=>{a.forEach(b=>scene.remove(b.m));a.length=0})}
 function push(o,rad){for(const r of map.obs){const dx=o.x-r.x,dz=o.z-r.z,d=Math.hypot(dx,dz),m=r.r+rad;if(d<m&&d>0){o.x=r.x+dx/d*m;o.z=r.z+dz/d*m}}}
-function enterTitle(){clearAll();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
+function enterTitle(){leave5();clearAll();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
   P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.dash=0;wave=3;spawnT=.6;bot.t=0;bot.wt=0;hud.show(false);
   equipIdx(0);setView(-.17);$('#over').hidden=true;$('#title').hidden=false;$('#bestT').textContent=best}
-function start(){clearAll();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
+function start(){leave5();clearAll();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
 function spawn(){const k=Math.random()<Math.min(.55,.22+wave*.08)?'ranged':'melee';let x,z,n=0;
   do{const a=rnd(0,6.283),d=rnd(13,18);x=P.x+Math.cos(a)*d;z=P.z+Math.sin(a)*d}while(n++<25&&(Math.abs(x)>W/2-2||Math.abs(z)>H/2-2||map.obs.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+.9)));
   x=Math.max(-W/2+2,Math.min(W/2-2,x));z=Math.max(-H/2+2,Math.min(H/2-2,z));const g=buildEnemy(k);casts(g);scene.add(g);const hp=Math.ceil(STATS[k].hp*(1+(wave-1)*.15));
@@ -176,7 +179,7 @@ function update(dt){
   if(!(state==='play'||demo)||paused)return;
   if(P.hs>0){P.hs-=dt;dt*=.12}
   if(demo){spawnT-=dt;if(spawnT<=0&&enemies.length<5){spawn();spawnT=2.2}}
-  else{elapsed+=dt;
+  else if(gm!=='v5'){elapsed+=dt;
     if(WV.phase==='intro'){WV.t-=dt;if(WV.t<=0)WV.phase='fight'}
     else if(WV.phase==='fight'){
       WV.spawnT-=dt;if(WV.left>0&&enemies.length<maxAlive(wave)&&WV.spawnT<=0){spawn();WV.left--;WV.spawnT=Math.max(.45,1.8-wave*.12);hudAll()}
@@ -195,7 +198,7 @@ function update(dt){
 
   // Player movement using WASD
   const inp=demo?botInput(dt):null;
-  const fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0),side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0);
+  let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0),side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0);if(P.dead||P.frozen){fwd=0;side=0}
   P.fwd=fwd;P.side=side;P.rel=fwd<0?-1:1;cat.userData.move.f=fwd;cat.userData.move.s=side;
   P.mv=(fwd!==0||side!==0)&&P.roll<=0;P.rcd=Math.max(0,P.rcd-dt);if(demo&&inp.roll)tumble();
   const sp=(P.scope&&isGunW()?3.2:6.5)*(WP().stats.move||1);
@@ -209,10 +212,11 @@ function update(dt){
   P.cd-=dt;P.inv-=dt;cat.userData.setScope(P.scope&&isGunW()&&P.roll<=0);
   
   // Attack trigger is E (KeyE)
-  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
+  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
 
   for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<.03||p.y>7||Math.abs(p.x)>W/2||Math.abs(p.z)>H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
     for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo)hud.hit(false);fx.hit(p,'#ffe066',8);fx.puff(p,e.g.userData.col||'#6f8f45',3);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
+    if(!dead&&gm==='v5'&&mode5.bulletHit(p,b)){flesh=true;hud.hit(false);fx.hit(p,'#ffe066',8);dead=true}
     if(dead){if(!flesh&&b.life>0){fx.hit(p,'#fff3b0',5);fx.dust(p)}scene.remove(b.m);bullets.splice(i,1)}else fx.trail(p,b.vx,b.vz,b.col||'#ffd54a')}
   for(let i=ebul.length-1;i>=0;i--){const b=ebul[i];b.m.position.x+=b.vx*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||Math.abs(p.x)>W/2||Math.abs(p.z)>H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r);
     if(Math.hypot(p.x-P.x,p.z-P.z)<.55){hurt();dead=true;fx.hit(p,'#ff7a3c',6)}else if(dead&&b.life>0){fx.hit(p,'#ffb070',4);fx.dust(p)}if(dead){scene.remove(b.m);ebul.splice(i,1)}else fx.trail(p,b.vx,b.vz,'#ff7a3c')}
@@ -223,7 +227,22 @@ function update(dt){
     if(Math.random()<(P.hp<=2?.2:.08)){const m=new T.Mesh(heartGeo,heartMat);m.position.set(e.x,.8,e.z);m.rotation.x=-.4;scene.add(m);pickups.push({m,x:e.x,z:e.z,t:0})}if(!demo)hudAll()}
   for(let i=pickups.length-1;i>=0;i--){const k=pickups[i];k.t+=dt;k.m.position.y=.8+Math.sin(k.t*3)*.15;k.m.rotation.y=k.t*2;
     if(Math.hypot(P.x-k.x,P.z-k.z)<.9){if(P.hp<P.max)P.hp++;fx.hit(k.m.position,'#ff9db8',10);scene.remove(k.m);pickups.splice(i,1);hudAll()}}
+  if(gm==='v5')mode5.update(dt);
 }
+// ---- 5v5 SPIKE RUSH: hooks the mode in js/5v5.js needs (it drives 9 AI cats; you play on the blue team)
+function leave5(){mode5.stop();gm='wave';document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
+function start5v5(){leave5();clearAll();gm='v5';P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
+  hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
+  document.body.classList.add('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='ROUND';lockPtr();equipIdx(0);hud.name(cfg.name);
+  mode5.start();mode5.bots.forEach(b=>casts(b.cat))}
+function hurt5(n){if(P.inv>0||P.dead)return false;hud.hurt();P.hp-=n;P.inv=.12;P.shake=Math.max(P.shake,.35);hud.hp(Math.max(0,P.hp),P.max);
+  if(P.hp<=0){P.hp=0;P.dead=true;mouse.l=false;P.scope=false;mode5.onPlayerDown()}return true}
+function resetPlayer(x,z,yaw){P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max)}
+function hud5(){const S=mode5.state();hud.hp(P.hp,P.max);hud.wave(S.round);const s=$('#score');if(s)s.textContent=`${S.score.A} : ${S.score.B}`}
+function endMatch(){state='over';mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock();hud.show(false)}
+const mode5=createMode5v5({scene,fx,map,P,keys,W,H,bullets,los,push,start5v5,home:()=>enterTitle(),
+  toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,hud:hud5,cat:()=>cat,endMatch,
+  clearBullets:()=>{bullets.forEach(b=>scene.remove(b.m));bullets.length=0}});
 let last=performance.now();
 setCat();enterTitle();
 (function loop(now){requestAnimationFrame(loop);const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;update(dt);fx.update(dt);
@@ -233,7 +252,7 @@ setCat();enterTitle();
   if(state==='play'||state==='over'||state==='title'){
     cat.position.set(P.x,0,P.z);
     cat.rotation.y = P.camYaw;
-    P.blink=Math.max(0,P.blink-dt);cat.visible=state==='title'||P.blink<=0||Math.floor(clock*20)%2===0;
+    P.blink=Math.max(0,P.blink-dt);cat.visible=!P.dead&&(state==='title'||P.blink<=0||Math.floor(clock*20)%2===0);
     cat.userData.setAim(P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.holster(false);cat.userData.update(paused?0:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
     P.shake=Math.max(0,P.shake-dt*1.2);const sh=P.shake*P.shake*1.2;
     
@@ -254,7 +273,7 @@ setCat();enterTitle();
     else{cat.position.set(0,0,3);if(mk){if(!spinHeld){spin=Math.atan2(Math.sin(spin),Math.cos(spin));spin-=spin*Math.min(1,dt*4)}cat.rotation.y=spin}else cat.rotation.y=Math.sin(clock*.7)*.6}
     cat.visible=true;cat.userData.holster(performance.now()>gunUntil);cat.userData.update(dt,mv,1);if(mk){if(cam.fov!==38){cam.fov=38;cam.updateProjectionMatrix()}cam.position.set(0,1.0,6.0);cam.lookAt(0,.74,3)}else{cam.position.set(0,2.4,8);cam.lookAt(0,1,3)}}
   atm.render()})(last);
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='play'&&!paused)setPaused(true);else if(e.code==='KeyP'&&state==='play')setPaused(!paused);if(e.code==='KeyR'&&state==='over')start();if(e.code==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(e.code))setWeapon(+e.code[5]-1);if(e.code==='Space'){e.preventDefault();tumble()}});addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='play'&&!paused)setPaused(true);else if(e.code==='KeyP'&&state==='play')setPaused(!paused);if(e.code==='KeyR'&&state==='over')(gm==='v5'?start5v5():start());if(e.code==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(e.code))setWeapon(+e.code[5]-1);if(e.code==='Space'){e.preventDefault();tumble()}});addEventListener('keyup',e=>keys[e.code]=false);
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
 addEventListener('mousedown',e=>{if(state!=='play')return;
@@ -266,7 +285,7 @@ addEventListener('wheel',e=>{if(state==='play'&&!paused)setWeapon(P.wpn+(e.delta
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&state==='play'&&!paused)setPaused(true)});
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('pointermove',e=>{if(state==='maker'&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
-$('#play').onclick=start;$('#again').onclick=start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
+$('#play').onclick=start;$('#play5').onclick=start5v5;$('#again').onclick=start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
 $('#make').onclick=()=>{clearAll();P.x=0;P.z=0;backup=JSON.stringify(cfg);$('#title').hidden=true;state='maker';spin=0;spinHeld=false;run=false;setView(.17);map.group.visible=false;stage.visible=true;document.body.classList.add('mk');
   const close=()=>{state='title';run=false;setView(-.17);map.group.visible=true;stage.visible=false;document.body.classList.remove('mk');$('#title').hidden=false};
   openMaker(cfg,{change:c=>{cfg=c;setCat()},run:v=>run=v,shoot:()=>{gunUntil=performance.now()+900;cat.userData.kick();fx.muzzle(cat.userData.muzzle(tmp),cat.rotation.y)},
