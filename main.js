@@ -9,14 +9,19 @@ import {createHUD} from './js/hud.js';
 import {WEAPONS} from './js/weapons/index.js';
 import {createSettings} from './js/settings.js';
 import {createMode5v5} from './js/5v5.js';
-import {patchCat} from './js/enemies/playersAi.js';
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
 const scene=new T.Scene();
 const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3();
 const atm=createAtmosphere(renderer,scene,cam);let curMode='';
-const hud=createHUD();
+// touch state written by the on-screen controls (hud.js) and read by the movement / fire code below. Always zero on a PC.
+const touch={fwd:0,side:0,fire:false};
+const hud=createHUD(document.body,{touch,
+  tumble:()=>tumble(),
+  cycle:d=>setWeapon(P.wpn+d),
+  pause:()=>{if(state==='play'&&!paused)setPaused(true)},
+  look:(dx,dy)=>{if(state!=='play'||paused)return;P.camYaw-=dx*.0042;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-dy*.0034))}});
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
 [[1.7,.4],[1.25,.5]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
 addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
@@ -37,7 +42,7 @@ const heartGeo=new T.ExtrudeGeometry(hs,{depth:.25,bevelEnabled:true,bevelSize:.
 const casts=o=>o.traverse(m=>{if(m.isMesh){m.castShadow=true;m.receiveShadow=true}});
 const WP=()=>WEAPONS[P.wpn],isGunW=()=>WP().kind==='gun';
 function equipIdx(i){P.wpn=i;P.scope=false;cat.userData.equip(WEAPONS[i]);hud.weapon(i)}
-function setCat(){if(cat)scene.remove(cat);cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.equip(WP());hud.weapon(P.wpn)}
+function setCat(){if(cat)scene.remove(cat);cat=createCatAvatar(cfg);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.equip(WP());hud.weapon(P.wpn)}
 function setWeapon(i){i=(i+WEAPONS.length)%WEAPONS.length;if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
 function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false;
   enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;e.hbT=2.5;e.fl=.2;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;fx.hit(new T.Vector3(e.x,.8,e.z),'#fff3b0',9);hitAny=true}});
@@ -50,7 +55,7 @@ function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>
 function hudAll(){hud.hp(P.hp,P.max);hud.wave(wave);hud.foes(WV.left+enemies.length,WV.total);hud.score(score,kills,best)}
 function beginWave(w){wave=w;WV.total=WV.left=quota(w);WV.phase='intro';WV.t=2.6;WV.spawnT=.4;P.chain=0;hud.banner(`WAVE ${w}`,`${WV.total} enemies`);hudAll()}
 function lockPtr(){try{const r=$('#c').requestPointerLock&&$('#c').requestPointerLock();r&&r.catch&&r.catch(()=>{})}catch(e){}}
-function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
+function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;touch.fire=false;touch.fwd=0;touch.side=0;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
 function clearAll(){[enemies,pickups].forEach(a=>{a.forEach(e=>scene.remove(e.g||e.m));a.length=0});[bullets,ebul].forEach(a=>{a.forEach(b=>scene.remove(b.m));a.length=0})}
 function push(o,rad){for(const r of map.obs){const dx=o.x-r.x,dz=o.z-r.z,d=Math.hypot(dx,dz),m=r.r+rad;if(d<m&&d>0){o.x=r.x+dx/d*m;o.z=r.z+dz/d*m}}}
 function enterTitle(){leave5();clearAll();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
@@ -198,7 +203,7 @@ function update(dt){
 
   // Player movement using WASD
   const inp=demo?botInput(dt):null;
-  let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0),side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0);if(P.dead||P.frozen){fwd=0;side=0}
+  let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0)+touch.fwd,side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0)+touch.side;fwd=Math.max(-1,Math.min(1,fwd));side=Math.max(-1,Math.min(1,side));if(P.dead||P.frozen){fwd=0;side=0}
   P.fwd=fwd;P.side=side;P.rel=fwd<0?-1:1;cat.userData.move.f=fwd;cat.userData.move.s=side;
   P.mv=(fwd!==0||side!==0)&&P.roll<=0;P.rcd=Math.max(0,P.rcd-dt);if(demo&&inp.roll)tumble();
   const sp=(P.scope&&isGunW()?3.2:6.5)*(WP().stats.move||1);
@@ -212,7 +217,7 @@ function update(dt){
   P.cd-=dt;P.inv-=dt;cat.userData.setScope(P.scope&&isGunW()&&P.roll<=0);
   
   // Attack trigger is E (KeyE)
-  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
+  if((keys.KeyE||mouse.l||touch.fire||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
 
   for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<.03||p.y>7||Math.abs(p.x)>W/2||Math.abs(p.z)>H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
     for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo)hud.hit(false);fx.hit(p,'#ffe066',8);fx.puff(p,e.g.userData.col||'#6f8f45',3);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
@@ -277,7 +282,9 @@ addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
 addEventListener('mousedown',e=>{if(state!=='play')return;
-  if(e.button===0){if(paused){if(!(e.target.closest&&e.target.closest('#quit,#pgfx,#gfx')))setPaused(false);return}if(!document.pointerLockElement)lockPtr();mouse.l=true}
+  // taps on a touch screen also fire a synthetic mouse event: those must not start shooting or grab the pointer
+  const synth=!!(e.sourceCapabilities&&e.sourceCapabilities.firesTouchEvents);
+  if(e.button===0){if(paused){if(!(e.target.closest&&e.target.closest('#quit,#pgfx,#gfx')))setPaused(false);return}if(!synth){if(!document.pointerLockElement)lockPtr();mouse.l=true}}
   if(e.button===2&&isGunW()&&WP().stats.zoom&&!paused)P.scope=true});
 addEventListener('mouseup',e=>{if(e.button===0)mouse.l=false;if(e.button===2)P.scope=false});
 addEventListener('mousemove',e=>{if(state==='play'&&!paused&&document.pointerLockElement){P.camYaw-=e.movementX*.0026;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-e.movementY*.0022))}});
