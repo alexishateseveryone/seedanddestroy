@@ -70,19 +70,27 @@ export function createAtmosphere(renderer,scene,cam){
   const rt=new T.WebGLRenderTarget(size.x,size.y,{type:T.HalfFloatType,samples:4});
   const composer=new EffectComposer(renderer,rt),bloom=new UnrealBloomPass(new T.Vector2(size.x,size.y),.22,.6,1.5),grade=new ShaderPass(GRADE);
   composer.addPass(new RenderPass(scene,cam));composer.addPass(bloom);composer.addPass(grade);composer.addPass(new OutputPass());
-  let mode='maker',fogOn=null;const fog=new T.Fog(fogHaze,45,240);
+  let mode='maker';const Q={bloom:true,grade:true,aa:true,shadows:2,clouds:true};const fog=new T.Fog(fogHaze,45,240);
   const api={sunDir,sun,hemi,envMap,fogColor:fogHaze,sky,clouds,composer,bloom,grade,
     setMode(m){mode=m;const play=m==='play';
-      sky.visible=clouds.visible=play;
+      sky.visible=play;clouds.visible=play&&Q.clouds;
       renderer.toneMapping=play?T.ACESFilmicToneMapping:T.NoToneMapping;renderer.toneMappingExposure=play?.82:1;
       renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;
-      sun.castShadow=play;hemi.intensity=play?1.35:2.1;sun.intensity=play?3.1:2.3;sun.color.set(play?'#ffe7c2':'#fff0c8');
+      sun.castShadow=play&&Q.shadows>0;hemi.intensity=play?1.35:2.1;sun.intensity=play?3.1:2.3;sun.color.set(play?'#ffe7c2':'#fff0c8');
+      if(!play){sun.position.set(-8,16,10);sun.target.position.set(0,0,0)}
       hemi.color.set(play?'#a9ccff':'#fff6d8');hemi.groundColor.set(play?'#6d8a4e':'#7aa86a');
       scene.fog=play?fog:null;scene.background=null},
     resize(w,h,pr){composer.setPixelRatio(pr);composer.setSize(w,h);bloom.resolution.set(w,h)},
     update(dt,t,focus){
       sky.position.copy(cam.position);clouds.position.copy(cam.position);clouds.material.uniforms.uTime.value=t;grade.uniforms.uTime.value=t;
       if(mode==='play'&&focus){sun.target.position.set(focus.x,0,focus.z);sun.position.set(focus.x+sunDir.x*70,sunDir.y*70,focus.z+sunDir.z*70);sun.target.updateMatrixWorld()}},
-    render(){if(mode==='play')composer.render();else renderer.render(scene,cam)}};
+    /** graphics options: bloom, grade (vignette/grain/colour), aa (MSAA in the post path), shadows 0|1|2, clouds.
+     *  With bloom AND grade off the whole post stack is skipped and the scene goes straight to the screen (cheapest path). */
+    setQuality(q){Object.assign(Q,q);bloom.enabled=!!Q.bloom;grade.enabled=!!Q.grade;
+      const n=Q.aa?4:0;if(rt.samples!==n){[composer.renderTarget1,composer.renderTarget2].forEach(t=>{t.samples=n;t.dispose()})}
+      const ms=Q.shadows>=2?2048:1024;if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}
+      const ext=Q.shadows>=2?26:20;if(sc.right!==ext){sc.left=-ext;sc.right=ext;sc.top=ext;sc.bottom=-ext;sc.updateProjectionMatrix()}
+      api.setMode(mode)},
+    render(){if(mode==='play'&&(Q.bloom||Q.grade))composer.render();else renderer.render(scene,cam)}};
   api.setMode('maker');return api;
-}      if(!play){sun.position.set(-8,16,10);sun.target.position.set(0,0,0)}
+}
