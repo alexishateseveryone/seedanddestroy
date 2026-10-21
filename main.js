@@ -1,6 +1,7 @@
 import * as T from 'three';
 import {createCatAvatar} from './js/catAvatar.js';
-import {buildMap,W,H} from './js/forestMap.js';
+import {buildMap} from './js/forestMap.js';
+import {buildArena} from './js/arenaMap.js';
 import {buildEnemy,STATS} from './js/enemies/index.js';
 import {openMaker} from './js/catMaker.js';
 import {createFX} from './js/effects.js';
@@ -9,30 +10,27 @@ import {createHUD} from './js/hud.js';
 import {WEAPONS} from './js/weapons/index.js';
 import {createSettings} from './js/settings.js';
 import {createMode5v5} from './js/5v5.js';
+import {patchCat} from './js/enemies/playersAi.js';
+import {createMobile} from './js/mobile.js';
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
 const scene=new T.Scene();
 const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3();
 const atm=createAtmosphere(renderer,scene,cam);let curMode='';
-// touch state written by the on-screen controls (hud.js) and read by the movement / fire code below. Always zero on a PC.
-const touch={fwd:0,side:0,fire:false};
-const hud=createHUD(document.body,{touch,
-  tumble:()=>tumble(),
-  cycle:d=>setWeapon(P.wpn+d),
-  pause:()=>{if(state==='play'&&!paused)setPaused(true)},
-  look:(dx,dy)=>{if(state!=='play'||paused)return;P.camYaw-=dx*.0042;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-dy*.0034))}});
+const hud=createHUD();
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
 [[1.7,.4],[1.25,.5]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
 addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
 function resize(){renderer.setPixelRatio(prr());renderer.setSize(innerWidth,innerHeight);atm.resize(innerWidth,innerHeight,prr());cam.aspect=innerWidth/innerHeight;const f=cam.userData.off||0;f?cam.setViewOffset(innerWidth,innerHeight,innerWidth*f,0,innerWidth,innerHeight):cam.clearViewOffset();cam.updateProjectionMatrix()}
 function setView(f){cam.userData.off=f;resize()}resize();
-const map=buildMap(7,atm.envMap);scene.add(map.group);
+const forest=buildMap(7,atm.envMap);scene.add(forest.group);let map=forest,arena=null,mode5=null;const lastQ={};
+{const fq=forest.setQuality;forest.setQuality=q=>{Object.assign(lastQ,q);fq(q);arena&&arena.setQuality(q)}}   // graphics options also reach the 5v5 arena
 gfx=createSettings({atm,map,onResolution:resize});   // graphics options (presets + per-option, saved, applied live)
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
 let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0;
 let gm='wave',elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
-const P={x:0,z:0,hp:5,max:5,inv:0,cd:0,mv:false,aim:0,shake:0,hx:0,hz:0,rel:1,camDist:2.8,camYaw:0,camPitch:0,roll:0,rcd:0,rdx:0,rdz:1,kick:0,wpn:0,blink:0,scope:false,hs:0,dash:0,dx:0,dz:1,fwd:0,side:0,viewYaw:0,chain:0,chainT:0,dead:false,frozen:false},bullets=[],ebul=[],enemies=[],pickups=[],keys={},mouse={l:false};
+const P={x:0,z:0,hp:5,max:5,inv:0,cd:0,mv:false,aim:0,shake:0,hx:0,hz:0,rel:1,camDist:2.8,camYaw:0,camPitch:0,roll:0,rcd:0,rdx:0,rdz:1,kick:0,wpn:0,blink:0,scope:false,hs:0,dash:0,dx:0,dz:1,fwd:0,side:0,viewYaw:0,chain:0,chainT:0,dead:false,frozen:false,gy:0},bullets=[],ebul=[],enemies=[],pickups=[],keys={},mouse={l:false};
 // ---- waves: a wave is a fixed number of enemies; the next wave starts only once every one of them is defeated
 const WV={phase:'intro',t:0,left:0,total:0,spawnT:0};
 const quota=w=>Math.min(44,4+w*2),maxAlive=w=>Math.min(4+Math.floor(w*1.2),12);
@@ -42,7 +40,7 @@ const heartGeo=new T.ExtrudeGeometry(hs,{depth:.25,bevelEnabled:true,bevelSize:.
 const casts=o=>o.traverse(m=>{if(m.isMesh){m.castShadow=true;m.receiveShadow=true}});
 const WP=()=>WEAPONS[P.wpn],isGunW=()=>WP().kind==='gun';
 function equipIdx(i){P.wpn=i;P.scope=false;cat.userData.equip(WEAPONS[i]);hud.weapon(i)}
-function setCat(){if(cat)scene.remove(cat);cat=createCatAvatar(cfg);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.equip(WP());hud.weapon(P.wpn)}
+function setCat(){if(cat)scene.remove(cat);cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.equip(WP());hud.weapon(P.wpn)}
 function setWeapon(i){i=(i+WEAPONS.length)%WEAPONS.length;if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
 function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false;
   enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;e.hbT=2.5;e.fl=.2;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;fx.hit(new T.Vector3(e.x,.8,e.z),'#fff3b0',9);hitAny=true}});
@@ -55,7 +53,7 @@ function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>
 function hudAll(){hud.hp(P.hp,P.max);hud.wave(wave);hud.foes(WV.left+enemies.length,WV.total);hud.score(score,kills,best)}
 function beginWave(w){wave=w;WV.total=WV.left=quota(w);WV.phase='intro';WV.t=2.6;WV.spawnT=.4;P.chain=0;hud.banner(`WAVE ${w}`,`${WV.total} enemies`);hudAll()}
 function lockPtr(){try{const r=$('#c').requestPointerLock&&$('#c').requestPointerLock();r&&r.catch&&r.catch(()=>{})}catch(e){}}
-function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;touch.fire=false;touch.fwd=0;touch.side=0;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
+function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
 function clearAll(){[enemies,pickups].forEach(a=>{a.forEach(e=>scene.remove(e.g||e.m));a.length=0});[bullets,ebul].forEach(a=>{a.forEach(b=>scene.remove(b.m));a.length=0})}
 function push(o,rad){for(const r of map.obs){const dx=o.x-r.x,dz=o.z-r.z,d=Math.hypot(dx,dz),m=r.r+rad;if(d<m&&d>0){o.x=r.x+dx/d*m;o.z=r.z+dz/d*m}}}
 function enterTitle(){leave5();clearAll();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
@@ -63,8 +61,8 @@ function enterTitle(){leave5();clearAll();state='title';paused=false;mouse.l=fal
   equipIdx(0);setView(-.17);$('#over').hidden=true;$('#title').hidden=false;$('#bestT').textContent=best}
 function start(){leave5();clearAll();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
 function spawn(){const k=Math.random()<Math.min(.55,.22+wave*.08)?'ranged':'melee';let x,z,n=0;
-  do{const a=rnd(0,6.283),d=rnd(13,18);x=P.x+Math.cos(a)*d;z=P.z+Math.sin(a)*d}while(n++<25&&(Math.abs(x)>W/2-2||Math.abs(z)>H/2-2||map.obs.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+.9)));
-  x=Math.max(-W/2+2,Math.min(W/2-2,x));z=Math.max(-H/2+2,Math.min(H/2-2,z));const g=buildEnemy(k);casts(g);scene.add(g);const hp=Math.ceil(STATS[k].hp*(1+(wave-1)*.15));
+  do{const a=rnd(0,6.283),d=rnd(13,18);x=P.x+Math.cos(a)*d;z=P.z+Math.sin(a)*d}while(n++<25&&(Math.abs(x)>map.W/2-2||Math.abs(z)>map.H/2-2||map.obs.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+.9)));
+  x=Math.max(-map.W/2+2,Math.min(map.W/2-2,x));z=Math.max(-map.H/2+2,Math.min(map.H/2-2,z));const g=buildEnemy(k);casts(g);scene.add(g);const hp=Math.ceil(STATS[k].hp*(1+(wave-1)*.15));
   enemies.push({g,k,x,z,y:0,hp,mhp:hp,hbT:0,r:STATS[k].r,t:rnd(0,3),s:0,st:'idle',sta:1,cd:rnd(.6,1.4),fl:0,yaw:Math.atan2(P.x-x,P.z-z),alert:rnd(0,1)<.5?4:0,
     wx:null,wz:0,wt:0,dodge:0,dcd:0,dsd:1,ddx:0,ddz:0,lastB:null,stun:0,pt:0,hit:false,burst:0,bcd:0,aimT:0,mt:0,sneak:false,strafe:1,jcd:rnd(1.5,4),jy:0,jx:0,jz:0,tx:0,tz:0,dc:k==='ranged'?.35:.2});
   fx.puff(new T.Vector3(x,.3,z),g.userData.col,4)}
@@ -73,7 +71,7 @@ function hurt(){if(P.inv>0)return;if(state==='title'){P.inv=.8;P.shake=Math.max(
   $('#sW').textContent=wave;$('#sK').textContent=kills;$('#sS').textContent=score;$('#best').textContent='Best: '+best}}
 function shoot(){const w=WP(),st=w.stats;P.cd=st.cd;cat.userData.kick(st.kick||1);const o=cat.userData.muzzle(tmp);const sc=cat.userData.scope();
   // aim at the point under the crosshair (11 units ahead on the view line), so bullets follow the crosshair up and down too
-  const cp=Math.cos(P.camPitch),tx=P.x+Math.sin(P.camYaw)*cp*11,ty=1+Math.sin(P.camPitch)*11,tz=P.z+Math.cos(P.camYaw)*cp*11;
+  const cp=Math.cos(P.camPitch),tx=P.x+Math.sin(P.camYaw)*cp*11,ty=1+P.gy+Math.sin(P.camPitch)*11,tz=P.z+Math.cos(P.camYaw)*cp*11;
   let ax=tx-o.x,ay=ty-o.y,az=tz-o.z;const al=Math.hypot(ax,ay,az)||1;ax/=al;ay/=al;az/=al;
   const baseYaw=Math.atan2(ax,az),baseEl=Math.asin(ay),sp=st.speed;
   for(let n=0;n<(st.pellets||1);n++){
@@ -83,6 +81,8 @@ function shoot(){const w=WP(),st=w.stats;P.cd=st.cd;cat.userData.kick(st.kick||1
   fx.muzzle(o,baseYaw);P.shake=Math.max(P.shake,st.shake||.1);P.kick=Math.max(.2,(st.kick||1)*.5);P.dx=-Math.sin(P.camYaw);P.dz=-Math.cos(P.camYaw);P.dash=st.push||1}
 // clear line between two points (trees block sight and bullets)
 function los(ax,az,bx,bz){const dx=bx-ax,dz=bz-az,l2=dx*dx+dz*dz||1;
+  if(gm==='v5'){const ya=map.heightAt(ax,az)+1.2,yb=map.heightAt(bx,bz)+1.2,n=Math.ceil(Math.sqrt(l2)/1.5);   // hills block sight
+    for(let i=1;i<n;i++){const t=i/n;if(map.heightAt(ax+dx*t,az+dz*t)>ya+(yb-ya)*t)return false}}
   for(const r of map.obs){const t=Math.max(0,Math.min(1,((r.x-ax)*dx+(r.z-az)*dz)/l2));if(Math.hypot(ax+dx*t-r.x,az+dz*t-r.z)<r.r*.9)return false}return true}
 const turnTo=(a,b,k)=>a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*k;
 function enemyShoot(e,d){const ud=e.g.userData,o=ud.muzzle(tmp),sneak=e.sneak,spread=(Math.random()-.5)*(sneak?.26:.12);
@@ -155,7 +155,7 @@ function ai(e,dt){
     }
   }
   const len=Math.hypot(mx,mz)||1;if(sp>0){mx/=len;mz/=len}
-  e.x+=mx*sp*dt;e.z+=mz*sp*dt;e.x=Math.max(-W/2+.8,Math.min(W/2-.8,e.x));e.z=Math.max(-H/2+.8,Math.min(H/2-.8,e.z));if(!(e.jy>.5))push(e,e.r);
+  e.x+=mx*sp*dt;e.z+=mz*sp*dt;e.x=Math.max(-map.W/2+.8,Math.min(map.W/2-.8,e.x));e.z=Math.max(-map.H/2+.8,Math.min(map.H/2-.8,e.z));if(!(e.jy>.5))push(e,e.r);
   e.yaw=turnTo(e.yaw,face,Math.min(1,dt*(pose==='run'?14:9)));
   e.g.position.set(e.x,e.jy||0,e.z);e.g.rotation.y=e.yaw;e.g.scale.setScalar(1+e.fl*.8);
   ud.update(dt,{mv:sp>.3,pose,pt,aim,dir:e.dsd,lod:d>26?2:d>15?1:0,jy:e.jy||0});
@@ -203,7 +203,7 @@ function update(dt){
 
   // Player movement using WASD
   const inp=demo?botInput(dt):null;
-  let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0)+touch.fwd,side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0)+touch.side;fwd=Math.max(-1,Math.min(1,fwd));side=Math.max(-1,Math.min(1,side));if(P.dead||P.frozen){fwd=0;side=0}
+  let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0),side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0);if(P.dead||P.frozen){fwd=0;side=0}
   P.fwd=fwd;P.side=side;P.rel=fwd<0?-1:1;cat.userData.move.f=fwd;cat.userData.move.s=side;
   P.mv=(fwd!==0||side!==0)&&P.roll<=0;P.rcd=Math.max(0,P.rcd-dt);if(demo&&inp.roll)tumble();
   const sp=(P.scope&&isGunW()?3.2:6.5)*(WP().stats.move||1);
@@ -211,19 +211,20 @@ function update(dt){
   else if(P.mv){const fxv=Math.sin(P.camYaw),fzv=Math.cos(P.camYaw),rx=-Math.cos(P.camYaw),rz=Math.sin(P.camYaw);
     const dx=fxv*fwd+rx*side,dz=fzv*fwd+rz*side,len=Math.hypot(dx,dz);if(len>0){P.x+=dx/len*sp*dt;P.z+=dz/len*sp*dt}}
   if(P.dash>0){P.x+=P.dx*P.dash*3*dt;P.z+=P.dz*P.dash*3*dt;P.dash=Math.max(0,P.dash-dt*9)}
-  P.x=Math.max(-W/2+1,Math.min(W/2-1,P.x));P.z=Math.max(-H/2+1,Math.min(H/2-1,P.z));push(P,.45);
+  P.x=Math.max(-map.W/2+1,Math.min(map.W/2-1,P.x));P.z=Math.max(-map.H/2+1,Math.min(map.H/2-1,P.z));push(P,.45);
   
+  P.gy=gm==='v5'?map.heightAt(P.x,P.z):0;
   P.aim=P.camYaw;
   P.cd-=dt;P.inv-=dt;cat.userData.setScope(P.scope&&isGunW()&&P.roll<=0);
   
   // Attack trigger is E (KeyE)
-  if((keys.KeyE||mouse.l||touch.fire||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
+  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
 
-  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<.03||p.y>7||Math.abs(p.x)>W/2||Math.abs(p.z)>H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
+  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<(gm==='v5'?map.heightAt(p.x,p.z):0)+.03||p.y>(gm==='v5'?24:7)||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
     for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo)hud.hit(false);fx.hit(p,'#ffe066',8);fx.puff(p,e.g.userData.col||'#6f8f45',3);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
     if(!dead&&gm==='v5'&&mode5.bulletHit(p,b)){flesh=true;hud.hit(false);fx.hit(p,'#ffe066',8);dead=true}
     if(dead){if(!flesh&&b.life>0){fx.hit(p,'#fff3b0',5);fx.dust(p)}scene.remove(b.m);bullets.splice(i,1)}else fx.trail(p,b.vx,b.vz,b.col||'#ffd54a')}
-  for(let i=ebul.length-1;i>=0;i--){const b=ebul[i];b.m.position.x+=b.vx*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||Math.abs(p.x)>W/2||Math.abs(p.z)>H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r);
+  for(let i=ebul.length-1;i>=0;i--){const b=ebul[i];b.m.position.x+=b.vx*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r);
     if(Math.hypot(p.x-P.x,p.z-P.z)<.55){hurt();dead=true;fx.hit(p,'#ff7a3c',6)}else if(dead&&b.life>0){fx.hit(p,'#ffb070',4);fx.dust(p)}if(dead){scene.remove(b.m);ebul.splice(i,1)}else fx.trail(p,b.vx,b.vz,'#ff7a3c')}
   enemies.forEach(e=>{ai(e,dt);e.hbT=Math.max(0,e.hbT-dt)});
   for(let i=0;i<enemies.length;i++)for(let j=i+1;j<enemies.length;j++){const a=enemies[i],b=enemies[j],dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz),m=(a.r+b.r)*.9;if(d<m&&d>0){const k=(m-d)/2/d;a.x-=dx*k;a.z-=dz*k;b.x+=dx*k;b.z+=dz*k}}
@@ -235,8 +236,12 @@ function update(dt){
   if(gm==='v5')mode5.update(dt);
 }
 // ---- 5v5 SPIKE RUSH: hooks the mode in js/5v5.js needs (it drives 9 AI cats; you play on the blue team)
-function leave5(){mode5.stop();gm='wave';document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
-function start5v5(){leave5();clearAll();gm='v5';P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
+function leave5(){mode5&&mode5.stop();gm='wave';map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
+function start5v5(){leave5();clearAll();gm='v5';
+  if(!arena){arena=buildArena(11,atm.envMap);scene.add(arena.group);arena.setQuality(lastQ)}
+  forest.group.visible=false;arena.group.visible=true;map=arena;
+  if(!mode5)mode5=mk5();
+ P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
   hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
   document.body.classList.add('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='ROUND';lockPtr();equipIdx(0);hud.name(cfg.name);
   mode5.start();mode5.bots.forEach(b=>casts(b.cat))}
@@ -245,17 +250,21 @@ function hurt5(n){if(P.inv>0||P.dead)return false;hud.hurt();P.hp-=n;P.inv=.12;P
 function resetPlayer(x,z,yaw){P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max)}
 function hud5(){const S=mode5.state();hud.hp(P.hp,P.max);hud.wave(S.round);const s=$('#score');if(s)s.textContent=`${S.score.A} : ${S.score.B}`}
 function endMatch(){state='over';mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock();hud.show(false)}
-const mode5=createMode5v5({scene,fx,map,P,keys,W,H,bullets,los,push,start5v5,home:()=>enterTitle(),
-  toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,hud:hud5,cat:()=>cat,endMatch,
+const mk5=()=>createMode5v5({scene,fx,map:arena,P,keys,W:arena.W,H:arena.H,bullets,los,push,start5v5,home:()=>enterTitle(),
+  toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,heightAt:(x,z)=>arena.heightAt(x,z),hud:hud5,cat:()=>cat,endMatch,
   clearBullets:()=>{bullets.forEach(b=>scene.remove(b.m));bullets.length=0}});
+// ---- touch controls: only created on phones / tablets (see js/mobile.js); on PC this is a no-op
+const mobile=createMobile({P,keys,mouse,canPlay:()=>state==='play'&&!paused,tumble,pause:()=>setPaused(true),
+  weapon:d=>setWeapon(P.wpn+d),wname:()=>WP().name,is5v5:()=>gm==='v5',
+  scope:()=>{if(isGunW()&&WP().stats.zoom&&P.roll<=0)P.scope=!P.scope}});
 let last=performance.now();
 setCat();enterTitle();
-(function loop(now){requestAnimationFrame(loop);const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;update(dt);fx.update(dt);
+(function loop(now){requestAnimationFrame(loop);const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();update(dt);fx.update(dt);
   const mode=state==='maker'?'maker':'play';if(mode!==curMode){curMode=mode;atm.setMode(mode)}
   if(state!=='maker')map.update(clock,P,{sun:atm.sunDir,sky:atm.fogColor});atm.update(dt,clock,P);
   if(state!=='play')hud.scope(0);
   if(state==='play'||state==='over'||state==='title'){
-    cat.position.set(P.x,0,P.z);
+    cat.position.set(P.x,P.gy,P.z);
     cat.rotation.y = P.camYaw;
     P.blink=Math.max(0,P.blink-dt);cat.visible=!P.dead&&(state==='title'||P.blink<=0||Math.floor(clock*20)%2===0);
     cat.userData.setAim(P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.holster(false);cat.userData.update(paused?0:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
@@ -266,9 +275,9 @@ setCat();enterTitle();
     const vy=state==='title'?P.viewYaw:P.camYaw,pit=(state==='title'?-.25:P.camPitch)+kk*.02;
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
     const px=P.x+rx*rightOffset,pz=P.z+rz*rightOffset;
-    const camX=px-dX*dist,camZ=pz-dZ*dist;let camY=1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35,camY);
+    const camX=px-dX*dist,camZ=pz-dZ*dist;let camY=P.gy+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+(gm==='v5'?map.heightAt(camX,camZ):0),camY);
     cam.position.set(camX,camY,camZ);for(const o of map.obs){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
-    cam.lookAt(P.x+dX*11,1+dY*11,P.z+dZ*11);   // looks at the point the bullets converge on
+    cam.lookAt(P.x+dX*11,1+P.gy+dY*11,P.z+dZ*11);   // looks at the point the bullets converge on
     cam.rotation.z+=rnd(-sh,sh)*.02+(P.roll>0?Math.sin(P.roll*14)*.02:0);
     if(state==='play'){cam.updateMatrixWorld();hud.scope(aw);hud.crosshair(7+kk*34+(P.mv?3:0)+(P.scope?-3:0)+P.shake*10,!paused);hud.tumble(1-P.rcd/.95);
       hud.combo(Math.min(5,1+Math.floor(P.chain/3)),P.chain,P.chainT/3.2);hud.bars(enemies,cam,clock);hud.radar(P,enemies,pickups,map,P.camYaw)}
@@ -282,9 +291,7 @@ addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
 addEventListener('mousedown',e=>{if(state!=='play')return;
-  // taps on a touch screen also fire a synthetic mouse event: those must not start shooting or grab the pointer
-  const synth=!!(e.sourceCapabilities&&e.sourceCapabilities.firesTouchEvents);
-  if(e.button===0){if(paused){if(!(e.target.closest&&e.target.closest('#quit,#pgfx,#gfx')))setPaused(false);return}if(!synth){if(!document.pointerLockElement)lockPtr();mouse.l=true}}
+  if(e.button===0){if(paused){if(!(e.target.closest&&e.target.closest('#quit,#pgfx,#gfx')))setPaused(false);return}if(!document.pointerLockElement)lockPtr();mouse.l=true}
   if(e.button===2&&isGunW()&&WP().stats.zoom&&!paused)P.scope=true});
 addEventListener('mouseup',e=>{if(e.button===0)mouse.l=false;if(e.button===2)P.scope=false});
 addEventListener('mousemove',e=>{if(state==='play'&&!paused&&document.pointerLockElement){P.camYaw-=e.movementX*.0026;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-e.movementY*.0022))}});
