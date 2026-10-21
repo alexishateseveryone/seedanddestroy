@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Seed and Destroy</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800;900&family=Bungee&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
@@ -30,7 +30,19 @@
     animation: logoSway 4s ease-in-out infinite;
     transform-origin: bottom center;
   }
+
+  /* ---------- responsive: any screen size / orientation ---------- */
+  html,body{margin:0;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%}
+  .panel{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));box-sizing:border-box}
+  .card{max-height:94vh;max-height:94dvh;max-width:96vw;overflow:auto}
+  @media (max-width:700px){.animated-logo{margin-left:0!important}#title .tbox>div:first-child{margin-left:0!important}}
+  /* HUD shrinks on short screens (phones in landscape) and grows on very large ones */
+  @media (max-height:520px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.72}#v5bar,#v5sp,#v5feed{zoom:.75}#v5pr{zoom:.8;bottom:110px!important}#banner{zoom:.7}}
+  @media (max-height:400px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.62}#v5bar,#v5sp,#v5feed{zoom:.65}}
+  @media (max-width:640px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.7}}
+  @media (min-height:1100px) and (min-width:1800px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr,#hud .hud-bc,#hud .hud-bl,#hud .hud-br{zoom:1.25}}
 </style>
+
 </head>
 <body><canvas id="c"></canvas>
 <svg width="0" height="0" style="position:absolute"><symbol id="paw" viewBox="0 0 128 128"><g fill="currentColor"><ellipse cx="64" cy="82" rx="25" ry="20"/><ellipse cx="26" cy="54" rx="10" ry="13"/><ellipse cx="47" cy="34" rx="10" ry="14"/><ellipse cx="81" cy="34" rx="10" ry="14"/><ellipse cx="102" cy="54" rx="10" ry="13"/></g></symbol></svg>
@@ -56,4 +68,25 @@
 <div id="maker" hidden></div>
 <div id="over" class="panel" hidden><div class="card"><h2>Cat Down!</h2><div class="stats"><div><b id="sW">1</b><span>Wave</span></div><div><b id="sK">0</b><span>KOs</span></div><div><b id="sS">0</b><span>Score</span></div></div><p id="best"></p>
   <div class="row"><button id="again" class="btn green">Try Again</button><button id="home" class="btn gold">Title</button></div></div></div>
+<script>
+// Shrinks the title menu and the popup cards so they always fit the screen (any size, any orientation).
+(function(){
+  const SEL='#title .tbox,.card';
+  function fit(){
+    const els=document.querySelectorAll(SEL);
+    els.forEach(e=>e.style.zoom='');
+    els.forEach(e=>{
+      const r=e.getBoundingClientRect();if(!r.width||!r.height)return;
+      const z=Math.min(1,(innerHeight*.94)/r.height,(innerWidth*.96)/r.width);
+      if(z<.999)e.style.zoom=z.toFixed(3);
+    });
+  }
+  let q=0;const later=()=>{cancelAnimationFrame(q);q=requestAnimationFrame(fit)};
+  addEventListener('resize',later);addEventListener('orientationchange',()=>setTimeout(later,200));addEventListener('load',later);
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(later);
+  new MutationObserver(later).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['hidden']});
+  document.querySelectorAll('img').forEach(i=>i.addEventListener('load',later));
+  later();
+})();
+</script>
 <script type="module" src="main.js"></script></body></html>
