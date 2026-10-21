@@ -179,3 +179,5 @@ h1 small{display:block;font:400 26px var(--disp);color:#fff;-webkit-text-stroke:
 @media (max-width:760px){.grows{grid-template-columns:1fr}}
 .gfxcard>.row{position:sticky;bottom:-24px;padding:10px 0 2px;background:linear-gradient(transparent,#fff6e4 40%)}
 .gfxcard{scrollbar-width:thin}.gfxcard::-webkit-scrollbar{display:block;width:6px}
+/* 5v5 mode: the round bar replaces the enemies-left line */
+body.v5 .foes{display:none}
