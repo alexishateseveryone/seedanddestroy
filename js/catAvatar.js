@@ -5,6 +5,7 @@ import {Rope,Cloth,VM} from './physics.js';
 import {makeCoat,bindCoat,PATTERNS} from './coatShader.js';
 import {createBelt} from './collar.js';
 import {createHood} from './hood.js';
+import {BladeTrail} from './bladeTrail.js';
 import {EARS,EAR_NAMES,HEADS,EYEWEAR,GEAR_COLS,buildEar,buildHeadwear,buildEyewear,cloakRest,cloakShape} from './wearables.js';
 export {PATTERNS,EARS,EAR_NAMES,HEADS,EYEWEAR,GEAR_COLS};
 export const COATS=[['#f6dfbd','#ee9a48'],['#ee9a48','#9a5a24'],['#fff4e6','#b9bfcc'],['#3b3a45','#fff4e6'],['#d9b48a','#5a3a28'],['#9aa3b5','#fff4e6'],['#c7b4f0','#fff4e6'],['#7a4a2b','#e8c79a'],['#ffe9a8','#ffb347'],['#e6f4ff','#7fb8e8'],['#2a2a35','#ee9a48'],['#d8f0d0','#7fcf7f']];
@@ -37,7 +38,7 @@ function createLegGeo(height, topR, botR, furCol) {
   return painted(geo, v => (v.y < -height * 0.35) ? '#fff7ee' : furCol);
 }
 
-const lerp=(a,b,t)=>a+(b-a)*t,sm=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t)};
+const lerp=(a,b,t)=>a+(b-a)*t,sm=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t)},rg=(a,b,x)=>Math.min(1,Math.max(0,(x-a)/(b-a))),e3=x=>1-Math.pow(1-x,3);
 
 function createBentArmGeo(len,s,furCol,tipCol='#fff7ee'){
   const N=30,SEG=20,curve=t=>new T.Vector3(s*.03*Math.sin(Math.PI*t),-len*t,.02*Math.sin(Math.PI*t));
@@ -132,8 +133,8 @@ export function createCatAvatar(opt={}){
   let W=null,isGun=true,HD='pistol',dual=false,spear=false,twoH=false,foreP=null,slashD=.5,wLean=0,supW=0,spearOff=0;
   const supM=new T.Matrix4(),supV=new T.Vector3(),supQ=new T.Quaternion(),DOWN=new T.Vector3(0,-1,0),reachO=armGeos[-WS].userData.end.length()||.42;
   const qCat=new T.Quaternion(),aimD=new T.Vector3(),aimU=new T.Vector3(),aX=new T.Vector3(),aY=new T.Vector3(),aZ=new T.Vector3(),mA=new T.Matrix4(),qAim=new T.Quaternion(),qKick=new T.Quaternion(),AXX=new T.Vector3(1,0,0);
-  const slashFx=new T.Mesh(new T.RingGeometry(.7,1.15,28,1,-.6,3.1),new T.MeshBasicMaterial({color:'#fff3c4',transparent:true,opacity:0,side:T.DoubleSide,depthWrite:false}));
-  const slashRig=new T.Group();slashRig.position.set(0,-.7,.35);slashFx.rotation.y=-Math.PI/2;slashRig.add(slashFx);cat.add(slashRig);
+  // blade trails (ribbon + sparks) follow the real blade of whatever melee weapon is equipped: one per hand
+  const trA=new BladeTrail(catGroup),trB=new BladeTrail(catGroup),TCOL={woodensword:['#ffe9a8','#ffffff'],dualdagger:['#8fe8ff','#e8fbff'],spear:['#dcecff','#ffffff']};
 
   let cloth=null,lining=null;
   if(o.cloak!=='none'){
@@ -178,6 +179,7 @@ export function createCatAvatar(opt={}){
     W=def;isGun=def.kind==='gun';HD=def.handling;dual=HD==='dual';spear=HD==='spear';twoH=!!def.fore;wLean=def.lean||0;
     slashD=(def.stats&&def.stats.dur)||.5;foreP=def.fore?new T.Vector3(0,-def.fore[0],def.fore[1]):null;
     const b=def.build();wg.add(b.group);tip=b.tip||new T.Object3D();if(!b.tip)wg.add(tip);if(b.off)wg2.add(b.off);
+    trA.clear();trB.clear();if(!isGun){const tc=TCOL[def.id]||['#fff3c4','#ffffff'];trA.setBlade(wg,tc[0],tc[1]);if(dual&&b.off)trB.setBlade(wg2,'#c9a0ff','#f4ecff')}
     swapT=1;slashT=-1;hitDone=false;wg.position.set(0,0,0);oArm.scale.y=1;
   };
   U.weapon=()=>W;
@@ -250,25 +252,22 @@ export function createCatAvatar(opt={}){
     if(dual){wX=lerp(wX,-.85+ph(WS)*.18*amp,gW);oX=lerp(oX,-.85+ph(-WS)*.18*amp,gW);wZ=lerp(wZ,-WS*.2,gW);oZ=lerp(oZ,WS*.2,gW)}
     else if(spear){wX=lerp(wX,-1.0+ph(WS)*.1*amp,gW);wZ=lerp(wZ,-WS*.12,gW);oX=lerp(oX,-1.0,gW);oZ=lerp(oZ,WS*.2,gW)}
     let swr=dual?-.85:spear?0:-.75,swr2=-.85,twist=0,fwd=0;spearOff=0;
+    let swA=false,swB=false,lunge=0,lungeSide=1;
     if(slashing){
-      slashT+=dt;const t=slashT/slashD,d=combo?1:-1,wind=sm(0,.28,t),swing=sm(.28,.48,t),rec=sm(.62,1,t);
-      if(spear){ // pull back, thrust, recover
-        const thr=sm(.28,.46,t),ext=thr*(1-rec),pull=wind*(1-thr);
-        spearOff=pull*.3-ext*.5;fwd=ext*.3;twist=d*.12*ext;wX=lerp(wX,-1.15,wind);
-        if(t>.38&&!hitDone){hitDone=true;if(U.onSlashHit)U.onSlashHit(1)}
-        slashFx.material.opacity=ext*.45;slashFx.scale.setScalar(.6+ext*.35);slashRig.rotation.z=0;
-      }else{ // one-hand slash, or alternating hands for dual blades
-        const useO=dual&&combo===1,dd=useO?-d:d;const bx=useO?oX:wX,bz=useO?oZ:wZ;
-        let ax=lerp(bx,-2.7,wind);ax=lerp(ax,-.3,swing);ax=lerp(ax,bx,rec);
-        let az=bz+dd*(.7*wind-1.5*swing);az=lerp(az,bz,rec);
-        let sr=lerp(-.75,0,wind);sr=lerp(sr,-.25,swing);sr=lerp(sr,-.75,rec);
-        if(useO){oX=ax;oZ=az;swr2=sr;wX=lerp(wX,.4,wind*(1-rec)*.5)}else{wX=ax;wZ=az;swr=sr;if(!dual)oX=lerp(oX,.5,wind*(1-rec))}
-        twist=dd*(wind*.35-swing*.8)*(1-rec);fwd=swing*(1-rec)*(dual?.15:.25);
-        if(t>(dual?.34:.4)&&!hitDone){hitDone=true;if(U.onSlashHit)U.onSlashHit(dd)}
-        const u=sm(.28,.62,t)*(1-sm(.62,.9,t));slashFx.material.opacity=u*.6;slashFx.scale.setScalar((dual?.65:.85)+u*.3);slashRig.rotation.z=dd*.7;
-      }
+      slashT+=dt;const t=slashT/slashD,d=combo?1:-1,wind=sm(0,.28,t),swing=e3(rg(.26,.46,t)),over=sm(.46,.56,t)*(1-sm(.56,.72,t)),rec=sm(.62,1,t);
+      // ONE swing for every melee (sword, spear, dual blades with alternating hands): wind-up, a fast eased cut with overshoot, then settle
+      const useO=dual&&combo===1,dd=useO?-d:d,bx=useO?oX:wX,bz=useO?oZ:wZ;
+      let ax=lerp(bx,-2.75,wind);ax=lerp(ax,-.25,swing);ax=lerp(ax,-.05,over*.5);ax=lerp(ax,bx,rec);
+      let az=bz+dd*(.75*wind-1.6*swing-.12*over);az=lerp(az,bz,rec);
+      const base=swr;let sr=lerp(base,0,wind);sr=lerp(sr,-.25,swing);sr=lerp(sr,base,rec);
+      if(useO){oX=ax;oZ=az;swr2=sr;wX=lerp(wX,.4,wind*(1-rec)*.5)}else{wX=ax;wZ=az;swr=sr;if(!dual)oX=lerp(oX,.5,wind*(1-rec))}
+      twist=dd*(wind*.4-swing*.95+over*.1)*(1-rec);fwd=swing*(1-rec)*(dual?.18:.3)-wind*(1-swing)*.12;     // lean back in the wind-up, lunge into the cut
+      lunge=swing*(1-rec)-wind*(1-swing)*.35;lungeSide=dd;
+      if(t>(dual?.33:.38)&&!hitDone){hitDone=true;if(U.onSlashHit)U.onSlashHit(dd)}
+      swA=t>.2&&t<.74&&!useO;swB=t>.2&&t<.74&&useO;
       if(t>=1)slashT=-1;
-    }else slashFx.material.opacity=0;
+    }
+    if(lunge!==0&&!rolling){const f=Math.max(-.3,lunge);legR.rotation.x-=f*(lungeSide>0?.55:.25);legL.rotation.x-=f*(lungeSide>0?.25:.55)}   // step into the cut
     wg.rotation.x=isGun?lerp(-.55,0,pW)+rv*.15:swr;wg2.rotation.x=swr2;wg.position.y=spearOff;
     wArm.rotation.x=wX;wArm.rotation.z=wZ;oArm.rotation.x=oX;oArm.rotation.z=oZ;
 
@@ -310,6 +309,7 @@ export function createCatAvatar(opt={}){
     bt-=dt;if(bt<=0){bl=.15;bt=2+Math.random()*2.5}bl=Math.max(0,bl-dt);eyes.forEach(e=>e.scale.y=bl>0?.1:(1+rv*.06));
     ropes.forEach(r=>r.step(dt));if(cloth){cloth.step(dt);lining.step(dt)}tipM.position.copy(tr.lp[tr.n]);
     earPhysics(dt);belt.step(dt);if(hood)hood.step(dt);
+    trA.update(dt,swA);trB.update(dt,swB);
   };
   catGroup.updateMatrixWorld(true);bindCoat(cat,coatMeshes);
   return catGroup;
