@@ -3,7 +3,8 @@ import * as T from 'three';
 import {side,lathe,mk,matte,ring,muzzleTip} from './proc.js';
 export default {
   id:'peashooter',name:'Peashooter',kind:'gun',handling:'pistol',lean:0,
-  stats:{cd:.22,dmg:1,spread:.09,speed:24,auto:true,kick:1,shake:.1,push:1.2,zoom:44,color:'#9be84f',move:1},
+  stats:{cd:.22,dmg:1,spread:.09,speed:24,auto:true,kick:1,shake:.1,push:1.2,zoom:44,color:'#9be84f',move:1,
+    mag:12,reload:1.1},   // mag = bullets per magazine, reload = seconds to reload (leave both out = unlimited ammo, e.g. melee)
   build(){
     const g=new T.Group(),green=matte('#58c23a',.5),dgreen=matte('#2f8a2a',.6),dark=matte('#1f2a1c',.8),pod=matte('#8fe05a',.45);
     mk(side([[-.14,.1],[.1,.125],[.3,.095],[.32,.0],[.3,-.06],[.04,-.075],[-.14,-.06]],.13,{smooth:5}),green,g);       // frame
