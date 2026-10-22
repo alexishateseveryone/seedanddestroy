@@ -3,7 +3,7 @@ import * as T from 'three';
 import {side,lathe,mk,metal,matte,ring,muzzleTip} from './proc.js';
 export default {
   id:'armalite',name:'Armalite',kind:'gun',handling:'rifle',lean:.02,fore:[.7,-.075],
-  stats:{cd:.09,dmg:1,spread:.045,speed:34,auto:true,kick:.5,shake:.1,push:.4,zoom:44,color:'#ffe7a0',move:1},
+  stats:{cd:.09,dmg:1,spread:.045,speed:34,auto:true,kick:.5,shake:.1,push:.4,zoom:44,color:'#ffe7a0',move:1,mag:20, reload:1.1},
   build(){
     const g=new T.Group(),poly=matte('#1e2026',.55),steel=metal('#454a55'),dsteel=metal('#2c3038');
     mk(side([[-.08,.1],[.5,.105],[.54,.07],[.54,-.01],[-.08,-.01]],.1,{smooth:3}),dsteel,g);                                    // upper receiver
