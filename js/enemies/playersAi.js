@@ -5,7 +5,7 @@
 // Behaviours: chase, retreat, reposition (strafe / peek / spot changes), dodge (bullets + sword wind-ups), shoot, melee, plus
 // objective play (go to a site, hold, investigate gunfire / last seen position).
 import * as T from 'three';
-import {createCatAvatar,COATS,EYECS,PATTERNS,EARS} from '../catAvatar.js';
+import {createCatAvatar,COATS,EYECS,PATTERNS,EARS,CLOAK_COLS,GEAR_COLS} from '../catAvatar.js';
 import {WEAPONS} from '../weapons/index.js';
 import {info as rankInfo} from '../rank.js';
 
@@ -33,18 +33,21 @@ const rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[(Math.random()*a.length)|0],ang
 export function botConfig(team,name){
   const c=pick(COATS),col=TEAM_COL[team];
   return{fur:c[0],pat:c[1],pattern:pick(PATTERNS)[0],ears:pick(EARS),eyeColor:pick(EYECS),collar:col,name,
-    cloak:Math.random()<.65?'short':'long',cloakC:col,head:pick(['none','none','hood','helmet','beanie']),eyewear:pick(['none','none','glasses','shades']),gearC:col};
+    // team identity = the collar + nameplate colour; cloak and headgear get random colours so the cats don't all look the same
+    cloak:Math.random()<.65?'short':'long',cloakC:pick(CLOAK_COLS),head:pick(['none','none','hood','helmet','beanie']),eyewear:pick(['none','none','glasses','shades']),gearC:pick(GEAR_COLS)};
 }
 let uid=0;
-export function createBot(scene,{team,name,skill=.6,rp=900}){
+export function createBot(scene,{team,name,skill:rawSkill=.6,rp=900}){
   const cfg=botConfig(team,name),cat=createCatAvatar(cfg);patchCat(cat);scene.add(cat);cat.userData.setWeapon('gun');
+  // difficulty curve: the rank's rating (0..1) is bent down so low ranks are genuinely weak and even the top rank is beatable
+  const skill=Math.min(.9,Math.pow(Math.max(0,rawSkill),1.6)*.9);
   return{id:'bot'+(uid++),isBot:true,team,name,cfg,cat,skill,rp,rank:rankInfo(rp),
-    // ---- traits derived from the rank: low ranks react late, miss, rarely dodge, don't scope, don't investigate noises; high ranks do it all
-    reactMul:1.9-1.35*skill,dodgeK:1+skill*skill*13,x:0,z:0,yaw:0,hp:5,max:5,alive:true,r:.45,
+    // ---- traits derived from the rank: low ranks react late, miss a lot, almost never dodge, don't scope, don't investigate noises; high ranks do it all
+    reactMul:2.8-1.9*skill,dodgeK:skill*skill*6.5,x:0,z:0,yaw:0,hp:5,max:5,alive:true,r:.45,
     wpn:1,roll:0,rcd:0,rdx:0,rdz:1,inv:0,cd:0,swap:0,scope:false,dash:0,dx:0,dz:1,mv:false,rel:1,vx:0,vz:0,
     // brain
     tid:null,react:0,lastSeenT:-9,last:null,hear:null,aimOff:0,noiseT:0,strafe:Math.random()<.5?1:-1,strafeT:rnd(.4,1),shots:0,burstN:3,burstT:0,
-    posT:0,spot:null,ph:rnd(0,6),sight:15+skill*14,prefMin:rnd(4.5,6),prefMax:rnd(10,12.5),act:false,rush:Math.random()<.3,stuck:0,unstick:0,px:0,pz:0,pt:0,plan:'A',slot:0,melee:false,slashing:false};
+    posT:0,spot:null,ph:rnd(0,6),sight:12+skill*15,prefMin:rnd(4.5,6),prefMax:rnd(10,12.5),act:false,rush:Math.random()<.3,stuck:0,unstick:0,px:0,pz:0,pt:0,plan:'A',slot:0,melee:false,slashing:false};
 }
 
 // steering: pick the first heading (closest to the goal) that does not run into trees / rocks / ponds / the arena edge
@@ -70,7 +73,7 @@ function think(b,dt,W){
     if(b.tid!==tgt.id){b.react=now-b.lastSeenT>.7?rnd(.16,.38)*b.reactMul:.05;b.tid=tgt.id}else b.react-=dt;
     b.lastSeenT=now;b.last={x:tgt.x,z:tgt.z,t:now};b.hear=null}
   else b.tid=null;
-  b.noiseT-=dt;if(b.noiseT<=0){b.noiseT=rnd(.25,.6);b.aimOff=(Math.random()-.5)*.22*(1.25-b.skill)}
+  b.noiseT-=dt;if(b.noiseT<=0){b.noiseT=rnd(.25,.6);b.aimOff=(Math.random()-.5)*.5*(1.3-b.skill)}
   b.burstT=Math.max(0,b.burstT-dt);b.strafeT-=dt;if(b.strafeT<=0){b.strafe=-b.strafe;b.strafeT=rnd(.5,1.4)}
 
   // ---- dodge: roll sideways out of incoming bullets, or away from a sword about to land
@@ -139,7 +142,7 @@ export function stepBot(b,dt,W){
   // shoot / slash
   if(c.fire&&b.cd<=0&&b.roll<=0&&b.wpn===1&&b.swap<=0&&b.burstT<=0){
     W.fire(b);b.cd=.22;b.dash=1.2;b.dx=-Math.sin(b.yaw);b.dz=-Math.cos(b.yaw);
-    if(++b.shots>=b.burstN){b.shots=0;b.burstN=3+((Math.random()*3)|0);b.burstT=rnd(.25,.65)*(1.4-b.skill);b.strafeT=0}}
+    if(++b.shots>=b.burstN){b.shots=0;b.burstN=3+((Math.random()*3)|0);b.burstT=rnd(.35,.9)*(1.7-b.skill);b.strafeT=0}}
   if(c.slash&&b.cd<=0&&b.roll<=0&&b.wpn===0&&b.swap<=0&&cu.slash()){b.cd=.5;b.dash=1.1;b.dx=sy;b.dz=cy}
   // movement: identical to the player (6.5 walk, 3.2 scoped, roll 11 decaying, recoil dash)
   const px0=b.x,pz0=b.z,ml=Math.hypot(c.dx,c.dz),sp=b.scope?3.2:6.5;
