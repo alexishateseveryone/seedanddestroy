@@ -4,6 +4,7 @@
 // The AI players live in enemies/playersAi.js and use the same controls as the human player.
 import * as T from 'three';
 import {createBot,stepBot,idleBot,TEAM_COL,NAMES} from './enemies/playersAi.js';
+import {rollLobby,applyMatch,load as loadRank,info as rankInfo,badge,drawBadge} from './rank.js';
 import {SPAWN,SITES as ST,heightAt as HA} from './arenaTerrain.js';   // layout + terrain of the hilly 5v5 arena (js/arenaMap.js)
 
 const rnd=(a,b)=>a+Math.random()*(b-a),pick=a=>a[(Math.random()*a.length)|0],shuffle=a=>{for(let i=a.length-1;i>0;i--){const j=(Math.random()*(i+1))|0;[a[i],a[j]]=[a[j],a[i]]}return a};
@@ -30,11 +31,12 @@ export function createMode5v5(ctx){
   #v5feed{position:absolute;top:70px;right:18px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
   #v5feed div{background:rgba(43,33,80,.8);border-radius:12px;padding:3px 12px;font-weight:800;font-size:14px;animation:v5f 4s forwards}#v5feed b.a{color:#7ec8ff}#v5feed b.b{color:#ff8a7a}
   @keyframes v5f{0%{opacity:0;transform:translateX(30px)}8%{opacity:1;transform:none}85%{opacity:1}100%{opacity:0}}
+  #v5rk2{position:absolute;top:140px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(43,33,80,.7);border:2px solid #ffffff30;border-radius:999px;padding:2px 12px 2px 6px;font:800 13px 'Baloo 2',sans-serif;white-space:nowrap;opacity:.9}
   #v5over .card h2{color:#5fcf4a}#v5over.lose .card h2{color:#e8453c}`;
   document.head.appendChild(css);
-  const root=document.createElement('div');root.id='v5';root.hidden=true;root.innerHTML=`<div id="v5bar"><div class="d a"></div><div class="t" id="v5t">1:30</div><div class="d b"></div></div><div id="v5sp"></div><div id="v5pr"><span></span><div class="bar"><i></i></div></div><div id="v5feed"></div>`;document.body.appendChild(root);
+  const root=document.createElement('div');root.id='v5';root.hidden=true;root.innerHTML=`<div id="v5bar"><div class="d a"></div><div class="t" id="v5t">1:30</div><div class="d b"></div></div><div id="v5sp"></div><div id="v5pr"><span></span><div class="bar"><i></i></div></div><div id="v5rk2"></div><div id="v5feed"></div>`;document.body.appendChild(root);
   const over=document.createElement('div');over.id='v5over';over.className='panel';over.hidden=true;
-  over.innerHTML=`<div class="card"><h2>VICTORY</h2><div class="stats"><div><b id="v5s">0-0</b><span>Rounds</span></div><div><b id="v5k">0</b><span>Your KOs</span></div><div><b id="v5d">0</b><span>Deaths</span></div></div><p id="best"></p><div class="row"><button id="v5again" class="btn green">Rematch</button><button id="v5home" class="btn gold">Title</button></div></div>`;document.body.appendChild(over);
+  over.innerHTML=`<div class="card"><h2>VICTORY</h2><div class="stats"><div><b id="v5s">0-0</b><span>Rounds</span></div><div><b id="v5k">0</b><span>Your KOs</span></div><div><b id="v5d">0</b><span>Deaths</span></div></div><div class="rkbox" id="v5rk"></div><p id="best"></p><div class="row"><button id="v5again" class="btn green">Rematch</button><button id="v5home" class="btn gold">Title</button></div></div>`;document.body.appendChild(over);
   const $=s=>root.querySelector(s);over.querySelector('#v5again').onclick=()=>{over.hidden=true;ctx.start5v5()};over.querySelector('#v5home').onclick=()=>{over.hidden=true;ctx.home()};
   const feed=(a,b,ta,tb,sw)=>{const d=document.createElement('div');d.innerHTML=`<b class="${ta==='A'?'a':'b'}">${a}</b> ${sw?'🗡':'➤'} <b class="${tb==='A'?'a':'b'}">${b}</b>`;$('#v5feed').prepend(d);setTimeout(()=>d.remove(),4000);while($('#v5feed').children.length>5)$('#v5feed').lastChild.remove()};
   const dots=()=>{const n=t=>bots.filter(b=>b.team===t&&b.alive).length+(t==='A'&&!P.dead?1:0),mk=(t,k)=>Array.from({length:5},(_,i)=>`<i class="${i<n(t)?'on':''}"></i>`).join('');$('#v5bar .a').innerHTML=mk('A');$('#v5bar .b').innerHTML=mk('B')};
@@ -57,7 +59,7 @@ export function createMode5v5(ctx){
 
   // ------------------------------------------------------------------ nameplates
   function plate(b){if(!b.plate){const cv=document.createElement('canvas');cv.width=192;cv.height=64;const tx=new T.CanvasTexture(cv);tx.colorSpace=T.SRGBColorSpace;const sp=new T.Sprite(new T.SpriteMaterial({map:tx,transparent:true,depthTest:false}));sp.scale.set(2.1,.7,1);sp.renderOrder=10;scene.add(sp);b.plate={cv,tx,sp}}
-    const {cv,tx}=b.plate,g=cv.getContext('2d');g.clearRect(0,0,192,64);g.font='800 26px "Baloo 2",Arial,sans-serif';g.textAlign='center';g.lineWidth=6;g.strokeStyle='#1a1238';g.strokeText(b.name,96,24);g.fillStyle=TEAM_COL[b.team];g.fillText(b.name,96,24);
+    const {cv,tx}=b.plate,g=cv.getContext('2d');g.clearRect(0,0,192,64);if(b.rank)drawBadge(g,19,24,12,b.rank);g.font='800 26px "Baloo 2",Arial,sans-serif';g.textAlign='center';g.lineWidth=6;g.strokeStyle='#1a1238';g.strokeText(b.name,96,24);g.fillStyle=TEAM_COL[b.team];g.fillText(b.name,96,24);
     for(let i=0;i<b.max;i++){g.fillStyle=i<b.hp?TEAM_COL[b.team]:'#ffffff30';g.beginPath();g.roundRect?g.roundRect(20+i*30,40,26,10,5):g.rect(20+i*30,40,26,10);g.fill()}tx.needsUpdate=true}
 
   // ------------------------------------------------------------------ combat
@@ -116,6 +118,12 @@ export function createMode5v5(ctx){
   function endRound(w,why){if(S.phase==='end'||S.phase==='done')return;S.score[w]++;S.phase='end';S.t=3.6;banner(`${w==='A'?'BLUE':'RED'} WINS THE ROUND · ${why}`);ctx.hud();
     if(S.score[w]>=WIN)S.phase='done',setTimeout(()=>matchEnd(w),1800)}
   function matchEnd(w){if(!S.active)return;const win=w==='A';over.classList.toggle('lose',!win);over.querySelector('h2').textContent=win?'VICTORY':'DEFEAT';over.querySelector('#v5s').textContent=`${S.score.A}-${S.score.B}`;over.querySelector('#v5k').textContent=S.stats.k;over.querySelector('#v5d').textContent=S.stats.d;
+    
+    // ---- ranked result: RR gained / lost, promotion or demotion, placement games count double
+    const res=applyMatch({win,a:S.score.A,b:S.score.B,k:S.stats.k,d:S.stats.d}),bx=over.querySelector('#v5rk');
+    const startPct=res.promoted?0:res.demoted?100:res.before.pct;bx.classList.toggle('dn',res.delta<0);
+    bx.innerHTML=`<div class="rkh">${badge(res.after,38)}<div><b class="rkn">${res.after.label}</b><small>${res.placement?'PLACEMENT MATCH':res.after.rr+' RR · '+res.rec.w+'W '+res.rec.l+'L'}</small></div><b class="rkd ${res.delta>=0?'up':'dn'}">${res.delta>=0?'+':''}${res.delta} RR</b></div><div class="rkbar"><i style="width:${startPct}%"></i></div><div class="rkx" style="color:${res.promoted?'#2f8a2a':'#c0392b'}">${res.promoted?'RANK UP!':res.demoted?'DERANKED':''}</div>`;
+    setTimeout(()=>{const i=bx.querySelector('.rkbar i');if(i)i.style.width=res.after.pct+'%'},350);
     ctx.endMatch();over.hidden=false}
   function check(){if(S.phase!=='live'&&S.phase!=='planted')return;const def=S.atk==='A'?'B':'A',a=alive(S.atk),d=alive(def);
     if(d===0)endRound(S.atk,'ELIMINATION');else if(a===0&&!S.spike.planted)endRound(def,'ELIMINATION')}
@@ -167,8 +175,11 @@ export function createMode5v5(ctx){
     start(){
       this.stop(true);dress();S.active=true;S.round=0;S.score={A:0,B:0};S.stats={k:0,d:0};S.time=0;prevN=ctx.bullets.length;
       const names=shuffle([...NAMES]);bots=[];
-      for(let i=0;i<4;i++){const b=createBot(scene,{team:'A',name:names.pop(),skill:rnd(.52,.78)});b.cat.userData.onSlashHit=()=>botMelee(b);bots.push(b)}
-      for(let i=0;i<5;i++){const b=createBot(scene,{team:'B',name:names.pop(),skill:rnd(.5,.8)});b.cat.userData.onSlashHit=()=>botMelee(b);bots.push(b)}
+      // ranked lobby: the 9 AI cats are rated around YOUR rank, and their rating sets how well they play (reaction, aim, dodging, scoping...)
+      const rk=loadRank(),me=rankInfo(rk.rp),lob=rollLobby(rk.rp);S.lobby=lob;
+      lob.A.forEach(l=>{const b=createBot(scene,{team:'A',name:names.pop(),skill:l.skill,rp:l.rp});b.cat.userData.onSlashHit=()=>botMelee(b);bots.push(b)});
+      lob.B.forEach(l=>{const b=createBot(scene,{team:'B',name:names.pop(),skill:l.skill,rp:l.rp});b.cat.userData.onSlashHit=()=>botMelee(b);bots.push(b)});
+      $('#v5rk2').innerHTML=`${badge(me,20)}<span>YOU · ${me.label}</span><span style="opacity:.6">LOBBY ${rankInfo(lob.avgA).label} vs ${rankInfo(lob.avgB).label}</span>`;
       root.hidden=false;over.hidden=true;visuals.g.visible=true;startRound();
     },
     stop(keep){S.active=false;S.phase='off';bots.forEach(b=>{scene.remove(b.cat);if(b.plate)scene.remove(b.plate.sp)});bots=[];bl.forEach(b=>scene.remove(b.m));bl=[];snap=[];
@@ -180,7 +191,8 @@ export function createMode5v5(ctx){
       if(S.phase==='buy'){S.t-=dt;P.frozen=true;bots.forEach(b=>b.alive&&idleBot(b,dt,world));if(S.t<=0){S.phase='live';S.t=ROUND;P.frozen=false;banner('GO!')}}
       else if(live){
         if(S.phase==='live'){S.t-=dt;if(S.t<=0)endRound(S.atk==='A'?'B':'A','TIME')}
-        for(const b of bots)stepBot(b,dt,world);separate();bullets(dt);if(S.phase==='live'||S.phase==='planted')spikeTick(dt)}
+        for(const b of bots){stepBot(b,dt,world);ctx.walk&&ctx.walk(b.id,b.x,b.z,b.mv||b.roll>0)}separate();   // walk = ripples on water
+        bullets(dt);if(S.phase==='live'||S.phase==='planted')spikeTick(dt)}
       else{S.t-=dt;bots.forEach(b=>b.alive&&idleBot(b,dt,world));bullets(dt);if(S.phase==='end'&&S.t<=0)startRound()}
       for(const b of bots)if(b.alive)b.cat.position.y=HA(b.x,b.z);   // stand on the terrain whatever the avatar code did this frame
       for(const b of bots)if(b.plate){b.plate.sp.position.set(b.x,HA(b.x,b.z)+2.35,b.z);b.plate.sp.visible=b.alive}
