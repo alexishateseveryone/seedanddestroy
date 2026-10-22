@@ -70,7 +70,7 @@ export function createSettings({atm,map,onResolution,getMobile=()=>null,root=doc
         <div class="grow"><span>Button size<small>Bigger buttons are easier to hit</small></span>${seg('data-c="scale"',[[.8,'S'],[1,'M'],[1.2,'L'],[1.4,'XL']])}</div>
         <div class="grow"><span>Look speed<small>How fast dragging turns the camera</small></span>${seg('data-c="sens"',[[.6,'Slow'],[1,'Normal'],[1.5,'Fast'],[2,'Max']])}</div>
         <div class="grow"><span>Button layout<small>Drag every button where your thumbs like it</small></span>
-          <div class="seg lay"><button class="ic" data-act="edit" title="Move buttons">${ICO.move}<span>Move</span></button><button class="ic" data-act="reset" title="Reset layout">${ICO.reset}<span>Reset</span></button></div></div>
+          <div class="seg lay"><button class="ic" data-act="edit" title="Edit layout">${ICO.move}<span>Edit layout</span></button></div></div>
       </div>
       <div class="gkeys" id="ctlK">${KEYS.map(([k,t])=>`<div><span>${t}</span><kbd>${k}</kbd></div>`).join('')}</div>
     </div>
