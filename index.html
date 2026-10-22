@@ -1,11 +1,18 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8"><title>Seed and Destroy</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@800;900&family=Bungee&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="./node_modules/bootstrap-icons/font/bootstrap-icons.min.css">
 <link rel="stylesheet" href="style.css">
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}</script>
+<link rel="preload" as="image" href="assets/images/sadmlogo.png">
+<script type="importmap">
+  {
+    "imports": {
+      "three": "./node_modules/three/build/three.module.js",
+      "three/addons/": "./node_modules/three/examples/jsm/"
+    }
+  }
+</script>
 <style>
   /* Swaying & Floating Animation for the Logo */
   @keyframes logoSway {
@@ -31,6 +38,18 @@
     transform-origin: bottom center;
   }
 
+  /* ---------- loading screen ---------- */
+  #loading{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse 80% 80% at 50% 40%,#3b3e45 0,#202226 55%,#121316 100%);transition:opacity .6s ease,visibility .6s;color:#e9eaee;font-family:'Baloo 2',system-ui,sans-serif}
+  #loading.out{opacity:0;visibility:hidden;pointer-events:none}
+  #loading .lc{width:min(440px,86vw);text-align:center}
+  #loading .llogo{display:block;width:min(440px,86vw);max-height:46vh;object-fit:contain;margin:0 auto;filter:drop-shadow(0 12px 22px rgba(0,0,0,.55));image-rendering:pixelated;-webkit-user-drag:none}
+  #loading .lbar{height:8px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden;margin:26px 0 10px}
+  #loading .lbar i{display:block;height:100%;width:0;border-radius:9px;background:linear-gradient(90deg,#f0c36a,#ffe19a);box-shadow:0 0 14px rgba(240,195,106,.6)}
+  #loading .lrow{display:flex;justify-content:space-between;font:500 13px 'DM Mono',monospace;letter-spacing:.08em;color:#aeb2bb}
+  #loading .ltip{margin-top:22px;font:700 14px 'Baloo 2',sans-serif;color:#8d919b;min-height:20px}
+  #loading.fail .lbar i{background:#e8453c;box-shadow:0 0 14px rgba(232,69,60,.6)}#loading.fail #lstep{color:#ff8a7a}
+  body.loading #title,body.loading #hud{visibility:hidden}
+
   /* ---------- responsive: any screen size / orientation ---------- */
   html,body{margin:0;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%}
   .panel{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));box-sizing:border-box}
@@ -44,8 +63,28 @@
 </style>
 
 </head>
-<body><canvas id="c"></canvas>
+<body class="loading"><canvas id="c"></canvas>
 <svg width="0" height="0" style="position:absolute"><symbol id="paw" viewBox="0 0 128 128"><g fill="currentColor"><ellipse cx="64" cy="82" rx="25" ry="20"/><ellipse cx="26" cy="54" rx="10" ry="13"/><ellipse cx="47" cy="34" rx="10" ry="14"/><ellipse cx="81" cy="34" rx="10" ry="14"/><ellipse cx="102" cy="54" rx="10" ry="13"/></g></symbol></svg>
+<div id="loading"><div class="lc"><img class="llogo animated-logo" src="assets/images/sadmlogo.png" alt="Seed and Destroy No Mercy!" draggable="false">
+  <div class="lbar"><i id="lfill"></i></div><div class="lrow"><span id="lstep">Loading…</span><span id="lpct">0%</span></div><div class="ltip" id="ltip"></div></div></div>
+<script>
+// Loading screen: main.js reports real steps through window.__load.set(0..1,'text') and calls done() once the game is drawing.
+(function(){
+  const $=id=>document.getElementById(id),root=$('loading'),fill=$('lfill'),pct=$('lpct'),step=$('lstep'),tip=$('ltip');
+  const tips=['Roll (Space) to dodge bullets - you are invulnerable while tumbling.','Right click scopes with guns. The Sniper pierces through enemies.','Mouse wheel or 1-8 swaps weapons.','5v5: hold F on a site to plant the spike.','Your rank decides how good the AI cats are. Climb to face tougher ones.','Customize your cat - hood, cloak, collar, ears and coat patterns.'];
+  let target=0,shown=0,finished=false,failed=false,ti=0;
+  tip.textContent=tips[0];setInterval(()=>{tip.textContent=tips[ti=(ti+1)%tips.length]},2600);
+  (function paint(){if(failed)return;shown+=(target-shown)*.14;if(target-shown<.002)shown=target;
+    fill.style.width=(shown*100).toFixed(1)+'%';pct.textContent=Math.round(shown*100)+'%';
+    if(finished&&shown>=.999){root.classList.add('out');document.body.classList.remove('loading');setTimeout(()=>root.remove(),800);return}
+    requestAnimationFrame(paint)})();
+  const fail=m=>{if(finished)return;failed=true;root.classList.add('fail');step.textContent=m;tip.textContent='Open the browser console (F12) to see exactly which file failed, then reload.'};
+  addEventListener('error',e=>{const t=e.target;fail(t&&t.src?'Could not load '+t.src.split('/').pop():'Error: '+(e.message||'script failed'))},true);
+  addEventListener('unhandledrejection',e=>fail('Error: '+((e.reason&&e.reason.message)||e.reason)));
+  setTimeout(()=>{if(!finished&&!failed)tip.textContent='Still loading... if this never finishes, check the console (F12) for a missing file.'},20000);
+  window.__load={set(p,t){target=Math.max(target,Math.min(1,p));if(t)step.textContent=t},done(){step.textContent='Ready!';target=1;finished=true}};
+})();
+</script>
 <div id="hud" hidden></div>
 <div id="toast"></div>
 
@@ -61,8 +100,8 @@
     <button id="play" class="btn green"><svg class="ic"><use href="#paw"/></svg>Play</button>
     <button id="play5" class="btn red"><svg class="ic"><use href="#paw"/></svg>5v5 Spike Rush</button>
     <button id="make" class="btn pink"><svg class="ic"><use href="#paw"/></svg>Customize Cat</button>
-    <button id="gfxOpen" class="btn gold"><i class="bi bi-sliders2" style="font-size:22px"></i>Graphics</button>
-    <p class="kb"><b>WASD</b> move &nbsp;·&nbsp; <b>Mouse</b> aim<br><b>Left click</b> shoot / slash &nbsp;·&nbsp; <b>Right click</b> scope<br><b>Space</b> roll &nbsp;·&nbsp; <b>1-8 / wheel</b> weapon &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>G</b> graphics<br><b>5v5:</b> hold <b>F</b> to plant / defuse the spike</p>
+    <button id="gfxOpen" class="btn gold"><i class="bi bi-gear-fill" style="font-size:22px"></i>Settings</button>
+    <p class="kb"><b>WASD</b> move &nbsp;·&nbsp; <b>Mouse</b> aim<br><b>Left click</b> shoot / slash &nbsp;·&nbsp; <b>Right click</b> scope<br><b>Space</b> roll &nbsp;·&nbsp; <b>1-8 / wheel</b> weapon &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>G</b> settings<br><b>5v5:</b> hold <b>F</b> to plant / defuse the spike</p>
   </div>
 
 </div>
