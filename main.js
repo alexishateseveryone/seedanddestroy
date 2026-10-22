@@ -27,7 +27,17 @@ const hud=createHUD();
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
 [[1.9,.1],[1.35,.17],[.85,.12]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
 addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
-function resize(){renderer.setPixelRatio(prr());renderer.setSize(innerWidth,innerHeight);atm.resize(innerWidth,innerHeight,prr());cam.aspect=innerWidth/innerHeight;const f=cam.userData.off||0;f?cam.setViewOffset(innerWidth,innerHeight,innerWidth*f,0,innerWidth,innerHeight):cam.clearViewOffset();cam.updateProjectionMatrix()}
+function resize() {
+  const w = Math.max(1, innerWidth);
+  const h = Math.max(1, innerHeight);
+  renderer.setPixelRatio(prr());
+  renderer.setSize(w, h);
+  atm.resize(w, h, prr());
+  cam.aspect = w / h;
+  const f = cam.userData.off || 0;
+  f ? cam.setViewOffset(w, h, w * f, 0, w, h) : cam.clearViewOffset();
+  cam.updateProjectionMatrix();
+}
 function setView(f){cam.userData.off=f;resize()}resize();
 L.set(.26,'Growing the forest…');await tick();
 const forest=buildMap(7,atm.envMap);scene.add(forest.group);forest.prime(0,0,60);if(scene.fog){scene.fog.near=30;scene.fog.far=150}   // chunk-streamed hilly forest: build around the start, the rest streams in
