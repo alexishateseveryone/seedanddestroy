@@ -3,7 +3,7 @@ import * as T from 'three';
 import {side,lathe,mk,metal,matte,ring,muzzleTip} from './proc.js';
 export default {
   id:'ak47',name:'AK-47',kind:'gun',handling:'rifle',lean:.03,fore:[.78,-.09],
-  stats:{cd:.11,dmg:1,spread:.08,speed:30,auto:true,kick:.7,shake:.13,push:.6,zoom:46,color:'#ffd27a',move:1},
+  stats:{cd:.11,dmg:1,spread:.08,speed:30,auto:true,kick:.7,shake:.13,push:.6,zoom:46,color:'#ffd27a',move:1,mag:20, reload:1.1},
   build(){
     const g=new T.Group(),steel=metal('#3d424d'),dark=matte('#22252c',.65),wood=matte('#a2602f',.55),dwood=matte('#6b3d1c',.6);
     mk(side([[-.1,.1],[.2,.11],[.55,.1],[.6,.07],[.6,-.06],[.1,-.085],[-.1,-.07]],.1,{smooth:3}),steel,g);                 // receiver
