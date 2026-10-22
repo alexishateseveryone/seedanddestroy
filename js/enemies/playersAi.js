@@ -7,6 +7,7 @@
 import * as T from 'three';
 import {createCatAvatar,COATS,EYECS,PATTERNS,EARS} from '../catAvatar.js';
 import {WEAPONS} from '../weapons/index.js';
+import {info as rankInfo} from '../rank.js';
 
 // Adapter: the 5v5 code talks to the avatar with setWeapon('gun'|'sword') and isSlashing().
 // If the avatar only has equip(weapon) / slash(), add those two on top of what it already has.
@@ -35,13 +36,15 @@ export function botConfig(team,name){
     cloak:Math.random()<.65?'short':'long',cloakC:col,head:pick(['none','none','hood','helmet','beanie']),eyewear:pick(['none','none','glasses','shades']),gearC:col};
 }
 let uid=0;
-export function createBot(scene,{team,name,skill=.6}){
+export function createBot(scene,{team,name,skill=.6,rp=900}){
   const cfg=botConfig(team,name),cat=createCatAvatar(cfg);patchCat(cat);scene.add(cat);cat.userData.setWeapon('gun');
-  return{id:'bot'+(uid++),isBot:true,team,name,cfg,cat,skill,x:0,z:0,yaw:0,hp:5,max:5,alive:true,r:.45,
+  return{id:'bot'+(uid++),isBot:true,team,name,cfg,cat,skill,rp,rank:rankInfo(rp),
+    // ---- traits derived from the rank: low ranks react late, miss, rarely dodge, don't scope, don't investigate noises; high ranks do it all
+    reactMul:1.9-1.35*skill,dodgeK:1+skill*skill*13,x:0,z:0,yaw:0,hp:5,max:5,alive:true,r:.45,
     wpn:1,roll:0,rcd:0,rdx:0,rdz:1,inv:0,cd:0,swap:0,scope:false,dash:0,dx:0,dz:1,mv:false,rel:1,vx:0,vz:0,
     // brain
     tid:null,react:0,lastSeenT:-9,last:null,hear:null,aimOff:0,noiseT:0,strafe:Math.random()<.5?1:-1,strafeT:rnd(.4,1),shots:0,burstN:3,burstT:0,
-    posT:0,spot:null,ph:rnd(0,6),sight:24,prefMin:rnd(4.5,6),prefMax:rnd(10,12.5),act:false,rush:Math.random()<.3,stuck:0,unstick:0,px:0,pz:0,pt:0,plan:'A',slot:0,melee:false,slashing:false};
+    posT:0,spot:null,ph:rnd(0,6),sight:15+skill*14,prefMin:rnd(4.5,6),prefMax:rnd(10,12.5),act:false,rush:Math.random()<.3,stuck:0,unstick:0,px:0,pz:0,pt:0,plan:'A',slot:0,melee:false,slashing:false};
 }
 
 // steering: pick the first heading (closest to the goal) that does not run into trees / rocks / ponds / the arena edge
@@ -64,7 +67,7 @@ function think(b,dt,W){
   let tgt=null,td=1e9;
   for(const e of foes){const d=Math.hypot(e.x-b.x,e.z-b.z);if(d<b.sight&&d<td&&W.los(b.x,b.z,e.x,e.z)){tgt=e;td=d}}
   if(tgt){
-    if(b.tid!==tgt.id){b.react=now-b.lastSeenT>.7?rnd(.16,.38)*(1.5-b.skill):.05;b.tid=tgt.id}else b.react-=dt;
+    if(b.tid!==tgt.id){b.react=now-b.lastSeenT>.7?rnd(.16,.38)*b.reactMul:.05;b.tid=tgt.id}else b.react-=dt;
     b.lastSeenT=now;b.last={x:tgt.x,z:tgt.z,t:now};b.hear=null}
   else b.tid=null;
   b.noiseT-=dt;if(b.noiseT<=0){b.noiseT=rnd(.25,.6);b.aimOff=(Math.random()-.5)*.22*(1.25-b.skill)}
@@ -75,9 +78,9 @@ function think(b,dt,W){
     for(const t of W.threats(b)){
       const rx=b.x-t.x,rz=b.z-t.z,v2=t.vx*t.vx+t.vz*t.vz||1,tt=(rx*t.vx+rz*t.vz)/v2;
       if(tt>.02&&tt<.34){const cx=t.x+t.vx*tt-b.x,cz=t.z+t.vz*tt-b.z;
-        if(Math.hypot(cx,cz)<.85&&Math.random()<dt*(5+b.skill*9)){const vl=Math.sqrt(v2),px=-t.vz/vl,pz=t.vx/vl,sd=(cx*px+cz*pz)>0?-1:1;c.roll={dx:px*sd,dz:pz*sd};break}}}
+        if(Math.hypot(cx,cz)<.85&&Math.random()<dt*b.dodgeK){const vl=Math.sqrt(v2),px=-t.vz/vl,pz=t.vx/vl,sd=(cx*px+cz*pz)>0?-1:1;c.roll={dx:px*sd,dz:pz*sd};break}}}
     if(!c.roll)for(const e of foes)if(e.slash){const d=Math.hypot(e.x-b.x,e.z-b.z);
-      if(d<3.3&&Math.random()<dt*(4+b.skill*8)){const ux=(b.x-e.x)/d,uz=(b.z-e.z)/d,s=Math.random()<.5?1:-1;c.roll={dx:ux*.8-uz*.6*s,dz:uz*.8+ux*.6*s};break}}
+      if(d<3.3&&Math.random()<dt*b.dodgeK*.9){const ux=(b.x-e.x)/d,uz=(b.z-e.z)/d,s=Math.random()<.5?1:-1;c.roll={dx:ux*.8-uz*.6*s,dz:uz*.8+ux*.6*s};break}}
   }
 
   if(tgt){
@@ -90,12 +93,12 @@ function think(b,dt,W){
       c.dx=ux;c.dz=uz;if(d<2.5&&aerr<.55)c.slash=true;if(d<1.2){c.dx=px*b.strafe*.6;c.dz=pz*b.strafe*.6}
       b.mode='melee';
     }else{
-      const retreat=b.hp<=2&&d<10;                        // RETREAT when hurt, CHASE when too far, back off when too close
+      const retreat=b.hp<=(b.skill>.5?2:1)&&d<10;                        // RETREAT when hurt, CHASE when too far, back off when too close
       const rad=retreat?-1:d>b.prefMax?1:d<b.prefMin?-.8:0;
-      const st=(b.burstT>0||b.react>0||retreat)?b.strafe:0;   // REPOSITION: strafe while peeking / waiting, plant the feet to shoot
+      const st=(b.burstT>0||b.react>0||retreat)?b.strafe*(b.skill>.45?1:.3):0;   // REPOSITION: strafe while peeking / waiting, plant the feet to shoot
       c.dx=ux*rad+px*st;c.dz=uz*rad+pz*st;
       if(b.react<=0&&aerr<.09+.12*(1-b.skill)&&b.burstT<=0)c.fire=true;
-      if(d>13&&!retreat&&b.hp>2)c.scope=true;
+      if(d>13&&!retreat&&b.hp>2&&b.skill>.5)c.scope=true;
       b.mode=retreat?'retreat':rad>0?'chase':'fight';
     }
     const m0=Math.min(1,Math.hypot(c.dx,c.dz));if(m0>.01){const st2=steer(b,b.x+c.dx*3,b.z+c.dz*3,W);c.dx=st2.dx*m0;c.dz=st2.dz*m0}   // keep the intent, route around trees
@@ -103,7 +106,7 @@ function think(b,dt,W){
     if(b.wpn===0)c.wpn=1;
     let goal=null;
     if(b.last&&now-b.last.t<4)goal={x:b.last.x,z:b.last.z,rad:2.4,type:'look'};          // chase the last known position
-    else if(b.hear&&now-b.hear.t<6)goal={x:b.hear.x,z:b.hear.z,rad:3,type:'look'};       // investigate gunfire
+    else if(b.hear&&now-b.hear.t<6&&b.skill>.38)goal={x:b.hear.x,z:b.hear.z,rad:3,type:'look'};       // investigate gunfire
     else goal=W.objective(b);
     const gd=Math.hypot(goal.x-b.x,goal.z-b.z);
     if(gd>goal.rad){const s=steer(b,goal.x,goal.z,W);c.dx=s.dx;c.dz=s.dz;c.yaw=Math.atan2(s.dx,s.dz)+Math.sin(now*1.3+b.ph)*.35;b.mode='move'}
