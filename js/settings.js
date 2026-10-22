@@ -33,7 +33,8 @@ export function createSettings({atm,map,onResolution,getMobile=()=>null,root=doc
   try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&j.q)st={...st,...j,q:{...PRESETS.medium,...j.q}}}catch(e){}
   const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({preset:st.preset,q:st.q,fps:st.fps,auto:st.auto,blur:st.blur,fov:st.fov}))}catch(e){}};
   const presetOf=q=>ORDER.find(n=>same(PRESETS[n],q))||'custom';
-  const mob=()=>{const m=getMobile();return m&&m.active?m:null};
+  // only treat the touch controls as usable when they really expose the settings API (get/set/edit/reset)
+  const mob=()=>{try{const m=getMobile();return m&&m.active&&typeof m.get==='function'&&typeof m.set==='function'&&typeof m.edit==='function'&&typeof m.reset==='function'?m:null}catch(e){return null}};
   // ---- apply
   const pr=()=>Math.max(.4,Math.min(2,Math.min(devicePixelRatio||1,1.5)*st.q.scale));
   const apply=()=>{const q=st.q;atm.setQuality({bloom:!!q.bloom,grade:!!q.grade,aa:!!q.aa,shadows:q.shadows,clouds:!!q.clouds,blur:st.blur});
@@ -51,7 +52,12 @@ export function createSettings({atm,map,onResolution,getMobile=()=>null,root=doc
   #gfx .fovr{display:flex;align-items:center;gap:10px;min-width:210px}
   #gfx .fovr input{flex:1;min-width:120px;accent-color:#2b2150;cursor:pointer}
   #gfx .fovr b{min-width:42px;text-align:right;font:800 15px 'Baloo 2',sans-serif}
-  #gfx [hidden]{display:none!important}`;
+  #gfx [hidden]{display:none!important}
+  /* phones: the panel must sit above the touch buttons (z-index 960) and the pause overlay, and scroll */
+  body.mobile #gfx{position:fixed;inset:0;z-index:3000;overflow-y:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;pointer-events:auto;overscroll-behavior:contain}
+  body.mobile #gfx .gfxcard{max-height:92vh;max-height:92dvh;overflow-y:auto;touch-action:pan-y}
+  body.mobile #gfx .grow{flex-wrap:wrap;gap:6px}
+  body.mobile #gfx .gkeys{grid-template-columns:1fr}`;
   document.head.appendChild(css);
   const el=document.createElement('div');el.id='gfx';el.hidden=true;
   const seg=(attr,opts)=>`<div class="seg" ${attr}>${opts.map(([v,t])=>`<button data-v="${v}">${t}</button>`).join('')}</div>`;
@@ -76,6 +82,8 @@ export function createSettings({atm,map,onResolution,getMobile=()=>null,root=doc
     </div>
     <div class="row"><button id="gDone" class="btn green">Done</button></div></div>`;
   root.appendChild(el);
+  // keep touches inside the panel from reaching game-level touch/pointer handlers
+  ['touchstart','touchmove','touchend'].forEach(t=>el.addEventListener(t,e=>e.stopPropagation(),{passive:true}));
   const fpsEl=document.createElement('div');fpsEl.id='fpsc';fpsEl.textContent='-- FPS';root.appendChild(fpsEl);
   const showTab=t=>{tab=t;el.querySelector('#pCtl').hidden=t!=='ctl';el.querySelector('#pGfx').hidden=t!=='gfx';
     el.querySelectorAll('.gtabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
@@ -104,7 +112,7 @@ export function createSettings({atm,map,onResolution,getMobile=()=>null,root=doc
   let acc=0,frames=0,slow=0,settle=4,onClose=null;
   const api={
     pr,get:()=>st,apply,
-    open(cb,t){onClose=cb||null;if(t)tab=t;sync();el.hidden=false},close(){el.hidden=true;const f=onClose;onClose=null;f&&f()},isOpen:()=>!el.hidden,
+    open(cb,t){onClose=cb||null;if(t)tab=t;try{sync()}catch(err){console.warn('settings sync failed',err)}el.hidden=false},close(){el.hidden=true;const f=onClose;onClose=null;f&&f()},isOpen:()=>!el.hidden,
     /** call once per rendered frame with the real frame time (seconds) while the game is running */
     frame(dt,note){acc+=dt;frames++;settle=Math.max(0,settle-dt);
       if(acc>=.5){const f=frames/acc;if(st.fps)fpsEl.textContent=Math.round(f)+' FPS';
