@@ -21,9 +21,9 @@ export function createMode5v5(ctx){
   // ------------------------------------------------------------------ DOM (HUD, kill feed, prompt, result card)
   const css=document.createElement('style');css.textContent=`
   #v5{position:fixed;inset:0;pointer-events:none;z-index:990;font-family:'Baloo 2',sans-serif;color:#fff}
-  #v5bar{position:absolute;top:72px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;background:rgba(43,33,80,.78);border:3px solid #ffffff40;border-radius:999px;padding:4px 18px;box-shadow:0 4px 0 #1a1238aa}
+  #v5bar{position:absolute;top:72px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;text-shadow:0 2px 0 #1a1238,0 0 8px #0009}
   #v5bar .t{font:400 22px 'Bungee',sans-serif;min-width:64px;text-align:center}#v5bar .d{display:flex;gap:5px}
-  #v5bar .d i{width:13px;height:13px;border-radius:50%;background:#ffffff30;display:block}#v5bar .d.a i.on{background:#4aa8ff;box-shadow:0 0 8px #4aa8ff}#v5bar .d.b i.on{background:#ff5a5a;box-shadow:0 0 8px #ff5a5a}
+  #v5bar .d i{width:13px;height:13px;border-radius:50%;background:#00000066;box-shadow:0 0 0 2px #ffffff66;display:block}#v5bar .d.a i.on{background:#4aa8ff;box-shadow:0 0 8px #4aa8ff}#v5bar .d.b i.on{background:#ff5a5a;box-shadow:0 0 8px #ff5a5a}
   #v5sp{position:absolute;top:116px;left:50%;transform:translateX(-50%);font:400 15px 'Bungee',sans-serif;letter-spacing:.08em;color:#ffd54a;text-shadow:0 2px 0 #3a2308;opacity:0}#v5sp.on{opacity:1}#v5sp.red{color:#ff5a5a;animation:v5b .5s infinite}
   @keyframes v5b{50%{opacity:.4}}
   #v5pr{position:absolute;bottom:150px;left:50%;transform:translateX(-50%);text-align:center;font:800 18px 'Baloo 2',sans-serif;text-shadow:0 2px 0 #0008;opacity:0}#v5pr.on{opacity:1}
@@ -34,7 +34,7 @@ export function createMode5v5(ctx){
   #v5rk2{position:absolute;top:140px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:8px;background:rgba(43,33,80,.7);border:2px solid #ffffff30;border-radius:999px;padding:2px 12px 2px 6px;font:800 13px 'Baloo 2',sans-serif;white-space:nowrap;opacity:.9}
   #v5over .card h2{color:#5fcf4a}#v5over.lose .card h2{color:#e8453c}`;
   document.head.appendChild(css);
-  const root=document.createElement('div');root.id='v5';root.hidden=true;root.innerHTML=`<div id="v5bar"><div class="d a"></div><div class="t" id="v5t">1:30</div><div class="d b"></div></div><div id="v5sp"></div><div id="v5pr"><span></span><div class="bar"><i></i></div></div><div id="v5rk2"></div><div id="v5feed"></div>`;document.body.appendChild(root);
+  const root=document.createElement('div');root.id='v5';root.hidden=true;root.innerHTML=`<div id="v5bar"><div class="d a"></div><div class="t" id="v5t">1:30</div><div class="d b"></div></div><div id="v5sp"></div><div id="v5pr"><span></span><div class="bar"><i></i></div></div><div id="v5feed"></div>`;document.body.appendChild(root);
   const over=document.createElement('div');over.id='v5over';over.className='panel';over.hidden=true;
   over.innerHTML=`<div class="card"><h2>VICTORY</h2><div class="stats"><div><b id="v5s">0-0</b><span>Rounds</span></div><div><b id="v5k">0</b><span>Your KOs</span></div><div><b id="v5d">0</b><span>Deaths</span></div></div><div class="rkbox" id="v5rk"></div><p id="best"></p><div class="row"><button id="v5again" class="btn green">Rematch</button><button id="v5home" class="btn gold">Title</button></div></div>`;document.body.appendChild(over);
   const $=s=>root.querySelector(s);over.querySelector('#v5again').onclick=()=>{over.hidden=true;ctx.start5v5()};over.querySelector('#v5home').onclick=()=>{over.hidden=true;ctx.home()};
@@ -77,7 +77,7 @@ export function createMode5v5(ctx){
   const world={hw,hh,obs:map.obs,time:()=>S.time,los:ctx.los,push:ctx.push,h:HA,puff:(x,z)=>fx.puff(new T.Vector3(x,HA(x,z)+.2,z),'#ffffff',5),
     foes:b=>snap.filter(e=>e.team!==b.team&&e.alive),
     threats:b=>{const o=[];for(const t of bl)if(t.team!==b.team)o.push({x:t.m.position.x,z:t.m.position.z,vx:t.vx,vz:t.vz});if(b.team==='B')for(const t of ctx.bullets)o.push({x:t.m.position.x,z:t.m.position.z,vx:t.vx,vz:t.vz});return o},
-    fire:b=>{const o=b.cat.userData.muzzle(tmp),yaw=b.yaw+(Math.random()-.5)*.12*(1.3-b.skill)*(b.scope?.3:1),dx=Math.sin(yaw),dz=Math.cos(yaw),m=fx.bullet(BULLET[b.team]);
+    fire:b=>{const o=b.cat.userData.muzzle(tmp),yaw=b.yaw+(Math.random()-.5)*.22*(1.4-b.skill)*(b.scope?.3:1),dx=Math.sin(yaw),dz=Math.cos(yaw),m=fx.bullet(BULLET[b.team]);
       m.position.copy(o);m.rotation.set(0,yaw,0);scene.add(m);
       const tg=snap.find(e=>e.id===b.tid),dd=tg?Math.hypot(tg.x-b.x,tg.z-b.z)||1:0,vy=tg?Math.max(-8,Math.min(8,(HA(tg.x,tg.z)+.8-o.y)/dd*22)):0;   // aim up / down the slope at the target
       bl.push({m,vx:dx*22,vy,vz:dz*22,life:1.1,team:b.team,owner:b});fx.muzzle(o,yaw);b.cat.userData.kick();noiseAt(b.x,b.z,b.team)},
@@ -179,7 +179,6 @@ export function createMode5v5(ctx){
       const rk=loadRank(),me=rankInfo(rk.rp),lob=rollLobby(rk.rp);S.lobby=lob;
       lob.A.forEach(l=>{const b=createBot(scene,{team:'A',name:names.pop(),skill:l.skill,rp:l.rp});b.cat.userData.onSlashHit=()=>botMelee(b);bots.push(b)});
       lob.B.forEach(l=>{const b=createBot(scene,{team:'B',name:names.pop(),skill:l.skill,rp:l.rp});b.cat.userData.onSlashHit=()=>botMelee(b);bots.push(b)});
-      $('#v5rk2').innerHTML=`${badge(me,20)}<span>YOU · ${me.label}</span><span style="opacity:.6">LOBBY ${rankInfo(lob.avgA).label} vs ${rankInfo(lob.avgB).label}</span>`;
       root.hidden=false;over.hidden=true;visuals.g.visible=true;startRound();
     },
     stop(keep){S.active=false;S.phase='off';bots.forEach(b=>{scene.remove(b.cat);if(b.plate)scene.remove(b.plate.sp)});bots=[];bl.forEach(b=>scene.remove(b.m));bl=[];snap=[];
@@ -199,7 +198,10 @@ export function createMode5v5(ctx){
       hudT-=dt;if(hudT<=0){hudT=.2;const t=S.phase==='buy'?S.t:S.phase==='planted'?S.spike.t:S.t,m=Math.max(0,Math.ceil(t));$('#v5t').textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0');$('#v5t').style.color=S.phase==='planted'?'#ff5a5a':'#fff';dots()}
     },
     bulletHit(p,b){for(const e of bots)if(e.alive&&e.team==='B'&&Math.hypot(p.x-e.x,p.z-e.z)<.55&&e.inv<=0&&Math.abs(p.y-(HA(e.x,e.z)+.8))<1.1){damage(e,1,'player');return true}return false},
-    playerMelee(fx_,fz_){let hit=false;for(const e of bots){if(!e.alive||e.team!=='B'||e.inv>0)continue;const dx=e.x-P.x,dz=e.z-P.z,d=Math.hypot(dx,dz)||1;if(d<3.2&&(dx*fx_+dz*fz_)/d>-.05){damage(e,3,'player');e.x+=dx/d*1.4;e.z+=dz/d*1.4;hit=true}}return hit},
+    // returns 0 = no hit, 1 = hit, 2 = killed someone. side = swing side (+1/-1), col = blade colour -> same slash spark as on the wave enemies
+    playerMelee(fx_,fz_,side=1,col='#ffe8a8'){let hit=0;const yaw=Math.atan2(fx_,fz_);for(const e of bots){if(!e.alive||e.team!=='B'||e.inv>0)continue;const dx=e.x-P.x,dz=e.z-P.z,d=Math.hypot(dx,dz)||1;if(d<3.2&&(dx*fx_+dz*fz_)/d>-.05){
+      const ex=e.x,ez=e.z;damage(e,3,'player');fx.slashHit(new T.Vector3(ex,HA(ex,ez)+.9,ez),yaw,side,col,e.alive?1:1.35);
+      e.x+=dx/d*1.4;e.z+=dz/d*1.4;hit=Math.max(hit,e.alive?1:2)}}return hit},
     onPlayerDown(){if(P.dead)return;P.dead=true;S.stats.d++;const k=lastHitBy;feed(k&&k.name||'?','YOU',k?k.team:'B','A',k&&k.slashing);dots();check()},
     prog(){const t=S.phase==='buy'?S.t/BUY:S.phase==='planted'?S.spike.t/SPIKE:S.t/ROUND;return Math.max(0,Math.min(1,t))*100+'%'},
     state(){return S},get bots(){return bots},
