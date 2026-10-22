@@ -3,7 +3,7 @@ import * as T from 'three';
 import {side,lathe,tube,mk,metal,matte,glass,ring,muzzleTip} from './proc.js';
 export default {
   id:'sniper',name:'Sniper',kind:'gun',handling:'sniper',lean:.05,fore:[.7,-.08],
-  stats:{cd:.95,dmg:5,spread:.025,speed:62,auto:false,kick:2.4,shake:.35,push:2.6,zoom:18,color:'#c8f0ff',pierce:2,size:1.7,move:.85,scopeSteady:.95,life:1.2},
+  stats:{cd:.95,dmg:5,spread:.025,speed:62,auto:false,kick:2.4,shake:.35,push:2.6,zoom:18,color:'#c8f0ff',pierce:2,size:1.7,move:.85,scopeSteady:.95,life:1.2,mag:1, reload:1.1,after:1},   // after:1 = big aftershock (shock rings, ground wave, mach crescents, vapour trail, lingering smoke)
   build(){
     const g=new T.Group(),steel=metal('#2e333d'),dark=matte('#1b1d23',.55),stock=matte('#2f3a2a',.65),lens=glass('#4aa8ff',.8);
     mk(side([[-.12,.09],[.3,.1],[.7,.085],[.74,.05],[.74,-.05],[.2,-.08],[-.12,-.07]],.09,{smooth:3}),steel,g);             // action
