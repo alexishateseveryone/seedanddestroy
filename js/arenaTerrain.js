@@ -37,11 +37,18 @@ function rawH(x,z){
   for(const a of ANCH)h=lerp(h,a.y,1-sstep(a.r1,a.r2,Math.hypot(x-a.x,z-a.z)));
   for(const p of PL){const d=Math.hypot(x-p.x,z-p.z);h=lerp(h,p.L+.35,1-sstep(p.r+1,p.r+11,d));h=lerp(h,p.L-.9,1-sstep(p.r*.7,p.r+.3,d))}
   return h}
-// sampled once on a 1-unit grid: the mesh uses the same numbers, and heightAt is a cheap bilinear lookup
-const GS=1,X0=-(HW+30),Z0=-(HH+30),NX=W+60,NZ=H+60,data=new Float32Array((NX+1)*(NZ+1));
-for(let j=0;j<=NZ;j++)for(let i=0;i<=NX;i++)data[j*(NX+1)+i]=rawH(X0+i*GS,Z0+j*GS);
-export const GRID={x0:X0,z0:Z0,nx:NX,nz:NZ,gs:GS,data};
-export function heightAt(x,z){
+// sampled once on a 1-unit grid. Two grids: terr = the real ground (mesh + decor), walk = what you stand on.
+// Ponds are a regular walkable platform: inside a pond the walk surface is the water level, so nothing blocks you or the bullets.
+const GS=1,X0=-(HW+30),Z0=-(HH+30),NX=W+60,NZ=H+60,terr=new Float32Array((NX+1)*(NZ+1)),walk=new Float32Array((NX+1)*(NZ+1));
+for(let j=0;j<=NZ;j++)for(let i=0;i<=NX;i++){const x=X0+i*GS,z=Z0+j*GS,h=rawH(x,z);let w=h;
+  for(const p of PL)if(Math.hypot(x-p.x,z-p.z)<p.r+1.5)w=Math.max(w,p.L);
+  terr[j*(NX+1)+i]=h;walk[j*(NX+1)+i]=w}
+export const GRID={x0:X0,z0:Z0,nx:NX,nz:NZ,gs:GS,data:terr};
+function sample(a,x,z){
   const fx=clamp((x-X0)/GS,0,NX-.001),fz=clamp((z-Z0)/GS,0,NZ-.001),i=fx|0,j=fz|0,u=fx-i,v=fz-j,k=j*(NX+1)+i;
-  return lerp(lerp(data[k],data[k+1],u),lerp(data[k+NX+1],data[k+NX+2],u),v)}
+  return lerp(lerp(a[k],a[k+1],u),lerp(a[k+NX+1],a[k+NX+2],u),v)}
+export const terrainAt=(x,z)=>sample(terr,x,z);      // the actual ground surface (mesh, trees, grass)
+export const heightAt=(x,z)=>sample(walk,x,z);       // the surface players, bots and bullets use (water counts as floor)
+// index of the pond whose water covers (x,z), or -1
+export function waterAt(x,z){for(let k=0;k<PL.length;k++){const p=PL[k];if(Math.hypot(x-p.x,z-p.z)<p.r+1.5&&sample(terr,x,z)<p.L+.02)return k}return -1}
 export const slopeAt=(x,z,e=1.2)=>Math.hypot(heightAt(x+e,z)-heightAt(x-e,z),heightAt(x,z+e)-heightAt(x,z-e))/(2*e);
