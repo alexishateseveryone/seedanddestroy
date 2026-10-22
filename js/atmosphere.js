@@ -41,6 +41,15 @@ const GRADE={uniforms:{tDiffuse:{value:null},uTime:{value:0},uVig:{value:.34},uG
     col+=(hash(vUv*vec2(1731.,911.)+fract(uTime))-.5)*uGrain;
     gl_FragColor=vec4(max(col,0.),1.);}`};
 
+// Camera motion blur: the screen-space shift caused by the camera turning this frame (uVel, in uv units) is smeared symmetrically over a few taps.
+const MBLUR={uniforms:{tDiffuse:{value:null},uVel:{value:new T.Vector2()}},
+  vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+  fragmentShader:`uniform sampler2D tDiffuse;uniform vec2 uVel;varying vec2 vUv;
+  void main(){vec3 s=vec3(0.);float w=0.;
+    for(int i=0;i<12;i++){float t=float(i)/11.-.5;float k=1.-abs(t)*.9;s+=texture2D(tDiffuse,clamp(vUv+uVel*t,vec2(.001),vec2(.999))).rgb*k;w+=k;}
+    gl_FragColor=vec4(s/w,1.);}`};
+const MB_LEVEL=[0,.35,.65,1.1];   // Off / Low / Medium / High: fraction of a 1/60 s shutter
+
 export function createAtmosphere(renderer,scene,cam){
   const sunDir=new T.Vector3().setFromSphericalCoords(1,(90-SUN_ELEV)*Math.PI/180,SUN_AZ*Math.PI/180);
   // ---------------------------------------------------------------- sky + clouds (one builder so the environment probe gets its own copy)
@@ -68,9 +77,10 @@ export function createAtmosphere(renderer,scene,cam){
   // ---------------------------------------------------------------- post stack
   const size=new T.Vector2();renderer.getSize(size);
   const rt=new T.WebGLRenderTarget(size.x,size.y,{type:T.HalfFloatType,samples:4});
-  const composer=new EffectComposer(renderer,rt),bloom=new UnrealBloomPass(new T.Vector2(size.x,size.y),.22,.6,1.5),grade=new ShaderPass(GRADE);
-  composer.addPass(new RenderPass(scene,cam));composer.addPass(bloom);composer.addPass(grade);composer.addPass(new OutputPass());
-  let mode='maker';const Q={bloom:true,grade:true,aa:true,shadows:2,clouds:true};const fog=new T.Fog(fogHaze,45,240);
+  const composer=new EffectComposer(renderer,rt),bloom=new UnrealBloomPass(new T.Vector2(size.x,size.y),.22,.6,1.5),grade=new ShaderPass(GRADE),mblur=new ShaderPass(MBLUR);mblur.enabled=false;
+  const prevQ=new T.Quaternion().copy(cam.quaternion),relQ=new T.Quaternion(),relE=new T.Euler(),mbVel=mblur.uniforms.uVel.value;
+  composer.addPass(new RenderPass(scene,cam));composer.addPass(mblur);composer.addPass(bloom);composer.addPass(grade);composer.addPass(new OutputPass());
+  let mode='maker';const Q={bloom:true,grade:true,aa:true,shadows:2,clouds:true,blur:0};const fog=new T.Fog(fogHaze,45,240);
   const api={sunDir,sun,hemi,envMap,fogColor:fogHaze,sky,clouds,composer,bloom,grade,
     setMode(m){mode=m;const play=m==='play';
       sky.visible=play;clouds.visible=play&&Q.clouds;
@@ -83,14 +93,21 @@ export function createAtmosphere(renderer,scene,cam){
     resize(w,h,pr){composer.setPixelRatio(pr);composer.setSize(w,h);bloom.resolution.set(w,h)},
     update(dt,t,focus){
       sky.position.copy(cam.position);clouds.position.copy(cam.position);clouds.material.uniforms.uTime.value=t;grade.uniforms.uTime.value=t;
+      // motion blur: how far the view turned since last frame -> screen-space velocity, scaled to a fixed shutter time so it looks the same at any FPS
+      relQ.copy(prevQ).invert().multiply(cam.quaternion);prevQ.copy(cam.quaternion);
+      if(mblur.enabled){relE.setFromQuaternion(relQ,'YXZ');
+        const th=Math.tan(cam.fov*Math.PI/360),sx=1/(2*th*cam.aspect),sy=1/(2*th),k=(MB_LEVEL[Q.blur]||0)/60/Math.max(dt,1/240);
+        let vx=Math.tan(relE.y)*sx*k,vy=-Math.tan(relE.x)*sy*k;const l=Math.hypot(vx,vy),mx=.05;if(l>mx){vx*=mx/l;vy*=mx/l}
+        if(l<.0004){vx=0;vy=0}   // ignore sub-pixel jitter
+        mbVel.set(vx,vy)}
       if(mode==='play'&&focus){sun.target.position.set(focus.x,0,focus.z);sun.position.set(focus.x+sunDir.x*70,sunDir.y*70,focus.z+sunDir.z*70);sun.target.updateMatrixWorld()}},
     /** graphics options: bloom, grade (vignette/grain/colour), aa (MSAA in the post path), shadows 0|1|2, clouds.
      *  With bloom AND grade off the whole post stack is skipped and the scene goes straight to the screen (cheapest path). */
-    setQuality(q){Object.assign(Q,q);bloom.enabled=!!Q.bloom;grade.enabled=!!Q.grade;
+    setQuality(q){Object.assign(Q,q);bloom.enabled=!!Q.bloom;grade.enabled=!!Q.grade;mblur.enabled=Q.blur>0;
       const n=Q.aa?4:0;if(rt.samples!==n){[composer.renderTarget1,composer.renderTarget2].forEach(t=>{t.samples=n;t.dispose()})}
       const ms=Q.shadows>=2?2048:1024;if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}
       const ext=Q.shadows>=2?26:20;if(sc.right!==ext){sc.left=-ext;sc.right=ext;sc.top=ext;sc.bottom=-ext;sc.updateProjectionMatrix()}
       api.setMode(mode)},
-    render(){if(mode==='play'&&(Q.bloom||Q.grade))composer.render();else renderer.render(scene,cam)}};
+    render(){if(mode==='play'&&(Q.bloom||Q.grade||Q.blur>0))composer.render();else renderer.render(scene,cam)}};
   api.setMode('maker');return api;
 }
