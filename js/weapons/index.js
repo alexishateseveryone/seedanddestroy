@@ -1,4 +1,4 @@
-// Weapon registry. Number keys 1..8 in the game map to this order.
+// Weapon registry. Keys 1..8 pick the first eight, mouse wheel / Q cycle through all of them.
 import Peashooter from './Peashooter.js';
 import WoodenSword from './WoodenSword.js';
 import AK47 from './AK47.js';
@@ -7,5 +7,13 @@ import Spear from './Spear.js';
 import Armalite from './Armalite.js';
 import MachineGun from './MachineGun.js';
 import Sniper from './Sniper.js';
-export const WEAPONS=[Peashooter,WoodenSword,AK47,DualDagger,Spear,Armalite,MachineGun,Sniper];
+import Gunslinger from './Gunslinger.js';
+import PopGun from './PopGun.js';
+import Confetti from './Confetti.js';
+import Seedler from './Seedler.js';
+import HotdogMachine from './HotdogMachine.js';
+import PeanutJelly from './PeanutJelly.js';
+import Skybreaker from './Skybreaker.js';
+import Sunray from './Sunray.js';
+export const WEAPONS=[Peashooter,WoodenSword,AK47,DualDagger,Spear,Armalite,MachineGun,Sniper,Gunslinger,PopGun,Confetti,Seedler,HotdogMachine,PeanutJelly,Skybreaker,Sunray];
 export const byId=id=>WEAPONS.find(w=>w.id===id)||WEAPONS[0];
