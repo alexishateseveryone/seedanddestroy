@@ -33,6 +33,7 @@ export function createMobile(o){
   #mRoll{right:140px;bottom:26px;width:64px;height:64px}
   #mScope{right:34px;bottom:146px;width:60px;height:60px;font-size:22px}
   #mPlant{right:122px;bottom:104px;width:64px;height:64px;display:none;background:rgba(255,213,74,.65);color:#3a2308;font-size:22px}
+  #mReload{right:214px;bottom:30px;width:54px;height:54px;display:none;font-size:18px;background:rgba(31,140,200,.6)}
   #mPause{top:10px;right:calc(10px + env(safe-area-inset-right));width:46px;height:46px;font-size:16px}
   #mWpn{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;pointer-events:none}
   #mWpn .b{position:static;width:46px;height:46px;font-size:16px}
@@ -41,15 +42,15 @@ export function createMobile(o){
   @media (max-height:430px){
     #mFire{width:82px;height:82px;bottom:20px;font-size:15px}#mRoll{right:116px;bottom:16px;width:54px;height:54px;font-size:12px}
     #mScope{right:26px;bottom:114px;width:50px;height:50px;font-size:19px}#mPlant{right:100px;bottom:82px;width:54px;height:54px}
-    #mPause{width:40px;height:40px;top:6px}#mWpn{bottom:6px}#mWpn .b{width:38px;height:38px}#mWn{min-width:96px;font-size:11px;padding:6px 10px}
+    #mReload{right:182px;bottom:16px;width:46px;height:46px;font-size:16px}#mPause{width:40px;height:40px;top:6px}#mWpn{bottom:6px}#mWpn .b{width:38px;height:38px}#mWn{min-width:96px;font-size:11px;padding:6px 10px}
     #mBase{width:104px;height:104px;margin:-52px 0 0 -52px}}
   @media (min-width:900px) and (min-height:700px){
-    #mFire{width:118px;height:118px}#mRoll{width:76px;height:76px;right:164px}#mScope{width:70px;height:70px;bottom:170px}#mPlant{width:76px;height:76px;right:144px;bottom:120px}}
+    #mFire{width:118px;height:118px}#mRoll{width:76px;height:76px;right:164px}#mReload{right:252px;bottom:30px;width:64px;height:64px}#mScope{width:70px;height:70px;bottom:170px}#mPlant{width:76px;height:76px;right:144px;bottom:120px}}
   @media (orientation:portrait){body.mobile #mrot{display:flex}}`;
   document.head.appendChild(css);
   const root=document.createElement('div');root.id='mob';
   root.innerHTML=`<div class="z" id="mzL"></div><div class="z" id="mzR"></div><div id="mBase"><div id="mKnob"></div></div>
-    <div class="b" id="mFire">FIRE</div><div class="b" id="mRoll">ROLL</div><div class="b" id="mScope">◎</div><div class="b" id="mPlant">F</div><div class="b" id="mPause">II</div>
+    <div class="b" id="mFire">FIRE</div><div class="b" id="mRoll">ROLL</div><div class="b" id="mScope">◎</div><div class="b" id="mPlant">F</div><div class="b" id="mReload">R</div><div class="b" id="mPause">II</div>
     <div id="mWpn"><div class="b" id="mPrev">◀</div><span id="mWn"></span><div class="b" id="mNext">▶</div></div>`;
   document.body.appendChild(root);
   const rot=document.createElement('div');rot.id='mrot';rot.textContent='Rotate your device to landscape to play';document.body.appendChild(rot);
@@ -87,6 +88,7 @@ export function createMobile(o){
   btn('#mFire',()=>{mouse.l=true},()=>{mouse.l=false},true);
   btn('#mRoll',()=>o.tumble());
   btn('#mScope',()=>o.scope());
+  btn('#mReload',()=>o.reload&&o.reload());
   btn('#mPlant',()=>{keys.KeyF=true},()=>{keys.KeyF=false});
   btn('#mPrev',()=>o.weapon(-1));btn('#mNext',()=>o.weapon(1));
   btn('#mPause',()=>o.pause());
@@ -97,10 +99,11 @@ export function createMobile(o){
     if(screen.orientation&&screen.orientation.lock){const r=screen.orientation.lock('landscape');r&&r.catch&&r.catch(()=>{})}}catch(e){}},{once:true});
   addEventListener('resize',()=>{if(stick.id===null)home()});home();
 
-  let shown=false,lastN=null,lastV=null;const wn=$('#mWn'),plant=$('#mPlant');
+  let shown=false,lastN=null,lastV=null,lastA=null;const wn=$('#mWn'),plant=$('#mPlant'),rld=$('#mReload');
   return{active:true,update(){
     const show=o.canPlay();
     if(show!==shown){shown=show;root.style.display=show?'block':'none';if(!show){releasers.forEach(f=>f());keys.KeyF=false;mouse.l=false}else home()}
     if(!show)return;
     const n=o.wname();if(n!==lastN){lastN=n;wn.textContent=n}
+    const am=!!(o.hasAmmo&&o.hasAmmo());if(am!==lastA){lastA=am;rld.style.display=am?'flex':'none'}   // reload button only for guns with a magazine
     const v=o.is5v5();if(v!==lastV){lastV=v;plant.style.display=v?'flex':'none'}}}}
