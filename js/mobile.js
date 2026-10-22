@@ -44,7 +44,10 @@ export function createMobile(o){
   #mWpn{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;pointer-events:none}
   #mWpn .b{position:static;width:46px;height:46px;font-size:16px}
   #mWn{min-width:120px;text-align:center;padding:8px 12px;border-radius:999px;background:rgba(43,33,80,.6);border:2px solid rgba(255,255,255,.4);color:#fff;font-size:13px;white-space:nowrap}
-  #mEd{position:absolute;top:10px;left:50%;transform:translateX(-50%);display:none;flex-direction:column;align-items:center;gap:6px;pointer-events:auto;background:#d6d6db;color:#2b2150;padding:10px 16px;border-radius:18px;border:3px solid #9a9aa3;box-shadow:0 5px 0 rgba(0,0,0,.25);z-index:5;text-align:center;max-width:60vw}
+  #mBg{position:absolute;inset:0;background:#9b9ba3;display:none;pointer-events:auto;touch-action:none}
+  #mob.edit #mBg{display:block}
+  #mob.edit .b,#mob.edit #mWpn{z-index:6}
+  #mEd{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);display:none;flex-direction:column;align-items:center;gap:6px;pointer-events:auto;background:#d6d6db;color:#2b2150;padding:10px 16px;border-radius:18px;border:3px solid #9a9aa3;box-shadow:0 5px 0 rgba(0,0,0,.25);z-index:5;text-align:center;max-width:60vw}
   #mEd b{font-size:14px;font-weight:400}
   #mEd small{font:600 11px system-ui,sans-serif;color:#4a4a55}
   #mEd .r{display:flex;gap:10px;margin-top:2px}
@@ -65,10 +68,10 @@ export function createMobile(o){
   @media (orientation:portrait){body.mobile #mrot{display:flex}}`;
   document.head.appendChild(css);
   const root=document.createElement('div');root.id='mob';
-  root.innerHTML=`<div class="z" id="mzL"></div><div class="z" id="mzR"></div><div id="mBase"><div id="mKnob"></div></div>
+  root.innerHTML=`<div id="mBg"></div><div class="z" id="mzL"></div><div class="z" id="mzR"></div><div id="mBase"><div id="mKnob"></div></div>
     <div class="b" id="mFire">FIRE</div><div class="b" id="mRoll">ROLL</div><div class="b" id="mScope">◎</div><div class="b" id="mPlant">F</div><div class="b" id="mReload">R</div><div class="b" id="mPause">II</div>
     <div id="mWpn"><div class="b" id="mPrev">◀</div><span id="mWn"></span><div class="b" id="mNext">▶</div></div>
-    <div id="mEd"><b>MOVE BUTTONS</b><small>Drag each button where you want it</small><div class="r"><button class="g" id="mEdReset">Reset</button><button id="mEdDone">Done</button></div></div>`;
+    <div id="mEd"><b>MOVE BUTTONS</b><small>Drag each button where you want it, then tap Done</small><div class="r"><button class="g" id="mEdReset">Reset</button><button id="mEdDone">Done</button></div></div>`;
   document.body.appendChild(root);
   const rot=document.createElement('div');rot.id='mrot';rot.textContent='Rotate your device to landscape to play';document.body.appendChild(rot);
   const $=s=>root.querySelector(s),base=$('#mBase'),knob=$('#mKnob'),releasers=[];
