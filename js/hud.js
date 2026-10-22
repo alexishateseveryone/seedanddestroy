@@ -17,7 +17,18 @@ const ICONS={
 };
 const slotHTML=WEAPONS.map((w,i)=>`<div class="slot${i===0?' on':''}" data-w="${i}"><kbd>${i+1}</kbd>${ICONS[w.id]||BLASTER}<span>${w.name}</span></div>`).join('');
 
-const css=document.createElement('style');css.textContent='#wpn .slot span{display:none}#wpn .slot.on span{display:inline}#wpn{gap:6px}';document.head.appendChild(css);
+const css=document.createElement('style');css.textContent='#wpn .slot span{display:none}#wpn .slot.on span{display:inline}#wpn{gap:6px}'+`
+.hud-ammo{position:absolute;right:26px;bottom:118px;display:none;flex-direction:column;align-items:flex-end;gap:4px;text-shadow:var(--sh)}
+.hud-ammo .amrow{display:flex;align-items:baseline;gap:6px}
+#amN{font:400 40px/1 var(--disp);color:#fff;min-width:1ch;text-align:right}#amM{font:800 16px var(--font);color:#ffffffaa;letter-spacing:.08em}
+.ambar{width:120px;height:4px;border-radius:9px;background:#0007;overflow:hidden;opacity:0;transition:opacity .15s}
+.ambar i{display:block;height:100%;background:#8fe3ff;transform-origin:left;transform:scaleX(0)}
+.hud-ammo.rl .ambar{opacity:1}
+#amHint{font:800 12px var(--font);letter-spacing:.16em;color:#fff;min-height:14px}
+.hud-ammo.low #amN{color:var(--lemon)}.hud-ammo.empty #amN{color:#ff5a4d}
+.hud-ammo.low #amHint,.hud-ammo.empty #amHint{animation:amb 1s ease-in-out infinite}@keyframes amb{50%{opacity:.35}}
+body.mobile .hud-ammo{right:auto;left:var(--wpn-x,50%);transform:translateX(-50%);bottom:calc(var(--life-b,64px) + 34px);align-items:center}   /* above the life paws, which sit above the weapon switch */
+`;document.head.appendChild(css);
 
 export function createHUD(root=document.body){
   const $=s=>root.querySelector(s),el=(h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
@@ -33,6 +44,7 @@ export function createHUD(root=document.body){
       <div class="subs"><span>KOs <b id="kos">0</b></span><span>BEST <b id="bestHud">0</b></span></div></div></div>
     <div class="hud-br"><div class="mini"><canvas id="mini" width="220" height="220"></canvas><span class="mn">N</span></div></div>
     <div class="hud-bc" id="wpn">${slotHTML}</div>
+    <div class="hud-ammo" id="ammo"><div class="amrow"><b id="amN">0</b><small id="amM"></small></div><div class="ambar"><i id="amFill"></i></div><span id="amHint"></span></div>
     <div class="hud-bl"><div class="hint"><kbd>LMB</kbd> shoot <kbd>RMB</kbd> scope <kbd>SPACE</kbd> tumble <kbd>1-8</kbd> / wheel weapon</div></div>`;
   
   const extra=el(`<div id="hudx"><div id="fps-crosshair"><i class="dot"></i><i class="t t1"></i><i class="t t2"></i><i class="t t3"></i><i class="t t4"></i><div id="hitm"><i></i><i></i><i></i><i></i></div></div>
@@ -40,7 +52,7 @@ export function createHUD(root=document.body){
     
     <div id="pause" hidden><div class="card"><h2>Paused</h2><p class="pk">Click anywhere to jump back in</p>
       <div class="keys"><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div><div><kbd>Mouse</kbd><span>aim</span></div><div><kbd>LMB</kbd><span>shoot / slash</span></div><div><kbd>RMB</kbd><span>scope</span></div><div><kbd>SPACE</kbd><span>tumble</span></div><div><kbd>1-8</kbd><span>weapons (or mouse wheel)</span></div><div><kbd>G</kbd><span>graphics</span></div></div>
-      <div class="row"><button id="resume" class="btn green">Resume</button><button id="pgfx" class="btn pink">Graphics</button><button id="quit" class="btn gold">Title</button></div></div></div></div>`);
+      <div class="row"><button id="resume" class="btn green">Resume</button><button id="pgfx" class="btn pink">Settings</button><button id="quit" class="btn gold">Title</button></div></div></div></div>`);
   document.body.appendChild(extra);
   const cross=$('#fps-crosshair'),hitm=$('#hitm'),scopeEl=$('#scope-ov'),hurtEl=$('#hurt'),lowEl=$('#lowhp'),bn=$('#banner'),ebars=$('#ebars'),pauseEl=$('#pause');
   const mini=$('#mini'),mc=mini.getContext('2d'),slots=[...root.querySelectorAll('#wpn .slot')];
@@ -55,6 +67,12 @@ export function createHUD(root=document.body){
     foes(left,total,txt){set('foes',()=>{$('#foeFill').style.width=(total?100*(1-left/total):0)+'\%';$('#foeTxt').textContent=txt??(left>0?`${left} enemies left`:'Area clear')},left+'/'+total+txt)},
     score(s,k,b){set('score',()=>{$('#score').textContent=String(s).padStart(6,'0');$('#kos').textContent=k;$('#bestHud').textContent=b;const e=$('#score');e.classList.remove('bump');void e.offsetWidth;e.classList.add('bump')},s+'|'+k+'|'+b)},
     combo(mult,chain,frac){const c=$('#combo');c.classList.toggle('on',chain>1&&frac>0);if(chain>1){set('cmb',()=>{$('#comboTxt').textContent=`x${mult}  ·  ${chain} chain`},mult+'/'+chain);$('#comboBar').style.transform=`scaleX(${Math.max(0,frac)})`}},
+    // ammo(cur,max,frac): max=0 hides it (unlimited ammo); frac = reload progress 0..1, or -1 when not reloading
+    ammo(cur,max,frac){const a=$('#ammo');if(!max){a.style.display='none';last.am=null;return}
+      a.style.display='flex';const rl=frac>=0,low=!rl&&cur<=Math.ceil(max*.25),mob=document.body.classList.contains('mobile');
+      set('am',()=>{$('#amN').textContent=cur;$('#amM').textContent='/ '+max;a.classList.toggle('rl',rl);a.classList.toggle('low',low&&cur>0);a.classList.toggle('empty',!rl&&cur<=0);
+        $('#amHint').textContent=rl?'RELOADING':cur<=0?(mob?'TAP R':'PRESS R'):low?(mob?'LOW':'LOW · R'):''},cur+'/'+max+'/'+rl+'/'+mob);
+      if(rl)$('#amFill').style.transform=`scaleX(${Math.min(1,frac).toFixed(2)})`},
     weapon(w){slots.forEach(s=>s.classList.toggle('on',+s.dataset.w===w))},
     banner(t,s='',cls=''){bn.className='';$('#bnT').textContent=t;$('#bnS').textContent=s;if(!t)return;void bn.offsetWidth;bn.className='on '+cls},
     hit(kill){hitm.className='';void hitm.offsetWidth;hitm.className=kill?'kill':'hit'},
