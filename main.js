@@ -12,6 +12,7 @@ import {createSettings} from './js/settings.js';
 import {createMode5v5} from './js/5v5.js';
 import {patchCat} from './js/enemies/playersAi.js';
 import {createMobile} from './js/mobile.js';
+import {renderPill} from './js/rank.js';
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
@@ -24,7 +25,8 @@ const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.ad
 addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
 function resize(){renderer.setPixelRatio(prr());renderer.setSize(innerWidth,innerHeight);atm.resize(innerWidth,innerHeight,prr());cam.aspect=innerWidth/innerHeight;const f=cam.userData.off||0;f?cam.setViewOffset(innerWidth,innerHeight,innerWidth*f,0,innerWidth,innerHeight):cam.clearViewOffset();cam.updateProjectionMatrix()}
 function setView(f){cam.userData.off=f;resize()}resize();
-const forest=buildMap(7,atm.envMap);scene.add(forest.group);let map=forest,arena=null,mode5=null;const lastQ={};
+const forest=buildMap(7,atm.envMap);scene.add(forest.group);forest.prime(0,0,60);if(scene.fog){scene.fog.near=30;scene.fog.far=150}   // chunk-streamed hilly forest: build around the start, the rest streams in
+let map=forest,arena=null,mode5=null;const lastQ={};
 {const fq=forest.setQuality;forest.setQuality=q=>{Object.assign(lastQ,q);fq(q);arena&&arena.setQuality(q)}}   // graphics options also reach the 5v5 arena
 gfx=createSettings({atm,map,onResolution:resize});   // graphics options (presets + per-option, saved, applied live)
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
@@ -49,7 +51,7 @@ function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.c
   P.shake=Math.max(P.shake,hitAny?.38:.12);if(hitAny){P.hs=.07;hud.hit(false)}}
 function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>0||P.dead||P.frozen)return;let f=P.fwd,s=P.side;if(!f&&!s)f=1;
   const fxv=Math.sin(P.camYaw),fzv=Math.cos(P.camYaw),rx=-Math.cos(P.camYaw),rz=Math.sin(P.camYaw);let dx=fxv*f+rx*s,dz=fzv*f+rz*s;const l=Math.hypot(dx,dz)||1;
-  if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.puff(new T.Vector3(P.x,.2,P.z),'#ffffff',5)}}
+  if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;map.ripple(P.x,P.z,1.8);P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.puff(new T.Vector3(P.x,.2,P.z),'#ffffff',5)}}
 function hudAll(){hud.hp(P.hp,P.max);hud.wave(wave);hud.foes(WV.left+enemies.length,WV.total);hud.score(score,kills,best)}
 function beginWave(w){wave=w;WV.total=WV.left=quota(w);WV.phase='intro';WV.t=2.6;WV.spawnT=.4;P.chain=0;hud.banner(`WAVE ${w}`,`${WV.total} enemies`);hudAll()}
 function lockPtr(){try{const r=$('#c').requestPointerLock&&$('#c').requestPointerLock();r&&r.catch&&r.catch(()=>{})}catch(e){}}
@@ -58,7 +60,7 @@ function clearAll(){[enemies,pickups].forEach(a=>{a.forEach(e=>scene.remove(e.g|
 function push(o,rad){for(const r of map.obs){const dx=o.x-r.x,dz=o.z-r.z,d=Math.hypot(dx,dz),m=r.r+rad;if(d<m&&d>0){o.x=r.x+dx/d*m;o.z=r.z+dz/d*m}}}
 function enterTitle(){leave5();clearAll();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
   P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.dash=0;wave=3;spawnT=.6;bot.t=0;bot.wt=0;hud.show(false);
-  equipIdx(0);setView(-.17);$('#over').hidden=true;$('#title').hidden=false;$('#bestT').textContent=best}
+  equipIdx(0);setView(-.17);$('#over').hidden=true;$('#title').hidden=false;$('#bestT').textContent=best;renderPill($('#rkpill'))}   // rank card on the title (refreshes after every ranked match)
 function start(){leave5();clearAll();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
 function spawn(){const k=Math.random()<Math.min(.55,.22+wave*.08)?'ranged':'melee';let x,z,n=0;
   do{const a=rnd(0,6.283),d=rnd(13,18);x=P.x+Math.cos(a)*d;z=P.z+Math.sin(a)*d}while(n++<25&&(Math.abs(x)>map.W/2-2||Math.abs(z)>map.H/2-2||map.obs.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+.9)));
@@ -81,7 +83,7 @@ function shoot(){const w=WP(),st=w.stats;P.cd=st.cd;cat.userData.kick(st.kick||1
   fx.muzzle(o,baseYaw);P.shake=Math.max(P.shake,st.shake||.1);P.kick=Math.max(.2,(st.kick||1)*.5);P.dx=-Math.sin(P.camYaw);P.dz=-Math.cos(P.camYaw);P.dash=st.push||1}
 // clear line between two points (trees block sight and bullets)
 function los(ax,az,bx,bz){const dx=bx-ax,dz=bz-az,l2=dx*dx+dz*dz||1;
-  if(gm==='v5'){const ya=map.heightAt(ax,az)+1.2,yb=map.heightAt(bx,bz)+1.2,n=Math.ceil(Math.sqrt(l2)/1.5);   // hills block sight
+  {const ya=map.heightAt(ax,az)+1.2,yb=map.heightAt(bx,bz)+1.2,n=Math.ceil(Math.sqrt(l2)/1.5);   // hills block sight
     for(let i=1;i<n;i++){const t=i/n;if(map.heightAt(ax+dx*t,az+dz*t)>ya+(yb-ya)*t)return false}}
   for(const r of map.obs){const t=Math.max(0,Math.min(1,((r.x-ax)*dx+(r.z-az)*dz)/l2));if(Math.hypot(ax+dx*t-r.x,az+dz*t-r.z)<r.r*.9)return false}return true}
 const turnTo=(a,b,k)=>a+Math.atan2(Math.sin(b-a),Math.cos(b-a))*k;
@@ -125,7 +127,7 @@ function ai(e,dt){
             fx.dust(new T.Vector3(e.x,.1,e.z));fx.hit(new T.Vector3(e.x,.2,e.z),'#e8dcb0',4)}}
         else if(e.st==='leap'){e.s-=dt;const u=1-Math.max(0,e.s)/.62;pose='air';pt=u;                                // committed: arcs through the air, bullets pass under it
           e.x=e.jx+(e.tx-e.jx)*u;e.z=e.jz+(e.tz-e.jz)*u;e.jy=4*2.1*u*(1-u);face=Math.atan2(e.tx-e.jx,e.tz-e.jz);
-          if(e.s<=0){e.jy=0;e.st='land';e.s=.5;fx.shock(new T.Vector3(e.x,.1,e.z),'#ffe0a0');P.shake=Math.max(P.shake,.55);
+          if(e.s<=0){e.jy=0;e.st='land';e.s=.5;fx.shock(new T.Vector3(e.x,e.gy+.1,e.z),'#ffe0a0');P.shake=Math.max(P.shake,.55);
             if(Math.hypot(P.x-e.x,P.z-e.z)<2.2){hurt();fx.hit(new T.Vector3(P.x,.8,P.z),'#ff7a3c',8)}}}
         else if(e.st==='land'){e.s-=dt;pose='land';pt=1-e.s/.5;if(e.s<=0){e.st='rest';e.s=1.35;e.jcd=rnd(4,6.5)}}   // slam, then it is stuck recovering: free hits
         else if(e.st==='tired'){pose='rest';e.sta=Math.min(1,e.sta+dt*.35);if(e.sta>=.7)e.st='chase'}   // catches its breath, then chases again
@@ -157,7 +159,7 @@ function ai(e,dt){
   const len=Math.hypot(mx,mz)||1;if(sp>0){mx/=len;mz/=len}
   e.x+=mx*sp*dt;e.z+=mz*sp*dt;e.x=Math.max(-map.W/2+.8,Math.min(map.W/2-.8,e.x));e.z=Math.max(-map.H/2+.8,Math.min(map.H/2-.8,e.z));if(!(e.jy>.5))push(e,e.r);
   e.yaw=turnTo(e.yaw,face,Math.min(1,dt*(pose==='run'?14:9)));
-  e.g.position.set(e.x,e.jy||0,e.z);e.g.rotation.y=e.yaw;e.g.scale.setScalar(1+e.fl*.8);
+  e.gy=map.heightAt(e.x,e.z);map.walk(e.wid||(e.wid='e'+(++wuid)),e.x,e.z,sp>.3&&!(e.jy>.5));e.g.position.set(e.x,e.gy+(e.jy||0),e.z);e.g.rotation.y=e.yaw;e.g.scale.setScalar(1+e.fl*.8);
   ud.update(dt,{mv:sp>.3,pose,pt,aim,dir:e.dsd,lod:d>26?2:d>15?1:0,jy:e.jy||0});
 }
 // ---- title-screen attract mode: a bot plays the game for you ----
@@ -213,15 +215,16 @@ function update(dt){
   if(P.dash>0){P.x+=P.dx*P.dash*3*dt;P.z+=P.dz*P.dash*3*dt;P.dash=Math.max(0,P.dash-dt*9)}
   P.x=Math.max(-map.W/2+1,Math.min(map.W/2-1,P.x));P.z=Math.max(-map.H/2+1,Math.min(map.H/2-1,P.z));push(P,.45);
   
-  P.gy=gm==='v5'?map.heightAt(P.x,P.z):0;
+  P.gy=map.heightAt(P.x,P.z);
+  map.walk('player',P.x,P.z,P.mv||P.roll>0);   // ripples when you walk on water
   P.aim=P.camYaw;
   P.cd-=dt;P.inv-=dt;cat.userData.setScope(P.scope&&isGunW()&&P.roll<=0);
   
   // Attack trigger is E (KeyE)
   if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
 
-  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<(gm==='v5'?map.heightAt(p.x,p.z):0)+.03||p.y>(gm==='v5'?24:7)||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
-    for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo)hud.hit(false);fx.hit(p,'#ffe066',8);fx.puff(p,e.g.userData.col||'#6f8f45',3);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
+  for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<map.heightAt(p.x,p.z)+.03||p.y>(gm==='v5'?24:16)||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
+    for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.gy||0)-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo)hud.hit(false);fx.hit(p,'#ffe066',8);fx.puff(p,e.g.userData.col||'#6f8f45',3);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
     if(!dead&&gm==='v5'&&mode5.bulletHit(p,b)){flesh=true;hud.hit(false);fx.hit(p,'#ffe066',8);dead=true}
     if(dead){if(!flesh&&b.life>0){fx.hit(p,'#fff3b0',5);fx.dust(p)}scene.remove(b.m);bullets.splice(i,1)}else fx.trail(p,b.vx,b.vz,b.col||'#ffd54a')}
   for(let i=ebul.length-1;i>=0;i--){const b=ebul[i];b.m.position.x+=b.vx*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r);
@@ -230,16 +233,17 @@ function update(dt){
   for(let i=0;i<enemies.length;i++)for(let j=i+1;j<enemies.length;j++){const a=enemies[i],b=enemies[j],dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz),m=(a.r+b.r)*.9;if(d<m&&d>0){const k=(m-d)/2/d;a.x-=dx*k;a.z-=dz*k;b.x+=dx*k;b.z+=dz*k}}
   for(let i=enemies.length-1;i>=0;i--){const e=enemies[i];if(e.hp>0)continue;fx.puff(new T.Vector3(e.x,.7,e.z),e.g.userData.col||'#6f8f45');scene.remove(e.g);enemies.splice(i,1);
     if(!demo){P.chain++;P.chainT=3.2;score+=10*Math.min(5,1+Math.floor(P.chain/3));kills++;hud.hit(true)}
-    if(Math.random()<(P.hp<=2?.2:.08)){const m=new T.Mesh(heartGeo,heartMat);m.position.set(e.x,.8,e.z);m.rotation.x=-.4;scene.add(m);pickups.push({m,x:e.x,z:e.z,t:0})}if(!demo)hudAll()}
-  for(let i=pickups.length-1;i>=0;i--){const k=pickups[i];k.t+=dt;k.m.position.y=.8+Math.sin(k.t*3)*.15;k.m.rotation.y=k.t*2;
+    if(Math.random()<(P.hp<=2?.2:.08)){const m=new T.Mesh(heartGeo,heartMat);const hy=map.heightAt(e.x,e.z);m.position.set(e.x,hy+.8,e.z);m.rotation.x=-.4;scene.add(m);pickups.push({m,x:e.x,z:e.z,t:0,hy})}if(!demo)hudAll()}
+  for(let i=pickups.length-1;i>=0;i--){const k=pickups[i];k.t+=dt;k.m.position.y=k.hy+.8+Math.sin(k.t*3)*.15;k.m.rotation.y=k.t*2;
     if(Math.hypot(P.x-k.x,P.z-k.z)<.9){if(P.hp<P.max)P.hp++;fx.hit(k.m.position,'#ff9db8',10);scene.remove(k.m);pickups.splice(i,1);hudAll()}}
   if(gm==='v5')mode5.update(dt);
 }
 // ---- 5v5 SPIKE RUSH: hooks the mode in js/5v5.js needs (it drives 9 AI cats; you play on the blue team)
-function leave5(){mode5&&mode5.stop();gm='wave';map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
+let wuid=0;
+function leave5(){mode5&&mode5.stop();gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
 function start5v5(){leave5();clearAll();gm='v5';
   if(!arena){arena=buildArena(11,atm.envMap);scene.add(arena.group);arena.setQuality(lastQ)}
-  forest.group.visible=false;arena.group.visible=true;map=arena;
+  forest.group.visible=false;arena.group.visible=true;map=arena;if(scene.fog){scene.fog.near=35;scene.fog.far=170}
   if(!mode5)mode5=mk5();
  P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
   hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
@@ -247,11 +251,11 @@ function start5v5(){leave5();clearAll();gm='v5';
   mode5.start();mode5.bots.forEach(b=>casts(b.cat))}
 function hurt5(n){if(P.inv>0||P.dead)return false;hud.hurt();P.hp-=n;P.inv=.12;P.shake=Math.max(P.shake,.35);hud.hp(Math.max(0,P.hp),P.max);
   if(P.hp<=0){P.hp=0;P.dead=true;mouse.l=false;P.scope=false;mode5.onPlayerDown()}return true}
-function resetPlayer(x,z,yaw){P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max)}
+function resetPlayer(x,z,yaw){arena&&arena.prime(x,z,60);P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max)}
 function hud5(){const S=mode5.state();hud.hp(P.hp,P.max);hud.wave(S.round);const s=$('#score');if(s)s.textContent=`${S.score.A} : ${S.score.B}`}
 function endMatch(){state='over';mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock();hud.show(false)}
 const mk5=()=>createMode5v5({scene,fx,map:arena,P,keys,W:arena.W,H:arena.H,bullets,los,push,start5v5,home:()=>enterTitle(),
-  toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,heightAt:(x,z)=>arena.heightAt(x,z),hud:hud5,cat:()=>cat,endMatch,
+  toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,heightAt:(x,z)=>arena.heightAt(x,z),walk:(id,x,z,mv)=>arena.walk(id,x,z,mv),ripple:(x,z,a)=>arena.ripple(x,z,a),hud:hud5,cat:()=>cat,endMatch,
   clearBullets:()=>{bullets.forEach(b=>scene.remove(b.m));bullets.length=0}});
 // ---- touch controls: only created on phones / tablets (see js/mobile.js); on PC this is a no-op
 const mobile=createMobile({P,keys,mouse,canPlay:()=>state==='play'&&!paused,tumble,pause:()=>setPaused(true),
@@ -275,7 +279,7 @@ setCat();enterTitle();
     const vy=state==='title'?P.viewYaw:P.camYaw,pit=(state==='title'?-.25:P.camPitch)+kk*.02;
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
     const px=P.x+rx*rightOffset,pz=P.z+rz*rightOffset;
-    const camX=px-dX*dist,camZ=pz-dZ*dist;let camY=P.gy+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+(gm==='v5'?map.heightAt(camX,camZ):0),camY);
+    const camX=px-dX*dist,camZ=pz-dZ*dist;let camY=P.gy+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+map.heightAt(camX,camZ),camY);
     cam.position.set(camX,camY,camZ);for(const o of map.obs){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
     cam.lookAt(P.x+dX*11,1+P.gy+dY*11,P.z+dZ*11);   // looks at the point the bullets converge on
     cam.rotation.z+=rnd(-sh,sh)*.02+(P.roll>0?Math.sin(P.roll*14)*.02:0);
