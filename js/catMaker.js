@@ -49,14 +49,16 @@ export function openMaker(cfg,h){
   const render=(keepScroll)=>{
     const old=el.querySelector('.gridw'),st=old&&keepScroll?old.scrollTop:0;
     const list=items(),title=cats().find(c=>c[0]===cat)[1];
-    el.innerHTML=`<div class="nmpill"><span>NAME</span><input id="nm" maxlength="8" value="${(cfg.name||'Ming').replace(/"/g,'&quot;')}"></div>
-    <div class="tools"><button class="rbtn blue" data-a="run" title="Run"><i class="bi ${run?'bi-stop-fill':'bi-play-fill'}"></i></button><button class="rbtn gold" data-a="shoot" title="Shoot"><i class="bi bi-bullseye"></i></button><span>Drag to spin</span></div>
+    el.innerHTML=`<div class="nmpill"><span>NAME</span><input id="nm" maxlength="8" value="${(cfg.name||'Ming').replace(/"/g,'&quot;')}" spellcheck="false"></div>
+    <div class="tools"><button class="btn round ${run?'red':'green'}" data-a="run" title="${run?'Stop':'Run'}"><i class="bi ${run?'bi-stop-fill':'bi-play-fill'}"></i></button><button class="btn round gold" data-a="shoot" title="Shoot"><i class="bi bi-bullseye"></i></button><span class="hint"><i class="bi bi-arrow-left-right"></i> Drag to rotate</span></div>
     <aside class="side">
       <div class="tabs" role="tablist">${TABS.map(t=>`<button role="tab" data-a="tab" data-v="${t[0]}" aria-selected="${t[0]===tab}" class="${t[0]===tab?'on':''}">${t[1]}</button>`).join('')}</div>
-      <div class="cats">${cats().map(c=>`<button class="cbtn" data-a="cat" data-v="${c[0]}" aria-pressed="${c[0]===cat}" title="${c[1]}"><i class="bi ${c[2]}"></i></button>`).join('')}</div>
-      <section class="pnl"><h3 class="ptitle">${title}</h3>
-        <div class="gridw">${list.map((it,i)=>`<button class="tile${it.sel?' on':''}${it.lab?' lab':''}" data-a="pick" data-v="${i}" title="${it.t}">${it.html}${it.lab?`<em>${it.lab}</em>`:''}</button>`).join('')}</div></section>
-      <div class="pfoot"><button class="pill red" data-a="cancel">Cancel<i><b class="bi bi-x-lg"></b></i></button><button class="pill purple" data-a="rand">Random<i><b class="bi bi-shuffle"></b></i></button><button class="pill green" data-a="done">Done<i><b class="bi bi-check-lg"></b></i></button></div>
+      <div class="mkbody">
+        <nav class="cats">${cats().map(c=>`<button class="cbtn" data-a="cat" data-v="${c[0]}" aria-pressed="${c[0]===cat}" title="${c[1]}"><i class="bi ${c[2]}"></i></button>`).join('')}</nav>
+        <section class="pnl"><header class="ptitle"><h3>${title}</h3><span>${list.length} options</span></header>
+          <div class="gridw">${list.map((it,i)=>`<button class="tile${it.sel?' on':''}${it.lab?' lab':''}" data-a="pick" data-v="${i}" title="${it.t}">${it.html}${it.lab?`<em>${it.lab}</em>`:''}</button>`).join('')}</div></section>
+      </div>
+      <div class="pfoot"><button class="btn red" data-a="cancel"><i class="bi bi-x-lg"></i>Cancel</button><button class="btn gold" data-a="rand"><i class="bi bi-shuffle"></i>Random</button><button class="btn green" data-a="done"><i class="bi bi-check-lg"></i>Done</button></div>
     </aside>`;
     const gw=el.querySelector('.gridw');if(gw)gw.scrollTop=st;
   };
