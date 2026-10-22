@@ -14,21 +14,27 @@ import {patchCat} from './js/enemies/playersAi.js';
 import {createMobile} from './js/mobile.js';
 import {renderPill} from './js/rank.js';
 
+// ---- loading screen (see index.html): real steps, each one painted before the heavy work starts
+const L=window.__load||{set(){},done(){}},tick=()=>new Promise(res=>requestAnimationFrame(()=>setTimeout(res,0)));
+L.set(.14,'Starting renderer…');await tick();
+
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
 const scene=new T.Scene();
-const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3();
+const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3(),fp=new T.Vector3();
 const atm=createAtmosphere(renderer,scene,cam);let curMode='';
 const hud=createHUD();
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
-[[1.7,.4],[1.25,.5]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
+[[1.9,.1],[1.35,.17],[.85,.12]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
 addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
 function resize(){renderer.setPixelRatio(prr());renderer.setSize(innerWidth,innerHeight);atm.resize(innerWidth,innerHeight,prr());cam.aspect=innerWidth/innerHeight;const f=cam.userData.off||0;f?cam.setViewOffset(innerWidth,innerHeight,innerWidth*f,0,innerWidth,innerHeight):cam.clearViewOffset();cam.updateProjectionMatrix()}
 function setView(f){cam.userData.off=f;resize()}resize();
+L.set(.26,'Growing the forest…');await tick();
 const forest=buildMap(7,atm.envMap);scene.add(forest.group);forest.prime(0,0,60);if(scene.fog){scene.fog.near=30;scene.fog.far=150}   // chunk-streamed hilly forest: build around the start, the rest streams in
 let map=forest,arena=null,mode5=null;const lastQ={};
+fx.setGround((x,z)=>map.heightAt(x,z));   // shells / embers / chips land on the real terrain (forest or arena)
 {const fq=forest.setQuality;forest.setQuality=q=>{Object.assign(lastQ,q);fq(q);arena&&arena.setQuality(q)}}   // graphics options also reach the 5v5 arena
-gfx=createSettings({atm,map,onResolution:resize});   // graphics options (presets + per-option, saved, applied live)
+gfx=createSettings({atm,map,onResolution:resize,getMobile:()=>{try{return mobile}catch(e){return null}}});   // `mobile` is created further down (touch layout editor lives in Settings > Controls)   // graphics options (presets + per-option, saved, applied live)
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
 let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0;
 let gm='wave',elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
@@ -41,27 +47,32 @@ const hs=new T.Shape();hs.moveTo(.25,.25);hs.bezierCurveTo(.25,.25,.2,0,0,0);hs.
 const heartGeo=new T.ExtrudeGeometry(hs,{depth:.25,bevelEnabled:true,bevelSize:.06,bevelThickness:.06,bevelSegments:3});heartGeo.translate(-.25,-.5,-.12);heartGeo.scale(.5,.5,.5);const heartMat=new T.MeshStandardMaterial({color:'#ff4d6d',roughness:.5,emissive:'#ff2a52',emissiveIntensity:.35});
 const casts=o=>o.traverse(m=>{if(m.isMesh){m.castShadow=true;m.receiveShadow=true}});
 const WP=()=>WEAPONS[P.wpn],isGunW=()=>WP().kind==='gun';
-function equipIdx(i){P.wpn=i;P.scope=false;cat.userData.equip(WEAPONS[i]);hud.weapon(i)}
-function setCat(){if(cat)scene.remove(cat);cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.equip(WP());hud.weapon(P.wpn)}
+// ---- ammo / reload: a gun whose stats have `mag` uses a magazine (R or the mobile R button reloads, an empty magazine reloads by itself); `reload` = seconds. No `mag` = unlimited ammo.
+const ammo=WEAPONS.map(w=>w.stats.mag||0),RL={t:0,dur:1};
+const hasMag=()=>isGunW()&&!!WP().stats.mag,refill=()=>{WEAPONS.forEach((w,i)=>ammo[i]=w.stats.mag||0);RL.t=0};
+function reload(){if(state!=='play'||paused||!hasMag()||RL.t>0||P.dead||P.frozen||ammo[P.wpn]>=WP().stats.mag)return;RL.t=RL.dur=WP().stats.reload||1.2;P.scope=false}
+const hudAmmo=()=>hasMag()?hud.ammo(ammo[P.wpn],WP().stats.mag,RL.t>0?1-RL.t/RL.dur:-1):hud.ammo(0,0,-1);
+function equipIdx(i){P.wpn=i;P.scope=false;RL.t=0;cat.userData.equip(WEAPONS[i]);hud.weapon(i);hudAmmo()}
+function setCat(){if(cat){cat.userData.dispose&&cat.userData.dispose();scene.remove(cat)}cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.fx=fx;cat.userData.equip(WP());hud.weapon(P.wpn)}
 function setWeapon(i){i=(i+WEAPONS.length)%WEAPONS.length;if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
-function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false;
-  enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;e.hbT=2.5;e.fl=.2;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;fx.hit(new T.Vector3(e.x,.8,e.z),'#fff3b0',9);hitAny=true}});
+function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false,kill=false;
+  enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;if(e.hp<=0)kill=true;e.hbT=2.5;e.fl=.2;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;const hp_=new T.Vector3(e.x,(e.gy||0)+.9,e.z);fx.slashHit(hp_,P.camYaw,d,st.slashColor||'#ffe8a8',e.hp<=0?1.35:1);hitAny=true}});
   for(let i=ebul.length-1;i>=0;i--){const b=ebul[i],p=b.m.position;if(Math.hypot(p.x-P.x,p.z-P.z)<Math.min(2.4,st.range)){fx.hit(p,'#ffd8a0',5);scene.remove(b.m);ebul.splice(i,1)}}
-  if(gm==='v5'&&mode5.playerMelee(fx_,fz_))hitAny=true;
-  P.shake=Math.max(P.shake,hitAny?.38:.12);if(hitAny){P.hs=.07;hud.hit(false)}}
+  if(gm==='v5'){const r=mode5.playerMelee(fx_,fz_,d,st.slashColor||'#ffe8a8');if(r){hitAny=true;if(r===2)kill=true}}
+  P.shake=Math.max(P.shake,hitAny?(kill?.75:.5):.12);if(hitAny){P.hs=Math.max(P.hs,kill?.15:.1);hud.hit(false)}}   // melee hit: spark + screenshake + a short hit-lag freeze
 function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>0||P.dead||P.frozen)return;let f=P.fwd,s=P.side;if(!f&&!s)f=1;
   const fxv=Math.sin(P.camYaw),fzv=Math.cos(P.camYaw),rx=-Math.cos(P.camYaw),rz=Math.sin(P.camYaw);let dx=fxv*f+rx*s,dz=fzv*f+rz*s;const l=Math.hypot(dx,dz)||1;
-  if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;map.ripple(P.x,P.z,1.8);P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.puff(new T.Vector3(P.x,.2,P.z),'#ffffff',5)}}
+  if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;map.ripple(P.x,P.z,1.8);P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.puff(new T.Vector3(P.x,P.gy+.2,P.z),'#ffffff',5);fx.dash(fp.set(P.x,P.gy+.12,P.z),P.rdx,P.rdz)}}
 function hudAll(){hud.hp(P.hp,P.max);hud.wave(wave);hud.foes(WV.left+enemies.length,WV.total);hud.score(score,kills,best)}
 function beginWave(w){wave=w;WV.total=WV.left=quota(w);WV.phase='intro';WV.t=2.6;WV.spawnT=.4;P.chain=0;hud.banner(`WAVE ${w}`,`${WV.total} enemies`);hudAll()}
 function lockPtr(){try{const r=$('#c').requestPointerLock&&$('#c').requestPointerLock();r&&r.catch&&r.catch(()=>{})}catch(e){}}
 function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
 function clearAll(){[enemies,pickups].forEach(a=>{a.forEach(e=>scene.remove(e.g||e.m));a.length=0});[bullets,ebul].forEach(a=>{a.forEach(b=>scene.remove(b.m));a.length=0})}
 function push(o,rad){for(const r of map.obs){const dx=o.x-r.x,dz=o.z-r.z,d=Math.hypot(dx,dz),m=r.r+rad;if(d<m&&d>0){o.x=r.x+dx/d*m;o.z=r.z+dz/d*m}}}
-function enterTitle(){leave5();clearAll();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
+function enterTitle(){leave5();clearAll();refill();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
   P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.dash=0;wave=3;spawnT=.6;bot.t=0;bot.wt=0;hud.show(false);
   equipIdx(0);setView(-.17);$('#over').hidden=true;$('#title').hidden=false;$('#bestT').textContent=best;renderPill($('#rkpill'))}   // rank card on the title (refreshes after every ranked match)
-function start(){leave5();clearAll();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
+function start(){leave5();clearAll();refill();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
 function spawn(){const k=Math.random()<Math.min(.55,.22+wave*.08)?'ranged':'melee';let x,z,n=0;
   do{const a=rnd(0,6.283),d=rnd(13,18);x=P.x+Math.cos(a)*d;z=P.z+Math.sin(a)*d}while(n++<25&&(Math.abs(x)>map.W/2-2||Math.abs(z)>map.H/2-2||map.obs.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+.9)));
   x=Math.max(-map.W/2+2,Math.min(map.W/2-2,x));z=Math.max(-map.H/2+2,Math.min(map.H/2-2,z));const g=buildEnemy(k);casts(g);scene.add(g);const hp=Math.ceil(STATS[k].hp*(1+(wave-1)*.15));
@@ -71,16 +82,18 @@ function spawn(){const k=Math.random()<Math.min(.55,.22+wave*.08)?'ranged':'mele
 function hurt(){if(P.inv>0)return;if(state==='title'){P.inv=.8;P.shake=Math.max(P.shake,.15);return}
   hud.hurt();P.hp--;P.inv=1.2;P.blink=1.2;P.shake=.4;hudAll();if(P.hp<=0){state='over';mouse.l=false;document.exitPointerLock&&document.exitPointerLock();best=Math.max(best,score);localStorage.setItem('sad.best',best);hud.show(false);$('#over').hidden=false;
   $('#sW').textContent=wave;$('#sK').textContent=kills;$('#sS').textContent=score;$('#best').textContent='Best: '+best}}
-function shoot(){const w=WP(),st=w.stats;P.cd=st.cd;cat.userData.kick(st.kick||1);const o=cat.userData.muzzle(tmp);const sc=cat.userData.scope();
+function shoot(){const w=WP(),st=w.stats;
+  if(st.mag&&state!=='title'){if(RL.t>0)return;if(ammo[P.wpn]<=0){reload();return}ammo[P.wpn]--;if(ammo[P.wpn]<=0)reload()}   // the title-screen demo has unlimited ammo
+  P.cd=st.cd;cat.userData.kick(st.kick||1);const o=cat.userData.muzzle(tmp);const sc=cat.userData.scope();
   // aim at the point under the crosshair (11 units ahead on the view line), so bullets follow the crosshair up and down too
   const cp=Math.cos(P.camPitch),tx=P.x+Math.sin(P.camYaw)*cp*11,ty=1+P.gy+Math.sin(P.camPitch)*11,tz=P.z+Math.cos(P.camYaw)*cp*11;
   let ax=tx-o.x,ay=ty-o.y,az=tz-o.z;const al=Math.hypot(ax,ay,az)||1;ax/=al;ay/=al;az/=al;
-  const baseYaw=Math.atan2(ax,az),baseEl=Math.asin(ay),sp=st.speed;
+  const baseYaw=Math.atan2(ax,az),baseEl=Math.asin(ay),sp=st.speed,fast=sp>=30;   // fast guns fire slim needle rounds with a long streak tail + a line of light behind them
   for(let n=0;n<(st.pellets||1);n++){
-    const k=st.spread*(1-sc*(st.scopeSteady??.7)),yaw=baseYaw+(Math.random()-.5)*k,el=baseEl+(Math.random()-.5)*k*.5,ce=Math.cos(el),m=fx.bullet(st.color);
-    m.position.copy(o);m.rotation.order='YXZ';m.rotation.set(-el,yaw,0);if(st.size)m.scale.setScalar(st.size);scene.add(m);
-    bullets.push({m,vx:Math.sin(yaw)*ce*sp,vy:Math.sin(el)*sp,vz:Math.cos(yaw)*ce*sp,life:st.life||1,dmg:st.dmg,pierce:st.pierce||0,hit:new Set(),col:st.color})}
-  fx.muzzle(o,baseYaw);P.shake=Math.max(P.shake,st.shake||.1);P.kick=Math.max(.2,(st.kick||1)*.5);P.dx=-Math.sin(P.camYaw);P.dz=-Math.cos(P.camYaw);P.dash=st.push||1}
+    const k=st.spread*(1-sc*(st.scopeSteady??.7)),yaw=baseYaw+(Math.random()-.5)*k,el=baseEl+(Math.random()-.5)*k*.5,ce=Math.cos(el),m=fx.bullet(st.color,sp);
+    m.position.copy(o);m.rotation.order='YXZ';m.rotation.set(-el,yaw,0);if(fast)m.scale.setScalar(.8);else if(st.size)m.scale.setScalar(st.size);scene.add(m);
+    bullets.push({m,vx:Math.sin(yaw)*ce*sp,vy:Math.sin(el)*sp,vz:Math.cos(yaw)*ce*sp,life:st.life||1,dmg:st.dmg,pierce:st.pierce||0,hit:new Set(),col:st.color,fast,after:!!st.after})}
+  fx.muzzle(o,baseYaw,st,P.gy);P.shake=Math.max(P.shake,st.shake||.1);P.kick=Math.max(.2,(st.kick||1)*.5);P.dx=-Math.sin(P.camYaw);P.dz=-Math.cos(P.camYaw);P.dash=st.push||1}
 // clear line between two points (trees block sight and bullets)
 function los(ax,az,bx,bz){const dx=bx-ax,dz=bz-az,l2=dx*dx+dz*dz||1;
   {const ya=map.heightAt(ax,az)+1.2,yb=map.heightAt(bx,bz)+1.2,n=Math.ceil(Math.sqrt(l2)/1.5);   // hills block sight
@@ -184,7 +197,7 @@ function botInput(dt){
 function update(dt){
   const demo=state==='title';
   if(!(state==='play'||demo)||paused)return;
-  if(P.hs>0){P.hs-=dt;dt*=.12}
+  if(P.hs>0){P.hs-=dt;dt*=.03}   // hit-lag: the world nearly freezes for a moment
   if(demo){spawnT-=dt;if(spawnT<=0&&enemies.length<5){spawn();spawnT=2.2}}
   else if(gm!=='v5'){elapsed+=dt;
     if(WV.phase==='intro'){WV.t-=dt;if(WV.t<=0)WV.phase='fight'}
@@ -209,7 +222,8 @@ function update(dt){
   P.fwd=fwd;P.side=side;P.rel=fwd<0?-1:1;cat.userData.move.f=fwd;cat.userData.move.s=side;
   P.mv=(fwd!==0||side!==0)&&P.roll<=0;P.rcd=Math.max(0,P.rcd-dt);if(demo&&inp.roll)tumble();
   const sp=(P.scope&&isGunW()?3.2:6.5)*(WP().stats.move||1);
-  if(P.roll>0){const u=P.roll/.55,v=11*(.25+.75*u);P.x+=P.rdx*v*dt;P.z+=P.rdz*v*dt;P.roll=Math.max(0,P.roll-dt)}
+  if(P.roll>0){const u=P.roll/.55,v=11*(.25+.75*u);P.x+=P.rdx*v*dt;P.z+=P.rdz*v*dt;P.roll=Math.max(0,P.roll-dt);
+    fp.set(P.x,P.gy+.1,P.z);fx.dashTrail(fp,P.rdx,P.rdz,u);if(P.roll<=0)fx.land(fp,P.rdx,P.rdz)}
   else if(P.mv){const fxv=Math.sin(P.camYaw),fzv=Math.cos(P.camYaw),rx=-Math.cos(P.camYaw),rz=Math.sin(P.camYaw);
     const dx=fxv*fwd+rx*side,dz=fzv*fwd+rz*side,len=Math.hypot(dx,dz);if(len>0){P.x+=dx/len*sp*dt;P.z+=dz/len*sp*dt}}
   if(P.dash>0){P.x+=P.dx*P.dash*3*dt;P.z+=P.dz*P.dash*3*dt;P.dash=Math.max(0,P.dash-dt*9)}
@@ -218,15 +232,16 @@ function update(dt){
   P.gy=map.heightAt(P.x,P.z);
   map.walk('player',P.x,P.z,P.mv||P.roll>0);   // ripples when you walk on water
   P.aim=P.camYaw;
+  if(RL.t>0){RL.t-=dt;if(RL.t<=0){RL.t=0;ammo[P.wpn]=WP().stats.mag||0}}
   P.cd-=dt;P.inv-=dt;cat.userData.setScope(P.scope&&isGunW()&&P.roll<=0);
   
   // Attack trigger is E (KeyE)
-  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash}}
+  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash;if(st.dash)fx.lunge(fp.set(P.x,P.gy+.1,P.z),P.dx,P.dz)}}
 
   for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<map.heightAt(p.x,p.z)+.03||p.y>(gm==='v5'?24:16)||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r),flesh=false;
-    for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.gy||0)-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo)hud.hit(false);fx.hit(p,'#ffe066',8);fx.puff(p,e.g.userData.col||'#6f8f45',3);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
-    if(!dead&&gm==='v5'&&mode5.bulletHit(p,b)){flesh=true;hud.hit(false);fx.hit(p,'#ffe066',8);dead=true}
-    if(dead){if(!flesh&&b.life>0){fx.hit(p,'#fff3b0',5);fx.dust(p)}scene.remove(b.m);bullets.splice(i,1)}else fx.trail(p,b.vx,b.vz,b.col||'#ffd54a')}
+    for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.gy||0)-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo)hud.hit(false);fx.splat(p,b.vx,b.vz);if(b.after)fx.shock(p,b.col);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
+    if(!dead&&gm==='v5'&&mode5.bulletHit(p,b)){flesh=true;hud.hit(false);fx.splat(p,b.vx,b.vz);dead=true}
+    if(dead){if(!flesh&&b.life>0){fx.hit(p,'#fff3b0',5);fx.dust(p);if(b.after)fx.shock(p,b.col)}scene.remove(b.m);bullets.splice(i,1)}else fx.trail(p,b.vx,b.vz,b.col||'#ffd54a',b.fast?{vy:b.vy||0,dt,fast:true,after:b.after}:undefined)}
   for(let i=ebul.length-1;i>=0;i--){const b=ebul[i];b.m.position.x+=b.vx*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||map.obs.some(r=>Math.hypot(p.x-r.x,p.z-r.z)<r.r);
     if(Math.hypot(p.x-P.x,p.z-P.z)<.55){hurt();dead=true;fx.hit(p,'#ff7a3c',6)}else if(dead&&b.life>0){fx.hit(p,'#ffb070',4);fx.dust(p)}if(dead){scene.remove(b.m);ebul.splice(i,1)}else fx.trail(p,b.vx,b.vz,'#ff7a3c')}
   enemies.forEach(e=>{ai(e,dt);e.hbT=Math.max(0,e.hbT-dt)});
@@ -241,8 +256,17 @@ function update(dt){
 // ---- 5v5 SPIKE RUSH: hooks the mode in js/5v5.js needs (it drives 9 AI cats; you play on the blue team)
 let wuid=0;
 function leave5(){mode5&&mode5.stop();gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
-function start5v5(){leave5();clearAll();gm='v5';
-  if(!arena){arena=buildArena(11,atm.envMap);scene.add(arena.group);arena.setQuality(lastQ)}
+function ensureArena(){if(!arena){arena=buildArena(11,atm.envMap);scene.add(arena.group);arena.setQuality(lastQ);arena.group.visible=false}}
+// compile every shader / upload every geometry once, behind the loading screen, so nothing hitches the first time it appears
+function warm(){try{
+  const g=new T.Group();g.position.set(0,-80,0);
+  WEAPONS.forEach(w=>{const b=w.build();g.add(b.group);if(b.off)g.add(b.off)});
+  ['melee','ranged'].forEach(k=>{const e=buildEnemy(k);casts(e);g.add(e)});scene.add(g);
+  const fv=forest.group.visible;renderer.compile(scene,cam);
+  if(arena){const av=arena.group.visible;arena.group.visible=true;forest.group.visible=false;renderer.compile(scene,cam);renderer.render(scene,cam);arena.group.visible=av;forest.group.visible=fv}else renderer.render(scene,cam);
+  scene.remove(g)}catch(e){console.warn('warm-up skipped',e)}}
+function start5v5(){leave5();clearAll();refill();gm='v5';
+  ensureArena();
   forest.group.visible=false;arena.group.visible=true;map=arena;if(scene.fog){scene.fog.near=35;scene.fog.far=170}
   if(!mode5)mode5=mk5();
  P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
@@ -251,7 +275,7 @@ function start5v5(){leave5();clearAll();gm='v5';
   mode5.start();mode5.bots.forEach(b=>casts(b.cat))}
 function hurt5(n){if(P.inv>0||P.dead)return false;hud.hurt();P.hp-=n;P.inv=.12;P.shake=Math.max(P.shake,.35);hud.hp(Math.max(0,P.hp),P.max);
   if(P.hp<=0){P.hp=0;P.dead=true;mouse.l=false;P.scope=false;mode5.onPlayerDown()}return true}
-function resetPlayer(x,z,yaw){arena&&arena.prime(x,z,60);P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max)}
+function resetPlayer(x,z,yaw){refill();arena&&arena.prime(x,z,60);P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max)}
 function hud5(){const S=mode5.state();hud.hp(P.hp,P.max);hud.wave(S.round);const s=$('#score');if(s)s.textContent=`${S.score.A} : ${S.score.B}`}
 function endMatch(){state='over';mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock();hud.show(false)}
 const mk5=()=>createMode5v5({scene,fx,map:arena,P,keys,W:arena.W,H:arena.H,bullets,los,push,start5v5,home:()=>enterTitle(),
@@ -259,11 +283,19 @@ const mk5=()=>createMode5v5({scene,fx,map:arena,P,keys,W:arena.W,H:arena.H,bulle
   clearBullets:()=>{bullets.forEach(b=>scene.remove(b.m));bullets.length=0}});
 // ---- touch controls: only created on phones / tablets (see js/mobile.js); on PC this is a no-op
 const mobile=createMobile({P,keys,mouse,canPlay:()=>state==='play'&&!paused,tumble,pause:()=>setPaused(true),
-  weapon:d=>setWeapon(P.wpn+d),wname:()=>WP().name,is5v5:()=>gm==='v5',
+  weapon:d=>setWeapon(P.wpn+d),wname:()=>WP().name,reload,hasAmmo:hasMag,is5v5:()=>gm==='v5',
   scope:()=>{if(isGunW()&&WP().stats.zoom&&P.roll<=0)P.scope=!P.scope}});
 let last=performance.now();
+L.set(.5,'Dressing the cat…');await tick();
 setCat();enterTitle();
-(function loop(now){requestAnimationFrame(loop);const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();update(dt);fx.update(dt);
+L.set(.62,'Building the 5v5 arena…');await tick();ensureArena();
+L.set(.8,'Compiling shaders…');await tick();warm();
+L.set(.92,'Loading fonts & images…');
+await Promise.all([document.fonts&&document.fonts.ready,...[...document.images].map(i=>i.decode?i.decode().catch(()=>{}):0)]);
+L.set(.98,'Almost there…');await tick();
+let lf=0;
+(function loop(now){requestAnimationFrame(loop);if(lf<5&&++lf===5)L.done();   // the loading screen leaves once the game has really drawn a few frames
+const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();const lag=P.hs>0&&!paused;update(dt);fx.update(lag?dt*.3:dt);   // sparks keep moving in slow motion during the freeze
   const mode=state==='maker'?'maker':'play';if(mode!==curMode){curMode=mode;atm.setMode(mode)}
   if(state!=='maker')map.update(clock,P,{sun:atm.sunDir,sky:atm.fogColor});atm.update(dt,clock,P);
   if(state!=='play')hud.scope(0);
@@ -271,27 +303,27 @@ setCat();enterTitle();
     cat.position.set(P.x,P.gy,P.z);
     cat.rotation.y = P.camYaw;
     P.blink=Math.max(0,P.blink-dt);cat.visible=!P.dead&&(state==='title'||P.blink<=0||Math.floor(clock*20)%2===0);
-    cat.userData.setAim(P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.holster(false);cat.userData.update(paused?0:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
+    cat.userData.setAim(P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.holster(false);cat.userData.update(paused?0:lag?dt*.06:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
     P.shake=Math.max(0,P.shake-dt*1.2);const sh=P.shake*P.shake*1.2;
     
     const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),dist=(state==='title'?4.8:lerp2(P.camDist,1.7,aw))+kk*.12,rightOffset=state==='title'?.5:lerp2(1.4,.8,aw);
-    const targetFov=lerp2(70,WP().stats.zoom||40,aw)+kk*2;if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
+    const targetFov=lerp2(gfx.get().fov||70,WP().stats.zoom||40,aw)+kk*2;if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
     const vy=state==='title'?P.viewYaw:P.camYaw,pit=(state==='title'?-.25:P.camPitch)+kk*.02;
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
     const px=P.x+rx*rightOffset,pz=P.z+rz*rightOffset;
-    const camX=px-dX*dist,camZ=pz-dZ*dist;let camY=P.gy+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+map.heightAt(camX,camZ),camY);
+    const camX=px-dX*dist+rx*rnd(-sh,sh)*.7,camZ=pz-dZ*dist+rz*rnd(-sh,sh)*.7;let camY=P.gy+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+map.heightAt(camX,camZ),camY);
     cam.position.set(camX,camY,camZ);for(const o of map.obs){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
     cam.lookAt(P.x+dX*11,1+P.gy+dY*11,P.z+dZ*11);   // looks at the point the bullets converge on
     cam.rotation.z+=rnd(-sh,sh)*.02+(P.roll>0?Math.sin(P.roll*14)*.02:0);
-    if(state==='play'){cam.updateMatrixWorld();hud.scope(aw);hud.crosshair(7+kk*34+(P.mv?3:0)+(P.scope?-3:0)+P.shake*10,!paused);hud.tumble(1-P.rcd/.95);
+    if(state==='play'){cam.updateMatrixWorld();hudAmmo();hud.scope(aw);hud.crosshair(7+kk*34+(P.mv?3:0)+(P.scope?-3:0)+P.shake*10,!paused);hud.tumble(1-P.rcd/.95);
       hud.combo(Math.min(5,1+Math.floor(P.chain/3)),P.chain,P.chainT/3.2);hud.bars(enemies,cam,clock);hud.radar(P,enemies,pickups,map,P.camYaw)}
   }
   else{const mk=state==='maker';let mv=false;
     if(mk&&run){ang+=dt*3;cat.position.set(Math.cos(ang)*.9,0,3+Math.sin(ang)*.9);cat.rotation.y=Math.atan2(-Math.sin(ang),Math.cos(ang));mv=true}
     else{cat.position.set(0,0,3);if(mk){if(!spinHeld){spin=Math.atan2(Math.sin(spin),Math.cos(spin));spin-=spin*Math.min(1,dt*4)}cat.rotation.y=spin}else cat.rotation.y=Math.sin(clock*.7)*.6}
-    cat.visible=true;cat.userData.holster(performance.now()>gunUntil);cat.userData.update(dt,mv,1);if(mk){if(cam.fov!==38){cam.fov=38;cam.updateProjectionMatrix()}cam.position.set(0,1.0,6.0);cam.lookAt(0,.74,3)}else{cam.position.set(0,2.4,8);cam.lookAt(0,1,3)}}
+    cat.visible=true;const shooting=performance.now()<=gunUntil;cat.userData.setAim(0,shooting);cat.userData.setScope(false);cat.userData.move.f=mv?1:0;cat.userData.move.s=0;cat.userData.holster(!shooting);cat.userData.update(dt,mv,1);if(mk){if(cam.fov!==38){cam.fov=38;cam.updateProjectionMatrix()}cam.position.set(0,1.0,6.0);cam.lookAt(0,.74,3)}else{cam.position.set(0,2.4,8);cam.lookAt(0,1,3)}}
   atm.render()})(last);
-addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='play'&&!paused)setPaused(true);else if(e.code==='KeyP'&&state==='play')setPaused(!paused);if(e.code==='KeyR'&&state==='over')(gm==='v5'?start5v5():start());if(e.code==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(e.code))setWeapon(+e.code[5]-1);if(e.code==='Space'){e.preventDefault();tumble()}});addEventListener('keyup',e=>keys[e.code]=false);
+addEventListener('keydown',e=>{keys[e.code]=true;if(e.code==='Escape'&&state==='play'&&!paused)setPaused(true);else if(e.code==='KeyP'&&state==='play')setPaused(!paused);if(e.code==='KeyR'&&state==='play')reload();if(e.code==='KeyR'&&state==='over')(gm==='v5'?start5v5():start());if(e.code==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(e.code))setWeapon(+e.code[5]-1);if(e.code==='Space'){e.preventDefault();tumble()}});addEventListener('keyup',e=>keys[e.code]=false);
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
 addEventListener('mousedown',e=>{if(state!=='play')return;
@@ -304,7 +336,10 @@ document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockEleme
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('pointermove',e=>{if(state==='maker'&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
 $('#play').onclick=start;$('#play5').onclick=start5v5;$('#again').onclick=start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
-$('#make').onclick=()=>{clearAll();P.x=0;P.z=0;backup=JSON.stringify(cfg);$('#title').hidden=true;state='maker';spin=0;spinHeld=false;run=false;setView(.17);map.group.visible=false;stage.visible=true;document.body.classList.add('mk');
+$('#make').onclick=()=>{clearAll();
+  // the title screen is a live demo (a bot aims, strafes, rolls and swaps guns): wipe all of that and start from a fresh idle cat
+  mouse.l=false;P.x=0;P.z=0;P.wpn=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.roll=0;P.rcd=0;P.dash=0;P.kick=0;P.scope=false;P.mv=false;P.fwd=0;P.side=0;P.rel=1;P.blink=0;P.hs=0;P.inv=0;P.dead=false;P.frozen=false;bot.t=0;bot.wt=0;
+  setCat();backup=JSON.stringify(cfg);$('#title').hidden=true;state='maker';spin=0;spinHeld=false;run=false;setView(.17);map.group.visible=false;stage.visible=true;document.body.classList.add('mk');
   const close=()=>{state='title';run=false;setView(-.17);map.group.visible=true;stage.visible=false;document.body.classList.remove('mk');$('#title').hidden=false};
   openMaker(cfg,{change:c=>{cfg=c;setCat()},run:v=>run=v,shoot:()=>{gunUntil=performance.now()+900;cat.userData.kick();fx.muzzle(cat.userData.muzzle(tmp),cat.rotation.y)},
     done:()=>{localStorage.setItem('sad.cat',JSON.stringify(cfg));close()},cancel:()=>{cfg=JSON.parse(backup);setCat();close()}})};
