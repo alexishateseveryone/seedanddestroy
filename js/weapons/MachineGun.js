@@ -3,7 +3,7 @@ import * as T from 'three';
 import {side,lathe,tube,mk,metal,matte,ring,muzzleTip} from './proc.js';
 export default {
   id:'machinegun',name:'Machine Gun',kind:'gun',handling:'lmg',lean:-.07,fore:[.62,-.1],
-  stats:{cd:.065,dmg:1,spread:.13,speed:28,auto:true,kick:.35,shake:.14,push:.25,zoom:52,color:'#ffb347',move:.78,scopeSteady:.4},
+  stats:{cd:.065,dmg:1,spread:.13,speed:28,auto:true,kick:.35,shake:.14,push:.25,zoom:52,color:'#ffb347',move:.78,scopeSteady:.4,mag:50, reload:1.1},
   build(){
     const g=new T.Group(),steel=metal('#3a3f48'),dark=matte('#24272e',.6),od=matte('#4a5a3a',.7),brass=metal('#d9b24a',.3,.7),wood=matte('#7a4a22',.65);
     mk(side([[-.18,.12],[.2,.14],[.55,.12],[.6,.08],[.6,-.08],[.2,-.1],[-.18,-.09]],.14,{smooth:3}),steel,g);                 // receiver
