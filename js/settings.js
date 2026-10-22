@@ -1,4 +1,6 @@
-// Graphics settings: presets (Low / Medium / High / Ultra) + per-option control, saved in localStorage, applied live.
+// Settings: two tabs.
+//   Controls : touch button size / look speed / "move buttons" layout editor (phones), or the keyboard + mouse reference (PC)
+//   Graphics : presets (Low / Medium / High / Ultra) + per-option control, saved in localStorage, applied live.
 // Also an optional FPS counter and an "auto lower quality when slow" safety net.
 const KEY='sad.gfx';
 export const PRESETS={
@@ -18,43 +20,91 @@ const ROWS=[
   ['Ground detail','detail',[[0,'Low'],[1,'High']],'Ground shader and bump'],
   ['Wind animation','wind',[[0,'Off'],[1,'On']],'Swaying trees and grass'],
   ['Ambient particles','particles',[[0,'Off'],[1,'On']],'Fireflies and pollen']];
+const KEYS=[['W A S D','Move'],['Mouse / Arrows','Look'],['LMB / E','Shoot / slash'],['RMB','Scope'],['Space','Tumble'],['R','Reload'],['1-8 / Wheel','Weapons'],['F (hold)','Plant / defuse'],['Esc / P','Pause'],['G','Settings']];
+const ICO={
+  pad:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8h12a4 4 0 0 1 4 4.5l-.7 4a2.3 2.3 0 0 1-4 1.2L15.5 16h-7l-1.8 1.7a2.3 2.3 0 0 1-4-1.2l-.7-4A4 4 0 0 1 6 8z"/><path d="M7.5 10.5v3M6 12h3"/><circle cx="16" cy="11.2" r=".8" fill="currentColor"/><circle cx="18" cy="13" r=".8" fill="currentColor"/></svg>',
+  gfx:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2.5"/><path d="M8 21h8M12 17v4"/></svg>',
+  move:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>',
+  reset:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M3.5 3.5v5h5"/></svg>'};
 const same=(a,b)=>ROWS.every(([,k])=>Math.abs(a[k]-b[k])<1e-6);
 
-export function createSettings({atm,map,onResolution,root=document.body}){
-  let st={preset:'medium',q:{...PRESETS.medium},fps:false,auto:true};
+export function createSettings({atm,map,onResolution,getMobile=()=>null,root=document.body}){
+  let st={preset:'medium',q:{...PRESETS.medium},fps:false,auto:true,blur:1,fov:70},tab='gfx';   // blur 0..3 (Off/Low/Medium/High) and fov are personal options: presets never change them
   try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&j.q)st={...st,...j,q:{...PRESETS.medium,...j.q}}}catch(e){}
-  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({preset:st.preset,q:st.q,fps:st.fps,auto:st.auto,blur:st.blur,fov:st.fov}))}catch(e){}};
   const presetOf=q=>ORDER.find(n=>same(PRESETS[n],q))||'custom';
+  const mob=()=>{const m=getMobile();return m&&m.active?m:null};
   // ---- apply
   const pr=()=>Math.max(.4,Math.min(2,Math.min(devicePixelRatio||1,1.5)*st.q.scale));
-  const apply=()=>{const q=st.q;atm.setQuality({bloom:!!q.bloom,grade:!!q.grade,aa:!!q.aa,shadows:q.shadows,clouds:!!q.clouds});
+  const apply=()=>{const q=st.q;atm.setQuality({bloom:!!q.bloom,grade:!!q.grade,aa:!!q.aa,shadows:q.shadows,clouds:!!q.clouds,blur:st.blur});
     map.setQuality({grass:q.grass,detail:!!q.detail,wind:!!q.wind,particles:!!q.particles});onResolution&&onResolution();fpsEl.style.display=st.fps?'block':'none';settle=4};
   // ---- ui
+  const css=document.createElement('style');css.textContent=`
+  #gfx .gtabs{display:flex;gap:8px;margin:2px 0 12px}
+  #gfx .gtabs button{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px 10px;border-radius:14px;border:3px solid #00000022;background:#0000000d;color:inherit;font:800 15px 'Baloo 2',sans-serif;cursor:pointer}
+  #gfx .gtabs button.on{background:var(--lemon,#ffd54a);border-color:#2b2150}
+  #gfx .gtabs svg,#gfx .seg svg{width:20px;height:20px;flex:none}
+  #gfx .seg button.ic{display:inline-flex;align-items:center;gap:6px}
+  #gfx .gkeys{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;text-align:left;font:700 14px 'Baloo 2',sans-serif}
+  #gfx .gkeys div{display:flex;align-items:center;gap:8px;justify-content:space-between;background:#0000000a;border-radius:10px;padding:4px 10px}
+  #gfx .gkeys kbd{white-space:nowrap}
+  #gfx .fovr{display:flex;align-items:center;gap:10px;min-width:210px}
+  #gfx .fovr input{flex:1;min-width:120px;accent-color:#2b2150;cursor:pointer}
+  #gfx .fovr b{min-width:42px;text-align:right;font:800 15px 'Baloo 2',sans-serif}
+  #gfx [hidden]{display:none!important}`;
+  document.head.appendChild(css);
   const el=document.createElement('div');el.id='gfx';el.hidden=true;
-  el.innerHTML=`<div class="card gfxcard"><h2>Graphics</h2>
-    <div class="gpre" id="gPre">${ORDER.map(n=>`<button data-p="${n}">${NAMES[n]}</button>`).join('')}<button data-p="custom" disabled>Custom</button></div>
-    <div class="grows">${ROWS.map(([name,k,opts,hint])=>`<div class="grow" title="${hint}"><span>${name}<small>${hint}</small></span><div class="seg" data-k="${k}">${opts.map(([v,t])=>`<button data-v="${v}">${t}</button>`).join('')}</div></div>`).join('')}
-      <div class="grow"><span>Show FPS<small>Frame rate counter</small></span><div class="seg" data-x="fps">${[[0,'Off'],[1,'On']].map(([v,t])=>`<button data-v="${v}">${t}</button>`).join('')}</div></div>
-      <div class="grow"><span>Auto-lower when slow<small>Steps the preset down if the game lags</small></span><div class="seg" data-x="auto">${[[0,'Off'],[1,'On']].map(([v,t])=>`<button data-v="${v}">${t}</button>`).join('')}</div></div></div>
+  const seg=(attr,opts)=>`<div class="seg" ${attr}>${opts.map(([v,t])=>`<button data-v="${v}">${t}</button>`).join('')}</div>`;
+  el.innerHTML=`<div class="card gfxcard"><h2>Settings</h2>
+    <div class="gtabs"><button data-tab="ctl">${ICO.pad}<span>Controls</span></button><button data-tab="gfx">${ICO.gfx}<span>Graphics</span></button></div>
+    <div id="pCtl" hidden>
+      <div class="grows" id="ctlM">
+        <div class="grow"><span>Button size<small>Bigger buttons are easier to hit</small></span>${seg('data-c="scale"',[[.8,'S'],[1,'M'],[1.2,'L'],[1.4,'XL']])}</div>
+        <div class="grow"><span>Look speed<small>How fast dragging turns the camera</small></span>${seg('data-c="sens"',[[.6,'Slow'],[1,'Normal'],[1.5,'Fast'],[2,'Max']])}</div>
+        <div class="grow"><span>Button layout<small>Drag every button where your thumbs like it</small></span>
+          <div class="seg"><button class="ic" data-act="edit" title="Move buttons">${ICO.move}<span>Move</span></button><button class="ic" data-act="reset" title="Reset layout">${ICO.reset}<span>Reset</span></button></div></div>
+      </div>
+      <div class="gkeys" id="ctlK">${KEYS.map(([k,t])=>`<div><span>${t}</span><kbd>${k}</kbd></div>`).join('')}</div>
+    </div>
+    <div id="pGfx">
+      <div class="gpre" id="gPre">${ORDER.map(n=>`<button data-p="${n}">${NAMES[n]}</button>`).join('')}<button data-p="custom" disabled>Custom</button></div>
+      <div class="grows">${ROWS.map(([name,k,opts,hint])=>`<div class="grow" title="${hint}"><span>${name}<small>${hint}</small></span>${seg(`data-k="${k}"`,opts)}</div>`).join('')}
+        <div class="grow"><span>Motion blur<small>Smears the picture when you turn the camera</small></span>${seg('data-x="blur"',[[0,'Off'],[1,'Low'],[2,'Medium'],[3,'High']])}</div>
+        <div class="grow"><span>Field of view<small>Wider sees more around you (default 70)</small></span><div class="fovr"><input type="range" id="fovR" min="50" max="120" step="1"><b id="fovV">70°</b></div></div>
+        <div class="grow"><span>Show FPS<small>Frame rate counter</small></span>${seg('data-x="fps"',[[0,'Off'],[1,'On']])}</div>
+        <div class="grow"><span>Auto-lower when slow<small>Steps the preset down if the game lags</small></span>${seg('data-x="auto"',[[0,'Off'],[1,'On']])}</div></div>
+    </div>
     <div class="row"><button id="gDone" class="btn green">Done</button></div></div>`;
   root.appendChild(el);
   const fpsEl=document.createElement('div');fpsEl.id='fpsc';fpsEl.textContent='-- FPS';root.appendChild(fpsEl);
-  const sync=()=>{const p=presetOf(st.q);st.preset=p;
+  const showTab=t=>{tab=t;el.querySelector('#pCtl').hidden=t!=='ctl';el.querySelector('#pGfx').hidden=t!=='gfx';
+    el.querySelectorAll('.gtabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
+    const m=mob();el.querySelector('#ctlM').hidden=!m;el.querySelector('#ctlK').hidden=!!m};
+  const sync=()=>{const p=presetOf(st.q);st.preset=p;showTab(tab);const m=mob(),mc=m&&m.get();
     el.querySelectorAll('#gPre button').forEach(b=>b.classList.toggle('on',b.dataset.p===p));
-    el.querySelectorAll('.seg').forEach(g=>{const k=g.dataset.k,x=g.dataset.x,cur=k?st.q[k]:x==='fps'?+st.fps:+st.auto;g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.v-cur)<1e-6))})};
+    el.querySelectorAll('.seg').forEach(g=>{const k=g.dataset.k,x=g.dataset.x,c=g.dataset.c;if(!k&&!x&&!c)return;
+      const cur=k?st.q[k]:c?(mc?mc[c]:0):x==='fps'?+st.fps:x==='blur'?st.blur:+st.auto;g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.v-cur)<1e-6))});
+    el.querySelector('#fovR').value=st.fov;el.querySelector('#fovV').textContent=st.fov+'°'};
+  el.addEventListener('input',e=>{if(e.target.id!=='fovR')return;st.fov=+e.target.value;el.querySelector('#fovV').textContent=st.fov+'°';save()});   // read live every frame by main.js
   el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
     if(b.id==='gDone'){api.close();return}
+    if(b.dataset.tab){showTab(b.dataset.tab);return}
+    if(b.dataset.act){const m=mob();if(!m)return;
+      if(b.dataset.act==='reset'){m.reset();return}
+      const cb=onClose;onClose=null;el.hidden=true;m.edit(()=>api.open(cb,'ctl'));return}   // hide the panel, show the draggable buttons, come back afterwards
     if(b.dataset.p&&b.dataset.p!=='custom'){st.q={...PRESETS[b.dataset.p]}}
+    else if(b.parentNode.dataset.c){const m=mob();m&&m.set(b.parentNode.dataset.c,+b.dataset.v);sync();return}
     else if(b.parentNode.dataset.k)st.q[b.parentNode.dataset.k]=+b.dataset.v;
     else if(b.parentNode.dataset.x==='fps')st.fps=!!+b.dataset.v;
     else if(b.parentNode.dataset.x==='auto')st.auto=!!+b.dataset.v;
+    else if(b.parentNode.dataset.x==='blur')st.blur=+b.dataset.v;
     sync();save();apply()});
   addEventListener('keydown',e=>{if(!el.hidden&&(e.code==='Escape'||e.code==='KeyG')){e.stopImmediatePropagation();api.close()}},true);
   // ---- fps meter + auto-lower
   let acc=0,frames=0,slow=0,settle=4,onClose=null;
   const api={
     pr,get:()=>st,apply,
-    open(cb){onClose=cb||null;sync();el.hidden=false},close(){el.hidden=true;const f=onClose;onClose=null;f&&f()},isOpen:()=>!el.hidden,
+    open(cb,t){onClose=cb||null;if(t)tab=t;sync();el.hidden=false},close(){el.hidden=true;const f=onClose;onClose=null;f&&f()},isOpen:()=>!el.hidden,
     /** call once per rendered frame with the real frame time (seconds) while the game is running */
     frame(dt,note){acc+=dt;frames++;settle=Math.max(0,settle-dt);
       if(acc>=.5){const f=frames/acc;if(st.fps)fpsEl.textContent=Math.round(f)+' FPS';
