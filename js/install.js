@@ -1,5 +1,5 @@
-// Install-as-app support: (1) fixes the iPad / iPhone "empty strip at the bottom" when the game runs as an installed app,
-// (2) the "Install app" button on the title screen, which now always opens a modal.
+// "Install app" button + modal for phones and tablets (title screen).
+// No layout code in here on purpose: this file never touches sizes, the canvas, html or body.
 const btn = document.getElementById('install');
 const ua = navigator.userAgent;
 const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -9,74 +9,20 @@ const mobileLike = () => document.body.classList.contains('mobile') || matchMedi
 const installed = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 let deferred = null;
 
-/* ---------- 1. Fit the screen when installed ----------
-   In an installed iOS/iPadOS app, innerHeight (and 100vh) is often shorter than the real screen, so the canvas is sized too small
-   and the game sits at the top with an empty band underneath. A fixed, inset:0 element always covers the real visible area,
-   so we measure that and report it as innerWidth / innerHeight (the game sizes its renderer from those). */
-if (installed()) {
-  // let the page use the whole screen (also under the notch / home bar)
-  const vp = document.querySelector('meta[name=viewport]');
-  if (vp && !/viewport-fit/.test(vp.content)) vp.content += ', viewport-fit=cover';
-  else if (!vp) { const m = document.createElement('meta'); m.name = 'viewport'; m.content = 'width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover'; document.head.appendChild(m); }
-
-  const st = document.createElement('style');
-  st.textContent = `
-    html, body { position: fixed; inset: 0; width: 100%; height: 100%; margin: 0; overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
-    #__fit { position: fixed; inset: 0; width: 100%; height: 100%; visibility: hidden; pointer-events: none; z-index: -1; }
-    canvas#c { position: fixed; left: 0; top: 0; }`;
-  document.head.appendChild(st);
-
-  // iOS/iPadOS installed app: the page's reported viewport is shorter than the real screen (that is the empty band).
-  // index.html uses the black-translucent status bar, so the app really covers the whole screen: size everything to screen.width/height.
-  // A transform on <body> makes every position:fixed child (canvas, HUD, menus, touch buttons) use <body> as its box, so they all get the full size.
-  const iosApp = isIOS && navigator.standalone === true;
-  const root = document.documentElement;
-  const applyFull = () => {
-    if (!iosApp) return;
-    const land = matchMedia('(orientation: landscape)').matches;
-    const big = Math.max(screen.width, screen.height), small = Math.min(screen.width, screen.height);
-    root.style.setProperty('--fw', (land ? big : small) + 'px');
-    root.style.setProperty('--fh', (land ? small : big) + 'px');
-  };
-  if (iosApp) {
-    applyFull();
-    const st2 = document.createElement('style');
-    st2.textContent = `
-      html { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: var(--fw); height: var(--fh); overflow: visible; }
-      html body { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: var(--fw); height: var(--fh); transform: translateZ(0); overflow: hidden; }`;
-    document.head.appendChild(st2);
-    addEventListener('resize', applyFull);
-    addEventListener('orientationchange', () => { applyFull(); setTimeout(applyFull, 150); setTimeout(applyFull, 500); });
+/* ---------- Service worker ----------
+   Only for Android / Chrome / desktop (they need it for the install prompt).
+   NOT on iPhone / iPad: there it made the installed app lose its full-screen fit, and iOS does not need it to add to the home screen.
+   On iOS we also remove any worker + cache that an earlier version already put on the device. */
+if ('serviceWorker' in navigator) {
+  if (isIOS) {
+    navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
+    if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
+  } else if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+    addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
   }
-  const probe = document.createElement('div'); probe.id = '__fit'; document.body.appendChild(probe);
-
-  // grab the ORIGINAL getters once, before we override them (looking them up later would return our own getter -> infinite recursion)
-  const desc = { innerHeight: Object.getOwnPropertyDescriptor(window, 'innerHeight'), innerWidth: Object.getOwnPropertyDescriptor(window, 'innerWidth') };
-  const native = n => { const d = desc[n]; return d ? (d.get ? d.get.call(window) : d.value) || 0 : 0; };
-  const measure = n => {
-    const r = probe.getBoundingClientRect();
-    return Math.round(Math.max(native(n), n === 'innerHeight' ? r.height : r.width, (n === 'innerHeight' ? document.documentElement.clientHeight : document.documentElement.clientWidth) || 0));
-  };
-  if (desc.innerHeight && desc.innerWidth) try {
-    Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => measure('innerHeight') });
-    Object.defineProperty(window, 'innerWidth', { configurable: true, get: () => measure('innerWidth') });
-  } catch (e) {}
-
-  // tell the game to re-measure whenever the real area changes (rotation, first paint, status bar, etc.)
-  let t = 0;
-  const nudge = () => { cancelAnimationFrame(t); t = requestAnimationFrame(() => { applyFull(); dispatchEvent(new Event('resize')); }); };
-  if ('ResizeObserver' in window) new ResizeObserver(nudge).observe(probe);
-  addEventListener('orientationchange', () => { setTimeout(nudge, 100); setTimeout(nudge, 400); });
-  addEventListener('pageshow', nudge);
-  if (window.visualViewport) visualViewport.addEventListener('resize', nudge);
-  [0, 150, 500, 1200].forEach(ms => setTimeout(nudge, ms));
 }
 
-/* ---------- 2. Service worker ---------- */
-if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1'))
-  addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
-
-/* ---------- 3. Install button + modal ---------- */
+/* ---------- Install button + modal ---------- */
 function refresh() { if (btn) btn.hidden = !(mobileLike() && !installed()); }
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; refresh(); updateModal(); });
 addEventListener('appinstalled', () => { deferred = null; refresh(); const m = document.getElementById('installModal'); if (m) m.hidden = true; });
@@ -114,7 +60,7 @@ function modal() {
   el = document.createElement('div'); el.id = 'installModal'; el.hidden = true;
   el.setAttribute('role', 'dialog'); el.setAttribute('aria-modal', 'true'); el.setAttribute('aria-labelledby', 'imTitle');
   el.innerHTML = `<div class="im-card"><button class="im-x" id="imClose" aria-label="Close">×</button>
-    <h2 id="imTitle">Install as an app</h2><p>Play full screen, straight from your home screen, and start it even when offline.</p>
+    <h2 id="imTitle">Install as an app</h2><p>Play full screen, straight from your home screen.</p>
     <ol id="imSteps"></ol>
     <div class="im-row"><button id="imLater">Not now</button><button class="im-go" id="imGo" hidden>Install now</button></div></div>`;
   document.body.appendChild(el);
@@ -135,55 +81,9 @@ function modal() {
 function updateModal() {
   const el = document.getElementById('installModal'); if (!el) return;
   const go = el.querySelector('#imGo'), list = el.querySelector('#imSteps'), has = !!deferred;
-  go.hidden = !has;                                   // browsers that allow it: one-tap install
-  list.hidden = has;                                  // otherwise: show how to add it by hand
+  go.hidden = !has;
+  list.hidden = has;
   if (!has) list.innerHTML = steps().map(s => `<li>${s}</li>`).join('');
 }
 
 if (btn) btn.addEventListener('click', () => { const el = modal(); updateModal(); el.hidden = false; });
-
-
-/* ---------- 4. Diagnostics: tap the top-left corner 5 times quickly to show / hide ---------- */
-const FIT_VERSION = 'fit-4';
-(function () {
-  let taps = [], box = null, timer = 0;
-  const px = v => (Math.round(v * 10) / 10);
-  function read() {
-    const de = document.documentElement, vv = window.visualViewport, c = document.getElementById('c');
-    const rc = el => { if (!el) return 'none'; const r = el.getBoundingClientRect(); return `${px(r.left)},${px(r.top)}  ${px(r.width)}x${px(r.height)}`; };
-    const probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
-    document.body.appendChild(probe);
-    const cs = getComputedStyle(probe), inset = `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`;
-    probe.remove();
-    return [
-      'version: ' + FIT_VERSION,
-      'standalone: ' + (navigator.standalone === true) + '  mq: ' + matchMedia('(display-mode: standalone)').matches + '  ios: ' + isIOS,
-      'inner: ' + innerWidth + 'x' + innerHeight,
-      'screen: ' + screen.width + 'x' + screen.height + '  avail: ' + screen.availWidth + 'x' + screen.availHeight,
-      'outer: ' + outerWidth + 'x' + outerHeight + '  dpr: ' + devicePixelRatio,
-      'visualViewport: ' + (vv ? `${px(vv.width)}x${px(vv.height)} top ${px(vv.offsetTop)} scale ${vv.scale}` : 'n/a'),
-      'documentElement client: ' + de.clientWidth + 'x' + de.clientHeight,
-      'html rect: ' + rc(de),
-      'body rect: ' + rc(document.body),
-      'canvas #c rect: ' + rc(c),
-      'safe insets (t r b l): ' + inset,
-      'orientation: ' + (matchMedia('(orientation: landscape)').matches ? 'landscape' : 'portrait'),
-      '--fw/--fh: ' + de.style.getPropertyValue('--fw') + ' / ' + de.style.getPropertyValue('--fh'),
-    ].join('\n');
-  }
-  function toggle() {
-    if (box) { clearInterval(timer); box.remove(); box = null; return; }
-    box = document.createElement('pre');
-    box.style.cssText = 'position:fixed;left:8px;top:40px;z-index:99999;margin:0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.82);color:#7CFC9A;font:12px/1.35 ui-monospace,Menlo,monospace;pointer-events:none;white-space:pre-wrap;max-width:92vw';
-    document.body.appendChild(box);
-    const upd = () => { box.textContent = read(); };
-    upd(); timer = setInterval(upd, 500);
-  }
-  addEventListener('pointerdown', e => {
-    if (e.clientX > 90 || e.clientY > 90) { taps = []; return; }
-    const now = Date.now(); taps = taps.filter(t => now - t < 2000); taps.push(now);
-    if (taps.length >= 5) { taps = []; toggle(); }
-  }, true);
-  if (/[?&]debug\b/.test(location.search)) addEventListener('load', toggle);
-})();
