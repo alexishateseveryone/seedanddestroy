@@ -35,10 +35,11 @@ const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.ad
 [[1.9,.1],[1.35,.17],[.85,.12]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
 addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
 function resize() {
-  const w = Math.max(1, innerWidth);
-  const h = Math.max(1, innerHeight);
+  const cv = renderer.domElement;   // #c is position:fixed; inset:0 in the CSS, so its real size IS the screen (innerHeight is too short in installed iPad apps)
+  const w = Math.max(1, cv.clientWidth || innerWidth);
+  const h = Math.max(1, cv.clientHeight || innerHeight);
   renderer.setPixelRatio(prr());
-  renderer.setSize(w, h);
+  renderer.setSize(w, h, false);    // false = don't write inline px sizes, let the CSS keep the canvas full screen
   atm.resize(w, h, prr());
   cam.aspect = w / h;
   const f = cam.userData.off || 0;
@@ -350,7 +351,7 @@ let lf=0,lastDraw=0;const PROF=/[?&]prof/.test(location.search),NOB=/[?&]nobots/
   if(lf<5&&++lf===5)L.done();   // the loading screen leaves once the game has really drawn a few frames
 const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();const lag=P.hs>0&&!paused;if(PROF){renderer.info.autoReset=false;renderer.info.reset();globalThis.__hideBots=NOB;if(NOA&&arena&&gm==='v5')arena.group.visible=false}   // ?prof&nobots / &noarena hide the bots / the arena so you can see what each costs
   const _u0=performance.now();update(dt);pf.u+=performance.now()-_u0;fx.update(lag?dt*.3:dt);   // sparks keep moving in slow motion during the freeze
-  {const c=cam.userData.off||0;if(c!==viewTo){const n=Math.abs(viewTo-c)<.001?viewTo:c+(viewTo-c)*Math.min(1,dt*6);cam.userData.off=n;const W=Math.max(1,innerWidth),H=Math.max(1,innerHeight);n?cam.setViewOffset(W,H,W*n,0,W,H):cam.clearViewOffset();cam.updateProjectionMatrix()}   // maker open/close: the cat glides to the other side of the screen
+  {const c=cam.userData.off||0;if(c!==viewTo){const n=Math.abs(viewTo-c)<.001?viewTo:c+(viewTo-c)*Math.min(1,dt*6);cam.userData.off=n;const W=Math.max(1,renderer.domElement.clientWidth||innerWidth),H=Math.max(1,renderer.domElement.clientHeight||innerHeight);n?cam.setViewOffset(W,H,W*n,0,W,H):cam.clearViewOffset();cam.updateProjectionMatrix()}   // maker open/close: the cat glides to the other side of the screen
   let d=camTo-camAz;d=Math.atan2(Math.sin(d),Math.cos(d));camAz+=d*Math.min(1,dt*5);   // maker: camera swings round the cat (0 = behind it as usual, PI = in front of it)
   if(!spinHeld){spin=Math.atan2(Math.sin(spin),Math.cos(spin));spin-=spin*Math.min(1,dt*4)}}
   const mode=state==='maker'?'maker':'play';if(mode!==curMode){curMode=mode;atm.setMode(mode)}
