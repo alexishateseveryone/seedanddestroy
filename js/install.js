@@ -141,3 +141,49 @@ function updateModal() {
 }
 
 if (btn) btn.addEventListener('click', () => { const el = modal(); updateModal(); el.hidden = false; });
+
+
+/* ---------- 4. Diagnostics: tap the top-left corner 5 times quickly to show / hide ---------- */
+const FIT_VERSION = 'fit-4';
+(function () {
+  let taps = [], box = null, timer = 0;
+  const px = v => (Math.round(v * 10) / 10);
+  function read() {
+    const de = document.documentElement, vv = window.visualViewport, c = document.getElementById('c');
+    const rc = el => { if (!el) return 'none'; const r = el.getBoundingClientRect(); return `${px(r.left)},${px(r.top)}  ${px(r.width)}x${px(r.height)}`; };
+    const probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)';
+    document.body.appendChild(probe);
+    const cs = getComputedStyle(probe), inset = `${cs.paddingTop} ${cs.paddingRight} ${cs.paddingBottom} ${cs.paddingLeft}`;
+    probe.remove();
+    return [
+      'version: ' + FIT_VERSION,
+      'standalone: ' + (navigator.standalone === true) + '  mq: ' + matchMedia('(display-mode: standalone)').matches + '  ios: ' + isIOS,
+      'inner: ' + innerWidth + 'x' + innerHeight,
+      'screen: ' + screen.width + 'x' + screen.height + '  avail: ' + screen.availWidth + 'x' + screen.availHeight,
+      'outer: ' + outerWidth + 'x' + outerHeight + '  dpr: ' + devicePixelRatio,
+      'visualViewport: ' + (vv ? `${px(vv.width)}x${px(vv.height)} top ${px(vv.offsetTop)} scale ${vv.scale}` : 'n/a'),
+      'documentElement client: ' + de.clientWidth + 'x' + de.clientHeight,
+      'html rect: ' + rc(de),
+      'body rect: ' + rc(document.body),
+      'canvas #c rect: ' + rc(c),
+      'safe insets (t r b l): ' + inset,
+      'orientation: ' + (matchMedia('(orientation: landscape)').matches ? 'landscape' : 'portrait'),
+      '--fw/--fh: ' + de.style.getPropertyValue('--fw') + ' / ' + de.style.getPropertyValue('--fh'),
+    ].join('\n');
+  }
+  function toggle() {
+    if (box) { clearInterval(timer); box.remove(); box = null; return; }
+    box = document.createElement('pre');
+    box.style.cssText = 'position:fixed;left:8px;top:40px;z-index:99999;margin:0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.82);color:#7CFC9A;font:12px/1.35 ui-monospace,Menlo,monospace;pointer-events:none;white-space:pre-wrap;max-width:92vw';
+    document.body.appendChild(box);
+    const upd = () => { box.textContent = read(); };
+    upd(); timer = setInterval(upd, 500);
+  }
+  addEventListener('pointerdown', e => {
+    if (e.clientX > 90 || e.clientY > 90) { taps = []; return; }
+    const now = Date.now(); taps = taps.filter(t => now - t < 2000); taps.push(now);
+    if (taps.length >= 5) { taps = []; toggle(); }
+  }, true);
+  if (/[?&]debug\b/.test(location.search)) addEventListener('load', toggle);
+})();
