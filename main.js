@@ -35,11 +35,11 @@ const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.ad
 [[1.9,.1],[1.35,.17],[.85,.12]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
 addEventListener('resize',resize);let gfx=null;const prr=()=>gfx?gfx.pr():Math.min(devicePixelRatio,1.5);
 function resize() {
-  const cv = renderer.domElement;   // #c is position:fixed; inset:0 in the CSS, so its real size IS the screen (innerHeight is too short in installed iPad apps)
+  const cv = renderer.domElement;   // #c is position:fixed; inset:0 (CSS), so its real size is the screen
   const w = Math.max(1, cv.clientWidth || innerWidth);
   const h = Math.max(1, cv.clientHeight || innerHeight);
   renderer.setPixelRatio(prr());
-  renderer.setSize(w, h, false);    // false = don't write inline px sizes, let the CSS keep the canvas full screen
+  renderer.setSize(w, h, false);    // false = keep the CSS full-screen sizing
   atm.resize(w, h, prr());
   cam.aspect = w / h;
   const f = cam.userData.off || 0;
