@@ -2,28 +2,25 @@
 // No layout code in here on purpose: this file never touches sizes, the canvas, html or body.
 const btn = document.getElementById('install');
 const ua = navigator.userAgent;
-const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const isIPad = /iPad/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+const isAndroid = /Android/i.test(ua);   // the install feature is Android-only: iPhone / iPad / desktop never get the button, the modal or the service worker
 const mobileLike = () => document.body.classList.contains('mobile') || matchMedia('(hover:none)').matches || matchMedia('(pointer:coarse)').matches || matchMedia('(max-width:900px) and (max-height:520px)').matches;
 const installed = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 let deferred = null;
 
 /* ---------- Service worker ----------
-   Only for Android / Chrome / desktop (they need it for the install prompt).
-   NOT on iPhone / iPad: there it made the installed app lose its full-screen fit, and iOS does not need it to add to the home screen.
-   On iOS we also remove any worker + cache that an earlier version already put on the device. */
+   Android only (Chrome needs it for the install prompt). Everywhere else we make sure no worker or cache is left over from earlier versions. */
 if ('serviceWorker' in navigator) {
-  if (isIOS) {
+  if (isAndroid) {
+    if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+      addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  } else {
     navigator.serviceWorker.getRegistrations().then(rs => rs.forEach(r => r.unregister())).catch(() => {});
     if (window.caches) caches.keys().then(ks => ks.forEach(k => caches.delete(k))).catch(() => {});
-  } else if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
   }
 }
 
 /* ---------- Install button + modal ---------- */
-function refresh() { if (btn) btn.hidden = !(mobileLike() && !installed()); }
+function refresh() { if (btn) btn.hidden = !(isAndroid && mobileLike() && !installed()); }
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; refresh(); updateModal(); });
 addEventListener('appinstalled', () => { deferred = null; refresh(); const m = document.getElementById('installModal'); if (m) m.hidden = true; });
 addEventListener('resize', refresh);
@@ -32,13 +29,7 @@ new MutationObserver(refresh).observe(document.body, { attributes: true, attribu
 refresh();
 
 function steps() {
-  if (isIOS) {
-    const share = isIPad ? 'the <b>Share</b> button (square with an arrow) at the top of Safari' : 'the <b>Share</b> button (square with an arrow) at the bottom of Safari';
-    return isSafari
-      ? [`Tap ${share}`, 'Scroll down and tap <b>Add to Home Screen</b>', 'Tap <b>Add</b>. The game now opens full screen from your home screen']
-      : ['Open this page in <b>Safari</b> (other iPhone / iPad browsers cannot install apps)', `Tap ${share}, then <b>Add to Home Screen</b>`, 'Tap <b>Add</b>'];
-  }
-  return ['Open your browser menu (the <b>⋮</b> or <b>≡</b> button)', 'Tap <b>Install app</b> or <b>Add to Home screen</b>', 'Confirm. The game now opens full screen from your home screen'];
+  return ['Open your browser menu (the <b>⋮</b> button)', 'Tap <b>Install app</b> or <b>Add to Home screen</b>', 'Confirm. The game now opens full screen from your home screen'];
 }
 
 function modal() {
