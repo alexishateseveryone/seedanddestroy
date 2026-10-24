@@ -45,7 +45,7 @@ function resize() {
   f ? cam.setViewOffset(w, h, w * f, 0, w, h) : cam.clearViewOffset();
   cam.updateProjectionMatrix();
 }
-function setView(f){cam.userData.off=f;resize()}resize();
+let viewTo=0;function setView(f){viewTo=f;cam.userData.off=f;resize()}resize();
 L.set(.26,'Growing the forest…');await tick();
 const forest=buildMap(7,atm.envMap);scene.add(forest.group);forest.prime(0,0,60);if(scene.fog){scene.fog.near=30;scene.fog.far=150}   // chunk-streamed hilly forest: build around the start, the rest streams in
 let map=forest,arena=null,mode5=null,storyMap=null,storySlot=-1,curWorld=-1;const lastQ={};
@@ -56,7 +56,7 @@ const kb=createKeybinds(()=>{for(const k in keys)keys[k]=false;hints()});   // r
 function hints(){const k=a=>kb.label(a),e=document.querySelector('#title .kb');if(e)e.innerHTML=`<b>${k('fwd')}${k('left')}${k('back')}${k('right')}</b> move &nbsp;·&nbsp; <b>Mouse</b> aim<br><b>Left click</b> shoot / slash &nbsp;·&nbsp; <b>Right click</b> scope<br><b>${k('jump')}</b> jump &nbsp;·&nbsp; <b>${k('roll')}</b> roll / air dash &nbsp;·&nbsp; <b>1-8 / wheel</b> weapon &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>${k('settings')}</b> settings<br><b>5v5:</b> hold <b>${k('plant')}</b> to plant / defuse the spike`}
 gfx=createSettings({atm,map,audio,kb,onResolution:resize,getMobile:()=>{try{return mobile}catch(e){return null}}});   // `mobile` is created further down (touch layout editor lives in Settings > Controls)   // graphics options (presets + per-option, saved, applied live)
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
-let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0;
+let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0,mkOn=false,camAz=0,camTo=0;
 // ---- character save slots (5): { cfg, best } or null. Old single-cat saves migrate into slot 1.
 const SLOTN=5;let curSlot=-1;
 function loadSlots(){let s=null;try{s=JSON.parse(localStorage.getItem('sad.slots'))}catch(e){}
@@ -350,6 +350,9 @@ let lf=0,lastDraw=0;const PROF=/[?&]prof/.test(location.search),NOB=/[?&]nobots/
   if(lf<5&&++lf===5)L.done();   // the loading screen leaves once the game has really drawn a few frames
 const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();const lag=P.hs>0&&!paused;if(PROF){renderer.info.autoReset=false;renderer.info.reset();globalThis.__hideBots=NOB;if(NOA&&arena&&gm==='v5')arena.group.visible=false}   // ?prof&nobots / &noarena hide the bots / the arena so you can see what each costs
   const _u0=performance.now();update(dt);pf.u+=performance.now()-_u0;fx.update(lag?dt*.3:dt);   // sparks keep moving in slow motion during the freeze
+  {const c=cam.userData.off||0;if(c!==viewTo){const n=Math.abs(viewTo-c)<.001?viewTo:c+(viewTo-c)*Math.min(1,dt*6);cam.userData.off=n;const W=Math.max(1,innerWidth),H=Math.max(1,innerHeight);n?cam.setViewOffset(W,H,W*n,0,W,H):cam.clearViewOffset();cam.updateProjectionMatrix()}   // maker open/close: the cat glides to the other side of the screen
+  let d=camTo-camAz;d=Math.atan2(Math.sin(d),Math.cos(d));camAz+=d*Math.min(1,dt*5);   // maker: camera swings round the cat (0 = behind it as usual, PI = in front of it)
+  if(!spinHeld){spin=Math.atan2(Math.sin(spin),Math.cos(spin));spin-=spin*Math.min(1,dt*4)}}
   const mode=state==='maker'?'maker':'play';if(mode!==curMode){curMode=mode;atm.setMode(mode)}
   audio.music(state==='title'||state==='maker'||gm==='story'?'title':state==='over'?null:gm==='v5'?'v5':'wave');audio.duck(paused)
   // 5v5: when you are dead the camera follows the ally you picked (the spectate buttons live in 5v5.js); the map and the sun's shadows follow it too
@@ -366,7 +369,7 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     
     const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),dist=(state==='title'?4.8:lerp2(P.camDist,1.7,aw))+kk*.12,rightOffset=state==='title'?.5:lerp2(1.4,.8,aw);
     const targetFov=lerp2(gfx.get().fov||70,WP().stats.zoom||40,aw)+kk*2+P.fk*7;if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
-    const vy=state==='title'?P.viewYaw:FOC.camYaw,pit=(state==='title'?-.25:SV?.06:P.camPitch)+kk*.02;
+    const vy=state==='title'?P.viewYaw+camAz-spin:FOC.camYaw,pit=(state==='title'?-.25:SV?.06:P.camPitch)+kk*.02;
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
     const px=FOC.x+rx*rightOffset,pz=FOC.z+rz*rightOffset;
     const camX=px-dX*dist+rx*rnd(-sh,sh)*.7,camZ=pz-dZ*dist+rz*rnd(-sh,sh)*.7;let camY=FOC.ey+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+map.heightAt(camX,camZ),camY);
@@ -400,7 +403,7 @@ addEventListener('mousemove',e=>{if(state==='play'&&!paused&&document.pointerLoc
 addEventListener('wheel',e=>{if(state==='play'&&!paused)setWeapon(P.wpn+(e.deltaY>0?1:-1))},{passive:true});
 document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&state==='play'&&!paused&&!(gm==='v5'&&P.dead))setPaused(true)});
 addEventListener('contextmenu',e=>e.preventDefault());
-addEventListener('pointermove',e=>{if(state==='maker'&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
+addEventListener('pointermove',e=>{if(mkOn&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
 // ---- menu flow: Title (Play / Settings / Exit) -> Character slots -> [Character maker if new] -> Mode select -> game
 function hideMenus(){MENUS.forEach(m=>$('#'+m).hidden=true);$('#menuBack').hidden=true}
 function showMenu(w){MENUS.forEach(m=>$('#'+m).hidden=m!==w);$('#menuBack').hidden=!(w==='slots'||w==='modes'||w==='worlds')}   // one shared Back button: switching slots <-> modes never re-animates it
@@ -475,11 +478,95 @@ $('#slotList').onclick=e=>{const el=e.target.closest(".cslot");if(!el)return;con
 $('#exit').onclick=()=>{try{window.close()}catch(e){}setTimeout(()=>{$('#bye').hidden=false},200)};   // browsers only allow close() on windows opened by script, so show a goodbye screen otherwise
 $('#byeBack').onclick=()=>{$('#bye').hidden=true};
 $('#again').onclick=start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
-function openCreator(slotIdx){clearAll();
-  // the title screen is a live demo (a bot aims, strafes, rolls and swaps guns): wipe all of that and start from a fresh idle cat
-  mouse.l=false;P.x=0;P.z=0;P.wpn=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.roll=0;P.rcd=0;P.dash=0;P.kick=0;P.scope=false;P.mv=false;P.fwd=0;P.side=0;P.rel=1;P.blink=0;P.hs=0;P.inv=0;P.dead=false;P.frozen=false;bot.t=0;bot.wt=0;
-  const prevCfg=cfg;cfg=slots[slotIdx]?JSON.parse(JSON.stringify(slots[slotIdx].cfg)):{};setCat();hideMenus();state='maker';spin=0;spinHeld=false;run=false;setView(.17);map.group.visible=false;stage.visible=true;document.body.classList.add('mk');
-  const close=()=>{state='title';run=false;setView(-.17);map.group.visible=true;stage.visible=false;document.body.classList.remove('mk')};
-  openMaker(cfg,{change:c=>{cfg=c;setCat()},run:v=>run=v,shoot:()=>{gunUntil=performance.now()+900;cat.userData.kick();fx.muzzle(cat.userData.muzzle(tmp),cat.rotation.y)},
+function openCreator(slotIdx){
+  // the title battlefield keeps running live behind the maker (the demo cat keeps fighting): only the cfg, the camera angle and the side of the screen change
+  const prevCfg=cfg;cfg=slots[slotIdx]?JSON.parse(JSON.stringify(slots[slotIdx].cfg)):{};setCat();hideMenus();mkOn=true;spin=0;spinHeld=false;camAz=camTo=0;viewTo=.17;   // cat glides to the left, the panel is on the right
+  const close=()=>{mkOn=false;camTo=0;spin=0;viewTo=-.17};
+  openMaker(cfg,{change:c=>{cfg=c;setCat()},view:a=>camTo=a,
     done:()=>{cfg.name=cfg.name||'Ming';slots[slotIdx]={cfg:JSON.parse(JSON.stringify(cfg)),best:slots[slotIdx]?slots[slotIdx].best:0};saveSlots();close();selectSlot(slotIdx)},   // saved -> straight to mode select
     cancel:()=>{cfg=prevCfg;setCat();close();renderSlots();showMenu('slots')}})};
+// ---- keyboard navigation for every menu screen (title, slots, worlds, modes, pause, game over, settings, cat maker):
+// W A S D / arrow keys jump to the nearest item in that direction, Enter or E accepts, Esc goes back (Left/Right also adjust a slider).
+// It only listens while one of those screens is up, so the in-game controls are never touched.
+(function(){
+  const q=s=>[...document.querySelectorAll(s)],hint=$('#kbhint');
+  const vis=e=>{if(!e||e.hidden)return false;const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity)>.05};
+  const touchy=()=>document.body.classList.contains('mobile')||matchMedia('(hover:none)').matches||matchMedia('(pointer:coarse)').matches||matchMedia('(max-width:900px) and (max-height:520px)').matches;   // phones / tablets: no key guide
+  const UP=['KeyW','ArrowUp'],DN=['KeyS','ArrowDown'],LT=['KeyA','ArrowLeft'],RT=['KeyD','ArrowRight'],OK=['Enter','NumpadEnter','KeyE'],BACK=['Escape','Backspace'];
+  const SEL={title:'#title button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',modes:'#modes .mode',over:'#over button',pause:'#pause button',bye:'#bye button',
+    settings:'#gfx button,#gfx input[type=range]',maker:'#maker button,#maker input'};
+  const BACKS=new Set(['slots','worlds','modes','bye','settings','maker']);
+  function screen(){
+    const L=$('#loading');if(L&&!L.classList.contains('out'))return null;
+    if(document.pointerLockElement)return null;                          // mouse captured = you are playing, never a menu
+    if(state==='play'&&!paused&&!vis($('#gfx'))&&!vis($('#bye')))return null;   // in a match (roguelike, story, 5v5): no menu, no key guide
+    if(vis($('#bye')))return 'bye';
+    if(vis($('#gfx')))return 'settings';
+    if(mkOn||vis($('#maker')))return 'maker';
+    if(vis($('#pause')))return 'pause';
+    if(vis($('#over')))return 'over';
+    for(const s of ['slots','worlds','modes','title'])if(vis($('#'+s)))return s;
+    return null}
+  const items=sc=>sc?q(SEL[sc]).filter(e=>e.getClientRects().length>0&&!e.disabled):[];
+  const isText=e=>!!e&&((e.tagName==='INPUT'&&e.type==='text')||e.tagName==='TEXTAREA'||e.tagName==='SELECT');
+  // a stable identity, so the selection survives a menu re-rendering itself (the cat maker rebuilds all its tiles on every pick)
+  const keyOf=e=>{const p=e.parentNode&&e.parentNode.dataset||{},d=e.dataset||{},sl=e.closest&&e.closest('.cslot');
+    return [e.id,d.tab,d.bind,d.p,d.act,d.a,d.v,p.k||p.x||p.c,sl?sl.dataset.i:'',e.className&&String(e.className).replace(/\bkbf\b/,'').trim()].join('|')};
+  let cur=null,curKey='',kbUsed=false,lastSc=null;
+  function ensure(sc){
+    if(sc!==lastSc){lastSc=sc;cur=null;curKey=''}
+    const list=items(sc);if(!list.length){cur=null;return list}
+    if(!cur||!cur.isConnected||!list.includes(cur)){cur=(curKey&&list.find(e=>keyOf(e)===curKey))||list.find(e=>!isText(e))||list[0];curKey=keyOf(cur)}
+    return list}
+  function apply(){
+    const sc=screen();
+    if(hint){hint.hidden=!sc||touchy();hint.dataset.s=sc||'';hint.dataset.back=BACKS.has(sc)?'1':'0'}
+    ensure(sc);
+    q('.kbf').forEach(e=>{if(e!==cur||!kbUsed)e.classList.remove('kbf')});
+    if(cur&&kbUsed&&sc&&!cur.classList.contains('kbf')){cur.classList.add('kbf');cur.scrollIntoView({block:'nearest',inline:'nearest'})}
+    if(cur&&kbUsed&&sc&&isText(cur)&&document.activeElement!==cur)cur.focus();
+    else if(kbUsed&&sc&&document.activeElement&&isText(document.activeElement)&&document.activeElement!==cur)document.activeElement.blur()}
+  let raf=0;const later=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(apply)};
+  document.addEventListener('pointerlockchange',later);setInterval(apply,250);   // a match starting / mouse capture is not a DOM change, so also re-check a few times a second
+  new MutationObserver(later).observe(document.body,{subtree:true,attributes:true,attributeFilter:['hidden','class']});
+  new MutationObserver(later).observe(document.body,{childList:true});
+  ['#slotList','#worldList','#maker','#gfx'].forEach(s=>{const e=$(s);e&&new MutationObserver(later).observe(e,{childList:true,subtree:s==='#maker'||s==='#gfx'})});
+  addEventListener('mousemove',e=>{if(kbUsed&&Math.abs(e.movementX)+Math.abs(e.movementY)>3){kbUsed=false;apply()}},{passive:true});
+  // nearest item in a direction (centres; items right ahead win over ones off to the side)
+  const mid=e=>{const r=e.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]};
+  function nearest(list,from,dx,dy){
+    const [fx,fy]=mid(from);let b1=null,s1=1e9,b2=null,s2=1e9;
+    for(const e of list){if(e===from)continue;const [x,y]=mid(e),vx=x-fx,vy=y-fy,al=vx*dx+vy*dy,pp=Math.abs(vx*dy-vy*dx);if(al<=4)continue;
+      const a=al+3*pp,b=al+6*pp;if(pp<=al*2&&a<s1){s1=a;b1=e}if(b<s2){s2=b;b2=e}}
+    return b1||b2}
+  function bump(el,dir){const st=+el.step||1,span=(+el.max)-(+el.min),d=Math.max(st,Math.round(span/20/st)*st),v=Math.max(+el.min,Math.min(+el.max,+el.value+dir*d));
+    if(v===+el.value)return;el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))}
+  const backBtn=sc=>sc==='bye'?$('#byeBack'):sc==='maker'?$('#maker [data-a="cancel"]'):sc==='settings'?$('#gDone'):BACKS.has(sc)?$('#menuBack'):null;
+  addEventListener('keydown',e=>{
+    if(e.ctrlKey||e.altKey||e.metaKey)return;
+    const sc=screen();if(!sc)return;
+    const c=e.code,tg=e.target,typing=isText(tg),nav=UP.includes(c)||DN.includes(c)||LT.includes(c)||RT.includes(c);
+    if(typing){                                   // typing a name: only Enter / Esc / up / down leave the box
+      if(c==='Enter'||c==='NumpadEnter'||c==='Escape'){tg.blur();e.preventDefault();e.stopImmediatePropagation();return}
+      if(c!=='ArrowUp'&&c!=='ArrowDown')return;
+      cur=tg;curKey=keyOf(tg);tg.blur();kbUsed=true}
+    let handled=true;const list=ensure(sc);
+    if(OK.includes(c)){
+      if(!e.repeat&&cur){kbUsed=true;if(isText(cur))cur.focus();else if(cur.type!=='range')cur.click();later()}
+    }else if(BACK.includes(c)){
+      const b=backBtn(sc);if(!b)handled=false;else if(!e.repeat)b.click()
+    }else if(nav){
+      const dx=RT.includes(c)?1:LT.includes(c)?-1:0,dy=DN.includes(c)?1:UP.includes(c)?-1:0;
+      if(!kbUsed)kbUsed=true;                                                // first press just shows the highlight
+      else if(cur){
+        if(cur.type==='range'&&dx)bump(cur,dx);
+        else{const n=nearest(list,cur,dx,dy);if(n){cur=n;curKey=keyOf(n)}}}
+      apply()
+    }else handled=false;
+    if(handled){e.preventDefault();e.stopImmediatePropagation()}               // keep the menu keys away from the game handler
+  },true);
+  apply();
+  const rk=$('#rkpill');                                                          // the 5v5 card shows no rank icon / emoji, only the text and bar
+  if(rk){const strip=()=>{const f=[...rk.querySelectorAll('*')].find(e=>/^(IMG|SVG|CANVAS)$/i.test(e.tagName)||(!e.children.length&&e.textContent.trim()&&e.textContent.trim().length<=3&&!/[A-Za-z0-9]/.test(e.textContent)));if(f&&f.style.display!=='none')f.style.display='none'};
+    new MutationObserver(strip).observe(rk,{childList:true,subtree:true});strip()}
+})();
