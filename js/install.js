@@ -2,10 +2,67 @@
 // No layout code in here on purpose: this file never touches sizes, the canvas, html or body.
 const btn = document.getElementById('install');
 const ua = navigator.userAgent;
+const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isAndroid = /Android/i.test(ua);   // the install feature is Android-only: iPhone / iPad / desktop never get the button, the modal or the service worker
 const mobileLike = () => document.body.classList.contains('mobile') || matchMedia('(hover:none)').matches || matchMedia('(pointer:coarse)').matches || matchMedia('(max-width:900px) and (max-height:520px)').matches;
 const installed = () => matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
 let deferred = null;
+
+/* ---------- Web app manifest: NOT for iPhone / iPad ----------
+   Since iOS 26 the iPad reads the manifest when you add to the home screen and opens the app in its own window mode, which leaves the empty strip.
+   Without a manifest it uses the classic apple-mobile-web-app-* tags from index.html (full screen, no strip). Android / Chrome still get the manifest.
+   (The <link rel="manifest"> was removed from index.html; it is added here instead.) */
+if (!isIOS && !document.querySelector('link[rel=manifest]')) {
+  const l = document.createElement('link'); l.rel = 'manifest'; l.href = 'manifest.webmanifest'; document.head.appendChild(l);
+}
+
+/* ---------- Safety net for installed iPhone / iPad apps ----------
+   Only acts if a gap really exists: if the page's bottom edge is more than a few px above the real screen bottom, everything is stretched to the real screen.
+   When there is no gap this does nothing at all. */
+(function () {
+  if (!(isIOS && navigator.standalone === true)) return;
+  const de = document.documentElement;
+  const desc = { innerHeight: Object.getOwnPropertyDescriptor(window, 'innerHeight'), innerWidth: Object.getOwnPropertyDescriptor(window, 'innerWidth') };
+  const nat = n => { const d = desc[n]; return d ? ((d.get ? d.get.call(window) : d.value) || 0) : 0; };
+  let applied = false, size = { w: 0, h: 0 }, lastGap = 0, probe = null;
+  const real = () => {
+    const land = matchMedia('(orientation: landscape)').matches, big = Math.max(screen.width, screen.height), small = Math.min(screen.width, screen.height);
+    return { w: land ? big : small, h: land ? small : big };
+  };
+  function apply(r) {
+    if (!applied) {
+      applied = true;
+      const st = document.createElement('style');
+      // a transform on <body> makes every position:fixed child (canvas, HUD, menus, touch buttons) use <body> as its box
+      st.textContent = 'html{position:fixed;top:0;left:0;right:auto;bottom:auto;width:var(--fw);height:var(--fh);overflow:visible}' +
+        'html body{position:fixed;top:0;left:0;right:auto;bottom:auto;width:var(--fw);height:var(--fh);transform:translateZ(0);overflow:hidden}';
+      document.head.appendChild(st);
+      try {
+        if (desc.innerHeight && desc.innerWidth) {
+          Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => size.h || nat('innerHeight') });
+          Object.defineProperty(window, 'innerWidth', { configurable: true, get: () => size.w || nat('innerWidth') });
+        }
+      } catch (e) {}
+    }
+    if (r.w !== size.w || r.h !== size.h) {
+      size = r;
+      de.style.setProperty('--fw', r.w + 'px'); de.style.setProperty('--fh', r.h + 'px');
+      dispatchEvent(new Event('resize'));          // main.js re-measures the canvas
+    }
+  }
+  function check() {
+    if (!document.body) return;
+    if (!probe) { probe = document.createElement('div'); probe.style.cssText = 'position:fixed;left:0;bottom:0;width:1px;height:1px;visibility:hidden;pointer-events:none'; document.body.appendChild(probe); }
+    const r = real();
+    if (applied) return apply(r);
+    lastGap = Math.round(r.h - probe.getBoundingClientRect().bottom);
+    if (lastGap >= 6 && lastGap <= 90) apply(r);   // a strip of that size = the bug; anything else is left alone
+  }
+  window.__fitGap = () => ({ applied, gap: lastGap });
+  [0, 100, 300, 800, 1600, 3000].forEach(ms => setTimeout(check, ms));
+  addEventListener('load', check); addEventListener('pageshow', check); addEventListener('resize', check);
+  addEventListener('orientationchange', () => { setTimeout(check, 100); setTimeout(check, 400); setTimeout(check, 900); });
+})();
 
 /* ---------- Service worker ----------
    Android only (Chrome needs it for the install prompt). Everywhere else we make sure no worker or cache is left over from earlier versions. */
@@ -78,3 +135,28 @@ function updateModal() {
 }
 
 if (btn) btn.addEventListener('click', () => { const el = modal(); updateModal(); el.hidden = false; });
+
+
+/* ---------- Diagnostics: tap the top-left corner 5 times quickly to show / hide ---------- */
+(function () {
+  let taps = [], box = null, timer = 0;
+  const px = v => Math.round(v * 10) / 10, rc = el => { if (!el) return 'none'; const r = el.getBoundingClientRect(); return `${px(r.left)},${px(r.top)} ${px(r.width)}x${px(r.height)}`; };
+  function read() {
+    const de = document.documentElement, vv = window.visualViewport, g = window.__fitGap ? window.__fitGap() : null;
+    return ['build: all-out-1', 'standalone: ' + (navigator.standalone === true) + '  ios: ' + isIOS + '  manifest link: ' + !!document.querySelector('link[rel=manifest]'),
+      'inner: ' + innerWidth + 'x' + innerHeight, 'screen: ' + screen.width + 'x' + screen.height, 'visualViewport: ' + (vv ? px(vv.width) + 'x' + px(vv.height) : 'n/a'),
+      'html: ' + rc(de), 'body: ' + rc(document.body), 'canvas: ' + rc(document.getElementById('c')),
+      'fix: ' + (g ? 'gap ' + g.gap + 'px, applied ' + g.applied : 'not needed / not iOS app')].join('\n');
+  }
+  function toggle() {
+    if (box) { clearInterval(timer); box.remove(); box = null; return; }
+    box = document.createElement('pre');
+    box.style.cssText = 'position:fixed;left:8px;top:40px;z-index:99999;margin:0;padding:10px 12px;border-radius:10px;background:rgba(0,0,0,.82);color:#7CFC9A;font:12px/1.35 ui-monospace,Menlo,monospace;pointer-events:none;white-space:pre-wrap;max-width:92vw';
+    document.body.appendChild(box); const u = () => { box.textContent = read(); }; u(); timer = setInterval(u, 500);
+  }
+  addEventListener('pointerdown', e => {
+    if (e.clientX > 90 || e.clientY > 90) { taps = []; return; }
+    const n = Date.now(); taps = taps.filter(t => n - t < 2000); taps.push(n);
+    if (taps.length >= 5) { taps = []; toggle(); }
+  }, true);
+})();
