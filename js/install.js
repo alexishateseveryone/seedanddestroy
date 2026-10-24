@@ -27,12 +27,14 @@ if (installed()) {
   document.head.appendChild(st);
   const probe = document.createElement('div'); probe.id = '__fit'; document.body.appendChild(probe);
 
-  const native = n => { const d = Object.getOwnPropertyDescriptor(window, n); return d ? (d.get ? d.get.call(window) : d.value) : 0; };
+  // grab the ORIGINAL getters once, before we override them (looking them up later would return our own getter -> infinite recursion)
+  const desc = { innerHeight: Object.getOwnPropertyDescriptor(window, 'innerHeight'), innerWidth: Object.getOwnPropertyDescriptor(window, 'innerWidth') };
+  const native = n => { const d = desc[n]; return d ? (d.get ? d.get.call(window) : d.value) || 0 : 0; };
   const measure = n => {
     const r = probe.getBoundingClientRect();
     return Math.round(Math.max(native(n), n === 'innerHeight' ? r.height : r.width, (n === 'innerHeight' ? document.documentElement.clientHeight : document.documentElement.clientWidth) || 0));
   };
-  try {
+  if (desc.innerHeight && desc.innerWidth) try {
     Object.defineProperty(window, 'innerHeight', { configurable: true, get: () => measure('innerHeight') });
     Object.defineProperty(window, 'innerWidth', { configurable: true, get: () => measure('innerWidth') });
   } catch (e) {}
