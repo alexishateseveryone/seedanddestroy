@@ -25,6 +25,29 @@ if (installed()) {
     #__fit { position: fixed; inset: 0; width: 100%; height: 100%; visibility: hidden; pointer-events: none; z-index: -1; }
     canvas#c { position: fixed; left: 0; top: 0; }`;
   document.head.appendChild(st);
+
+  // iOS/iPadOS installed app: the page's reported viewport is shorter than the real screen (that is the empty band).
+  // index.html uses the black-translucent status bar, so the app really covers the whole screen: size everything to screen.width/height.
+  // A transform on <body> makes every position:fixed child (canvas, HUD, menus, touch buttons) use <body> as its box, so they all get the full size.
+  const iosApp = isIOS && navigator.standalone === true;
+  const root = document.documentElement;
+  const applyFull = () => {
+    if (!iosApp) return;
+    const land = matchMedia('(orientation: landscape)').matches;
+    const big = Math.max(screen.width, screen.height), small = Math.min(screen.width, screen.height);
+    root.style.setProperty('--fw', (land ? big : small) + 'px');
+    root.style.setProperty('--fh', (land ? small : big) + 'px');
+  };
+  if (iosApp) {
+    applyFull();
+    const st2 = document.createElement('style');
+    st2.textContent = `
+      html { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: var(--fw); height: var(--fh); overflow: visible; }
+      html body { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: var(--fw); height: var(--fh); transform: translateZ(0); overflow: hidden; }`;
+    document.head.appendChild(st2);
+    addEventListener('resize', applyFull);
+    addEventListener('orientationchange', () => { applyFull(); setTimeout(applyFull, 150); setTimeout(applyFull, 500); });
+  }
   const probe = document.createElement('div'); probe.id = '__fit'; document.body.appendChild(probe);
 
   // grab the ORIGINAL getters once, before we override them (looking them up later would return our own getter -> infinite recursion)
@@ -41,7 +64,7 @@ if (installed()) {
 
   // tell the game to re-measure whenever the real area changes (rotation, first paint, status bar, etc.)
   let t = 0;
-  const nudge = () => { cancelAnimationFrame(t); t = requestAnimationFrame(() => dispatchEvent(new Event('resize'))); };
+  const nudge = () => { cancelAnimationFrame(t); t = requestAnimationFrame(() => { applyFull(); dispatchEvent(new Event('resize')); }); };
   if ('ResizeObserver' in window) new ResizeObserver(nudge).observe(probe);
   addEventListener('orientationchange', () => { setTimeout(nudge, 100); setTimeout(nudge, 400); });
   addEventListener('pageshow', nudge);
