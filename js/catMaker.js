@@ -16,6 +16,8 @@ const TABS=[
 ];
 const pick=a=>a[(Math.random()*a.length)|0];
 const cap=s=>s[0].toUpperCase()+s.slice(1);
+// categories that are edited from BEHIND (the normal in-game camera); everything else swings round to the FRONT of the cat
+const BACK_VIEW=new Set(['cloak','cloakC','tail']);
 
 // ---- icon builders ---------------------------------------------------------
 const ball=(fur,pat,pattern)=>new T.Mesh(new T.SphereGeometry(1,56,40),makeCoat({fur,pat,pattern},0));
@@ -64,7 +66,7 @@ const noneIcon='<i class="bi bi-slash-circle"></i>';
 const img=u=>u?`<img src="${u}" alt="" draggable="false">`:'';
 
 export function openMaker(cfg,h){
-  const el=document.getElementById('maker');el.hidden=false;let tab='cat',cat='coat',run=false;
+  const el=document.getElementById('maker');el.hidden=false;let tab='cat',cat='coat';
   const pat=()=>cfg.pattern||'classic',gear=()=>cfg.gearC||GEAR_COLS[0];
   // lazy: only the visible category is rendered
   const items=()=>({
@@ -87,10 +89,11 @@ export function openMaker(cfg,h){
   })[cat]();
   const cats=()=>TABS.find(t=>t[0]===tab)[2];
   const render=(keepScroll)=>{
+    if(h.view)h.view(BACK_VIEW.has(cat)?0:Math.PI);   // 0 = behind the cat (game camera), PI = in front of it
     const old=el.querySelector('.gridw'),st=old&&keepScroll?old.scrollTop:0;
     const list=items(),title=cats().find(c=>c[0]===cat)[1];
     el.innerHTML=`<div class="nmpill"><span>NAME</span><input id="nm" maxlength="8" value="${(cfg.name||'Ming').replace(/"/g,'&quot;')}" spellcheck="false"></div>
-    <div class="tools"><button class="btn round ${run?'red':'green'}" data-a="run" title="${run?'Stop':'Run'}"><i class="bi ${run?'bi-stop-fill':'bi-play-fill'}"></i></button><button class="btn round gold" data-a="shoot" title="Shoot"><i class="bi bi-bullseye"></i></button><span class="hint"><i class="bi bi-arrow-left-right"></i> Drag to rotate</span></div>
+    <div class="tools"><span class="hint"><i class="bi bi-arrow-left-right"></i> Drag to rotate</span></div>
     <aside class="side">
       <div class="tabs" role="tablist">${TABS.map(t=>`<button role="tab" data-a="tab" data-v="${t[0]}" aria-selected="${t[0]===tab}" class="${t[0]===tab?'on':''}">${t[1]}</button>`).join('')}</div>
       <div class="mkbody">
@@ -103,9 +106,9 @@ export function openMaker(cfg,h){
     const gw=el.querySelector('.gridw');if(gw)gw.scrollTop=st;
   };
   el.onclick=e=>{const b=e.target.closest('button');if(!b||b.disabled)return;const{a,v}=b.dataset;let keep=false;
-    if(a==='tab'){tab=v;cat=cats()[0][0]}else if(a==='cat')cat=v;else if(a==='run'){run=!run;h.run(run);keep=true}else if(a==='shoot'){h.shoot();return}
+    if(a==='tab'){tab=v;cat=cats()[0][0]}else if(a==='cat')cat=v;
     else if(a==='rand'){const c=pick(COATS);Object.assign(cfg,{fur:c[0],pat:c[1],pattern:pick(PATTERNS)[0],ears:pick(EARS),eyeColor:pick(EYECS),collar:pick(COLLARS),collarType:pick(COLLAR_TYPES)[0],cloak:pick(CLOAKS)[0],cloakC:pick(CLOAK_COLS),head:pick(HEADS)[0],eyewear:pick(EYEWEAR)[0],gearC:pick(GEAR_COLS),eyeStyle:pick(EYE_STYLES)[0],nose:pick(NOSES)[0],cheeks:pick(CHEEKS)[0],tail:pick(TAILS)[0],whiskers:pick(WHISKERS)[0]});h.change(cfg);keep=true}
-    else if(a==='done'||a==='cancel'){el.hidden=true;h.run(false);h[a](cfg);return}
+    else if(a==='done'||a==='cancel'){el.hidden=true;h[a](cfg);return}
     else if(a==='pick'){items()[+v].set();h.change(cfg);keep=true}
     render(keep)};
   el.oninput=e=>{if(e.target.id==='nm'){cfg.name=e.target.value||'Ming';h.change(cfg)}};render();
