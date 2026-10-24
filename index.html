@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Seed and Destroy</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="./node_modules/bootstrap-icons/font/bootstrap-icons.min.css">
+<link rel="stylesheet" href="style.css">
+<link rel="preload" as="image" href="assets/images/sadmlogo.png">
+<script type="importmap">
+  {
+    "imports": {
+      "three": "./node_modules/three/build/three.module.js",
+      "three/addons/": "./node_modules/three/examples/jsm/"
+    }
+  }
+</script>
+<style>
+  /* Swaying & Floating Animation for the Logo */
+  @keyframes logoSway {
+    0% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+    25% {
+      transform: translate(-6px, -4px) rotate(-1.5deg);
+    }
+    50% {
+      transform: translate(0, -8px) rotate(0deg);
+    }
+    75% {
+      transform: translate(6px, -4px) rotate(1.5deg);
+    }
+    100% {
+      transform: translate(0, 0) rotate(0deg);
+    }
+  }
+
+  .animated-logo {
+    animation: logoSway 4s ease-in-out infinite;
+    transform-origin: bottom center;
+  }
+
+  /* ---------- loading screen ---------- */
+  #loading{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse 80% 80% at 50% 40%,#3b3e45 0,#202226 55%,#121316 100%);transition:opacity .6s ease,visibility .6s;color:#e9eaee;font-family:'Baloo 2',system-ui,sans-serif}
+  #loading.out{opacity:0;visibility:hidden;pointer-events:none}
+  #loading .lc{width:min(440px,86vw);text-align:center}
+  #loading .llogo{display:block;width:min(440px,86vw);max-height:46vh;object-fit:contain;margin:0 auto;filter:drop-shadow(0 12px 22px rgba(0,0,0,.55));image-rendering:pixelated;-webkit-user-drag:none}
+  #loading .lname{font:400 34px/1 'Bungee','Baloo 2',Impact,sans-serif;color:#ffd54a;-webkit-text-stroke:8px #3a2308;paint-order:stroke fill;text-shadow:0 6px 0 #3a2308;margin:0 0 14px}#loading .lname:empty{display:none}
+  #loading .lbar{height:8px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden;margin:26px 0 10px}
+  #loading .lbar i{display:block;height:100%;width:0;border-radius:9px;background:linear-gradient(90deg,#f0c36a,#ffe19a);box-shadow:0 0 14px rgba(240,195,106,.6)}
+  #loading .lrow{display:flex;justify-content:space-between;font:500 13px 'DM Mono',monospace;letter-spacing:.08em;color:#aeb2bb}
+  #loading .ltip{margin-top:22px;font:700 14px 'Baloo 2',sans-serif;color:#8d919b;min-height:20px}
+  #loading.fail .lbar i{background:#e8453c;box-shadow:0 0 14px rgba(232,69,60,.6)}#loading.fail #lstep{color:#ff8a7a}
+  body.loading #title,body.loading #hud{visibility:hidden}
+
+  /* ---------- responsive: any screen size / orientation ---------- */
+  html,body{margin:0;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%}
+  .panel{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));box-sizing:border-box}
+  .card{max-height:94vh;max-height:94dvh;max-width:96vw;overflow:auto}
+  @media (max-width:700px){.animated-logo{margin-left:0!important}#title .tbox>div:first-child{margin-left:0!important}}
+  /* HUD shrinks on short screens (phones in landscape) and grows on very large ones */
+  @media (max-height:520px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.72}#v5bar,#v5sp,#v5feed{zoom:.75}#v5pr{zoom:.8;bottom:110px!important}#banner{zoom:.7}}
+  @media (max-height:400px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.62}#v5bar,#v5sp,#v5feed{zoom:.65}}
+  @media (max-width:640px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.7}}
+  @media (min-height:1100px) and (min-width:1800px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr,#hud .hud-bc,#hud .hud-bl,#hud .hud-br{zoom:1.25}}
+</style>
+
+</head>
+<body class="loading"><canvas id="c"></canvas>
+<svg width="0" height="0" style="position:absolute"><symbol id="paw" viewBox="0 0 128 128"><g fill="currentColor"><ellipse cx="64" cy="82" rx="25" ry="20"/><ellipse cx="26" cy="54" rx="10" ry="13"/><ellipse cx="47" cy="34" rx="10" ry="14"/><ellipse cx="81" cy="34" rx="10" ry="14"/><ellipse cx="102" cy="54" rx="10" ry="13"/></g></symbol></svg>
+<div id="loading"><div class="lc"><div class="lname" id="ltitle"></div><img class="llogo animated-logo" src="assets/images/sadmlogo.png" alt="Seed and Destroy No Mercy!" draggable="false">
+  <div class="lbar"><i id="lfill"></i></div><div class="lrow"><span id="lstep">Loading…</span><span id="lpct">0%</span></div><div class="ltip" id="ltip"></div></div></div>
+<script type="module" src="js/loadingScreen.js"></script>
+<div id="hud" hidden></div>
+<div id="toast"></div>
+
+<div id="title" class="panel">
+  <div class="tbox" style="align-items: flex-start; text-align: left;">
+    <!-- Custom PNG Title Logo pulled further to the left -->
+    <div style="width: 100%; margin-bottom: 12px; margin-left: -35px; display: flex; justify-content: flex-start;">
+      <img src="assets/images/sadmlogo.png" alt="Seed and Destroy No Mercy!" class="animated-logo" style="width: 100%; max-width: 460px; height: auto; filter: drop-shadow(0 12px 22px rgba(0,0,0,0.55)); image-rendering: pixelated;">
+    </div>
+
+    <div class="best">BEST <b id="bestT">0</b></div>
+    <button id="play" class="btn green"><svg class="ic"><use href="#paw"/></svg>Play</button>
+    <button id="gfxOpen" class="btn gold"><i class="bi bi-gear-fill" style="font-size:22px"></i>Settings</button>
+    <button id="exit" class="btn red"><i class="bi bi-box-arrow-right" style="font-size:22px"></i>Exit Game</button>
+    <p class="kb"><b>WASD</b> move &nbsp;·&nbsp; <b>Mouse</b> aim<br><b>Left click</b> shoot / slash &nbsp;·&nbsp; <b>Right click</b> scope<br><b>Space</b> roll &nbsp;·&nbsp; <b>1-8 / wheel</b> weapon &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>G</b> settings<br><b>5v5:</b> hold <b>F</b> to plant / defuse the spike</p>
+  </div>
+
+</div>
+<div id="maker" hidden></div>
+
+<button id="menuBack" class="btn gold mback" hidden><i class="bi bi-arrow-left"></i>Back</button>
+
+<!-- Save Slots: floating cards, no container; the page behind is just dimmed -->
+<div id="slots" class="menu" hidden>
+  <div class="mcard"><h2 class="mtitle">Save Slots</h2><div id="slotList" class="slist"></div></div>
+</div>
+
+<!-- Story worlds: 3 slots, each one remembers the world that was generated for it -->
+<div id="worlds" class="menu" hidden>
+  <div class="mcard"><h2 class="mtitle">Story Worlds</h2><div id="worldList" class="slist"></div></div>
+</div>
+
+<!-- game mode select: back + title on top, tall Story card on the left, Roguelike + 5v5 wide cards stacked on the right -->
+<div id="modes" class="menu" hidden>
+  <div class="mscreen">
+    <div class="mbar"><h2 class="mtitle">Game Mode Select</h2><div class="who"><span class="hd" id="modeHd"></span><b id="modeName">Ming</b></div></div>
+    <div class="mlist" id="mList">
+      <div class="mode story" id="mStory" role="button" tabindex="0" style="--i:0">
+        <div class="fx"><i class="fog"></i><i class="star" style="--x:10%;--y:12%;--d:2.6s;--w:0s"></i><i class="star" style="--x:26%;--y:30%;--d:3.2s;--w:-1s"></i><i class="star" style="--x:44%;--y:10%;--d:2.2s;--w:-2s"></i><i class="star" style="--x:62%;--y:24%;--d:3.6s;--w:-0.5s"></i><i class="star" style="--x:80%;--y:14%;--d:2.8s;--w:-1.5s"></i><i class="star" style="--x:90%;--y:38%;--d:3.1s;--w:-2.5s"></i><i class="star" style="--x:16%;--y:50%;--d:3.4s;--w:-0.8s"></i><i class="star" style="--x:70%;--y:56%;--d:2.4s;--w:-1.2s"></i></div>
+        <span class="mi"><i class="bi bi-book-fill"></i></span>
+        <div class="mt"><b>Story</b><span class="sub">Explore</span><small>Wander a world made just for you: forests, rainforest, savanna, desert and mountains, cut by winding rivers</small></div>
+        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
+      </div>
+      <div class="mode rogue wide" id="mRogue" role="button" tabindex="0" style="--i:1">
+        <div class="fx"><i class="sun"></i><i class="leaf a" style="--x:8%;--s:14px;--d:7.5s;--w:-1s"></i><i class="leaf b" style="--x:20%;--s:18px;--d:9s;--w:-4s"></i><i class="leaf a" style="--x:33%;--s:12px;--d:6.5s;--w:-2.5s"></i><i class="leaf b" style="--x:46%;--s:20px;--d:10s;--w:-6s"></i><i class="leaf a" style="--x:58%;--s:15px;--d:7s;--w:-0.5s"></i><i class="leaf b" style="--x:70%;--s:17px;--d:8.5s;--w:-3.5s"></i><i class="leaf a" style="--x:82%;--s:13px;--d:6.8s;--w:-5s"></i><i class="leaf b" style="--x:92%;--s:19px;--d:9.5s;--w:-7s"></i><i class="leaf b" style="--x:14%;--s:11px;--d:6s;--w:-3s"></i><i class="leaf a" style="--x:64%;--s:12px;--d:7.2s;--w:-8s"></i><i class="leaf a" style="--x:26%;--s:13px;--d:8s;--w:-2s"></i><i class="leaf b" style="--x:76%;--s:15px;--d:9s;--w:-6.5s"></i></div>
+        <span class="mi"><i class="bi bi-tree-fill"></i></span>
+        <div class="mt"><b>Roguelike</b><span class="sub">Endless</span><small>Survive wave after wave in the forest</small></div>
+        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
+      </div>
+      <div class="mode v5 wide" id="mV5" role="button" tabindex="0" style="--i:2">
+        <div class="fx"><i class="caus c1"></i><i class="caus c2"></i><i class="caus c3"></i>
+          <div class="waves"><i class="wv a"></i><i class="wv b r"></i><i class="bub" style="--x:6%;--s:8px;--d:6s;--w:-1s"></i><i class="bub" style="--x:16%;--s:12px;--d:8s;--w:-3s"></i><i class="bub" style="--x:28%;--s:7px;--d:5.5s;--w:-4s"></i><i class="bub" style="--x:40%;--s:10px;--d:7s;--w:-2s"></i><i class="bub" style="--x:52%;--s:14px;--d:9s;--w:-5s"></i><i class="bub" style="--x:63%;--s:8px;--d:6.5s;--w:-6s"></i><i class="bub" style="--x:74%;--s:11px;--d:7.5s;--w:-0.5s"></i><i class="bub" style="--x:85%;--s:9px;--d:6.8s;--w:-3.5s"></i><i class="bub" style="--x:94%;--s:13px;--d:8.4s;--w:-1.5s"></i><i class="wv c"></i></div></div>
+        <span class="mi"><i class="bi bi-people-fill"></i></span>
+        <div class="mt"><b>5v5</b><span class="sub">Spike Rush</span><small>Plant the spike, win the round</small></div>
+        <div class="rkx"><div class="rkpill" id="rkpill"></div></div>
+        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="bye" class="menu" hidden><div class="mcard"><h2 class="mtitle">Thanks for playing!</h2><p class="msub">You can close this tab / window now.</p>
+  <div class="mrow"><button id="byeBack" class="btn green">Back to game</button></div></div></div>
+
+<style>
+  /* ---------- menus: dimmed page + floating cards (no container) ---------- */
+  .menu{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse at center,rgba(8,10,16,.5),rgba(8,10,16,.74));font-family:var(--font,'Baloo 2',system-ui,sans-serif);color:#fff}
+  .menu[hidden]{display:none!important}
+  .mcard{width:min(480px,92vw);max-height:94dvh;box-sizing:border-box;text-align:center}
+  .mrow{display:flex;gap:10px;justify-content:center;margin-top:14px}
+  /* fade + swipe-up entrance for every card (uses the independent `translate`, so it never fights hover transforms) */
+  @keyframes cardIn{from{opacity:0;translate:0 36px}to{opacity:1;translate:0 0}}
+  .mtitle,.cslot,.mode,.mbar .who,#over .card,#pause .card,#gfx .gfxcard{animation:cardIn .5s cubic-bezier(.2,.8,.25,1) backwards}
+  .cslot,.mode{animation-delay:calc(var(--i,0)*75ms + 110ms)}
+  .mtitle{margin:0 0 16px;font:400 44px/1 var(--disp,Impact,sans-serif);color:#ffd54a;-webkit-text-stroke:9px #3a2308;paint-order:stroke fill;text-shadow:0 6px 0 #3a2308,0 12px 22px rgba(0,0,0,.5);letter-spacing:.02em}
+  .msub{margin:4px 0 0;color:#d6d9e0;font-weight:800;font-size:15px;letter-spacing:.04em;text-shadow:0 2px 0 rgba(0,0,0,.55)}
+  /* back button: ONE shared button (top left). It only plays the entrance animation when Play is pressed (.in) */
+  .mback{position:fixed;top:max(16px,env(safe-area-inset-top));left:max(20px,env(safe-area-inset-left));z-index:31;min-width:0;min-height:48px;padding:0 20px;font-size:20px;border-radius:16px;gap:8px;box-shadow:0 5px 0 var(--c2),0 10px 16px #0004}
+  .mback:active{box-shadow:0 1px 0 var(--c2);transform:translateY(4px)}
+  .mback.in{animation:cardIn .5s cubic-bezier(.2,.8,.25,1) backwards}
+  /* 3D head icon tile */
+  .hd{flex:none;display:grid;place-items:center;width:72px;height:72px;border-radius:50%}   /* no container: just the 3D head */
+  .hd img{width:100%;height:100%;object-fit:contain;filter:drop-shadow(0 4px 5px rgba(0,0,0,.5));pointer-events:none;-webkit-user-drag:none}
+  /* save slots: 5 floating cards, vertical scroll */
+  .slist{display:flex;flex-direction:column;gap:14px;max-height:min(62vh,430px);overflow-y:auto;padding:8px 10px 18px;margin:0 -10px;scrollbar-width:none;-ms-overflow-style:none}
+  .slist::-webkit-scrollbar{display:none}
+  .cslot{flex:0 0 auto;display:flex;align-items:center;gap:16px;min-height:88px;box-sizing:border-box;padding:12px 14px 12px 12px;border-radius:24px;background:linear-gradient(180deg,#3b3e47,#2a2c33);border:2px solid rgba(255,255,255,.12);box-shadow:0 6px 0 #17181c,0 14px 26px rgba(0,0,0,.45);cursor:pointer;text-align:left;transition:transform .12s,border-color .12s,filter .12s,box-shadow .12s}
+  .cslot:hover{transform:translateY(-3px);border-color:#ffd54a;filter:brightness(1.08)}
+  .cslot:active{transform:translateY(3px);box-shadow:0 2px 0 #17181c,0 6px 12px rgba(0,0,0,.4)}
+  .cslot.empty{justify-content:center;gap:12px;background:rgba(18,20,26,.5);border:2px dashed rgba(255,255,255,.32);box-shadow:0 14px 26px rgba(0,0,0,.25);color:#c9cdd6;font-weight:800;font-size:20px}
+  .cslot .si{flex:1;min-width:0}.cslot .si b{display:block;font-size:23px;line-height:1.1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 2px 0 rgba(0,0,0,.4)}
+  .cslot .si span{font:500 12px 'DM Mono',monospace;color:#b4b8c2;letter-spacing:.08em}
+  .cslot .sn{font:500 12px 'DM Mono',monospace;color:#8d919b;flex:none}
+  .cslot .sb{flex:none;width:38px;height:38px;border-radius:12px;border:0;cursor:pointer;background:#464a55;color:#fff;font-size:17px;box-shadow:0 3px 0 #2a2d35}
+  .cslot .sb:hover{background:#5d6270}.cslot .sb.del:hover{background:#d4453a}
+  /* game modes: full-screen grid. Tall Story card on the left, Roguelike + 5v5 wide cards stacked on the right */
+  #modes{align-items:stretch;justify-content:stretch}
+  .mscreen{width:100%;height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:20px;padding:max(16px,env(safe-area-inset-top)) max(34px,env(safe-area-inset-right)) max(30px,env(safe-area-inset-bottom)) max(34px,env(safe-area-inset-left))}
+  .mbar{flex:none;display:flex;align-items:center;gap:18px;min-height:52px;padding-left:112px}
+  .mbar .mtitle{margin:0;font-size:36px;text-align:left;-webkit-text-stroke:8px #3a2308}
+  .mbar .who{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .mbar .who .hd{width:56px;height:56px}
+  .mbar .who b{font:400 26px/1 var(--disp,Impact,sans-serif);color:#fff;-webkit-text-stroke:6px #1d1a2e;paint-order:stroke fill;text-shadow:0 4px 0 #1d1a2e}
+  .mlist{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,.4fr) minmax(0,.6fr);grid-template-rows:repeat(2,minmax(120px,22vh)) 1fr;gap:20px 26px;overflow-y:auto;overflow-x:hidden;padding:10px 8px 24px;scrollbar-width:none;-ms-overflow-style:none}
+  .mlist::-webkit-scrollbar{display:none}
+  .mode.story{grid-column:1;grid-row:1/4}
+  .mode.rogue{grid-column:2;grid-row:1}
+  .mode.v5{grid-column:2;grid-row:2}
+  .mode{position:relative;isolation:isolate;min-width:0;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:space-between;gap:10px;padding:28px 20px 22px;border-radius:32px;text-align:center;color:#fff;cursor:pointer;overflow:hidden;background:linear-gradient(180deg,var(--c1),var(--c2));box-shadow:0 0 0 4px rgba(255,255,255,.14),0 8px 0 var(--c3),0 20px 30px rgba(0,0,0,.45);transition:transform .15s,filter .15s,box-shadow .15s;outline:none;--fall:520px;--rise:-300px}
+  .mode:hover,.mode:focus-visible{transform:translateY(-6px);filter:brightness(1.07)}
+  .mode:active{transform:translateY(4px);box-shadow:0 0 0 4px rgba(255,255,255,.14),0 3px 0 var(--c3),0 10px 16px rgba(0,0,0,.4)}
+  .mode>*:not(.fx){position:relative;z-index:1}
+  .mode .fx{position:absolute;inset:0;z-index:0;pointer-events:none;overflow:hidden}
+  .mode::before{content:'';position:absolute;inset:0;z-index:2;pointer-events:none;border-radius:inherit;background:linear-gradient(180deg,rgba(255,255,255,.1),rgba(255,255,255,0) 32%)}
+  .mode.wide{flex-direction:row;justify-content:flex-start;text-align:left;gap:22px;padding:12px 28px;--fall:170px;--rise:-120px}
+  .mode.wide .mt{flex:1;min-width:0}
+  .mode.wide .mt b{font-size:30px}
+  .mode.wide .rkx{width:auto;flex:0 1 270px}
+  .mode.wide .play{margin-left:auto;flex:none}
+  /* icon sits directly on the card: no container */
+  .mode .mi{display:grid;place-items:center;font-size:88px;line-height:1;filter:drop-shadow(0 5px 5px rgba(0,0,0,.3));animation:bob 3.2s ease-in-out infinite}
+  .mode.wide .mi{font-size:58px}
+  @keyframes bob{50%{transform:translateY(-5px)}}
+  .mode .mt b{display:block;font:400 29px/1.05 var(--disp,Impact,sans-serif);-webkit-text-stroke:6px rgba(0,0,0,.35);paint-order:stroke fill;text-shadow:0 4px 0 rgba(0,0,0,.3)}
+  .mode .mt .sub{display:block;margin-top:2px;font:800 17px var(--font,'Baloo 2',sans-serif);letter-spacing:.14em;text-transform:uppercase;text-shadow:0 2px 0 rgba(0,0,0,.35)}
+  .mode .mt small{display:block;margin-top:6px;font:700 14px/1.25 var(--font,'Baloo 2',sans-serif);opacity:.95;text-shadow:0 1px 0 rgba(0,0,0,.3)}
+  .mode .play{display:inline-flex;align-items:center;gap:6px;padding:8px 24px;border-radius:99px;background:#fff;color:var(--c3);font:800 19px var(--font,'Baloo 2',sans-serif);letter-spacing:.06em;text-transform:uppercase;box-shadow:0 4px 0 rgba(0,0,0,.28)}
+  .mode .badge{white-space:nowrap;font:800 12px var(--font,'Baloo 2',sans-serif);letter-spacing:.08em;text-transform:uppercase;padding:7px 14px;border-radius:99px;background:rgba(0,0,0,.4)}
+  .mode .rkx{width:100%;pointer-events:none;zoom:.8}
+  .mode.story{--c1:#7b78a2;--c2:#5f5b86;--c3:#35324f}
+  .mode.rogue{--c1:#62c24f;--c2:#48ad43;--c3:#25692b}
+  .mode.v5{--c1:#46b4ec;--c2:#2d86dc;--c3:#12468f}
+  .mode.locked{cursor:not-allowed;filter:grayscale(.45) brightness(.9)}
+  .mode.locked:hover,.mode.locked:active{transform:none;filter:grayscale(.45) brightness(.9);box-shadow:0 0 0 4px rgba(255,255,255,.14),0 8px 0 var(--c3),0 20px 30px rgba(0,0,0,.45)}
+  /* story: twinkling stars + drifting mist */
+  .star{position:absolute;left:var(--x);top:var(--y);width:5px;height:5px;border-radius:50%;background:#fff;box-shadow:0 0 8px 2px rgba(255,255,255,.7);animation:twinkle var(--d) ease-in-out infinite;animation-delay:var(--w)}
+  @keyframes twinkle{0%,100%{opacity:.15;transform:scale(.6)}50%{opacity:1;transform:scale(1.2)}}
+  .fog{position:absolute;left:-30%;right:-30%;bottom:8%;height:45%;background:radial-gradient(ellipse at 30% 60%,rgba(255,255,255,.22),transparent 60%),radial-gradient(ellipse at 75% 50%,rgba(255,255,255,.16),transparent 60%);animation:mist 9s ease-in-out infinite alternate}
+  @keyframes mist{from{transform:translateX(-8%)}to{transform:translateX(8%)}}
+  /* roguelike: soft sunlight, hills and leaves floating down */
+  .mode.rogue .fx::after{content:'';position:absolute;left:-8%;right:-8%;bottom:-16%;height:40%;background:radial-gradient(ellipse at 20% 100%,#25692b 0 52%,transparent 53%),radial-gradient(ellipse at 72% 100%,#2f8433 0 48%,transparent 49%)}
+  .sun{position:absolute;right:-8%;top:-60%;width:36%;aspect-ratio:1;border-radius:50%;background:radial-gradient(circle,rgba(255,250,190,.45),rgba(255,250,190,0) 65%);animation:sun 5s ease-in-out infinite alternate}
+  @keyframes sun{from{opacity:.5;transform:scale(.92)}to{opacity:1;transform:scale(1.06)}}
+  .leaf{position:absolute;top:-8%;left:var(--x);width:var(--s);height:var(--s);border-radius:0 100% 0 100%;background:linear-gradient(135deg,#d4ff8f,#4cae35 70%);box-shadow:inset -2px -2px 0 rgba(0,0,0,.16);opacity:0;animation:leafA var(--d) linear infinite;animation-delay:var(--w)}
+  .leaf.b{animation-name:leafB;background:linear-gradient(135deg,#ffe58a,#e0922d 70%)}
+  .leaf::after{content:'';position:absolute;left:12%;top:48%;width:80%;height:2px;background:rgba(0,0,0,.18);transform:rotate(45deg);transform-origin:left center}
+  @keyframes leafA{0%{opacity:0;transform:translate(0,0) rotate(0)}8%{opacity:1}30%{transform:translate(26px,calc(var(--fall)*.27)) rotate(120deg)}55%{transform:translate(-18px,calc(var(--fall)*.53)) rotate(250deg)}80%{opacity:1;transform:translate(22px,calc(var(--fall)*.8)) rotate(380deg)}100%{opacity:0;transform:translate(-8px,calc(var(--fall)*1.05)) rotate(480deg)}}
+  @keyframes leafB{0%{opacity:0;transform:translate(0,0) rotate(0)}8%{opacity:1}30%{transform:translate(-24px,calc(var(--fall)*.27)) rotate(-130deg)}55%{transform:translate(20px,calc(var(--fall)*.53)) rotate(-240deg)}80%{opacity:1;transform:translate(-20px,calc(var(--fall)*.8)) rotate(-370deg)}100%{opacity:0;transform:translate(10px,calc(var(--fall)*1.05)) rotate(-470deg)}}
+  /* 5v5: layered waves flowing sideways, light caustics and rising bubbles */
+  .waves{position:absolute;inset:0}
+  .wv{position:absolute;left:0;right:0;bottom:0;height:var(--h);background:var(--w) repeat-x 0 0/240px 26px,linear-gradient(var(--c),var(--c)) no-repeat 0 25px/100% 100%;animation:flowL var(--t) linear infinite}
+  .wv.r{animation-name:flowR}
+  .wv.a{--h:64%;--t:11s;--w:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 40' preserveAspectRatio='none'><path d='M0 20Q30 0 60 20T120 20T180 20T240 20V40H0Z' fill='rgb(255,255,255)' fill-opacity='.22'/></svg>");--c:rgba(255,255,255,.2)}
+  .wv.b{--h:52%;--t:7s;--w:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 40' preserveAspectRatio='none'><path d='M0 20Q30 0 60 20T120 20T180 20T240 20V40H0Z' fill='rgb(255,255,255)' fill-opacity='.3'/></svg>");--c:rgba(255,255,255,.26)}
+  .wv.c{--h:36%;--t:5s;--w:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 240 40' preserveAspectRatio='none'><path d='M0 20Q30 0 60 20T120 20T180 20T240 20V40H0Z' fill='rgb(8,56,140)' fill-opacity='.5'/></svg>");--c:rgba(8,56,140,.42)}
+  @keyframes flowL{from{background-position:0 0,0 25px}to{background-position:-240px 0,0 25px}}
+  @keyframes flowR{from{background-position:0 0,0 25px}to{background-position:240px 0,0 25px}}
+  .caus{position:absolute;width:30%;height:22%;border-radius:50%;background:radial-gradient(rgba(255,255,255,.35),transparent 70%);filter:blur(2px)}
+  .caus.c1{left:4%;top:12%;animation:drift 6s ease-in-out infinite alternate}
+  .caus.c2{left:44%;top:30%;animation:drift 8s ease-in-out -3s infinite alternate-reverse}
+  .caus.c3{left:70%;top:10%;animation:drift 7s ease-in-out -1s infinite alternate}
+  @keyframes drift{from{transform:translateX(-14px) scaleX(.9);opacity:.5}to{transform:translateX(24px) scaleX(1.15);opacity:1}}
+  .bub{position:absolute;bottom:-14px;left:var(--x);width:var(--s);height:var(--s);border-radius:50%;border:2px solid rgba(255,255,255,.75);background:rgba(255,255,255,.18);opacity:0;animation:rise var(--d) ease-in infinite;animation-delay:var(--w)}
+  @keyframes rise{0%{opacity:0;transform:translate(0,0)}15%{opacity:.9}50%{transform:translate(8px,calc(var(--rise)*.5))}100%{opacity:0;transform:translate(-6px,var(--rise))}}
+  @media (max-width:700px){.mbar{padding-left:104px}.mbar .mtitle{font-size:24px}.mlist{grid-template-columns:1fr;grid-template-rows:none}.mode.story,.mode.rogue,.mode.v5{grid-column:1;grid-row:auto}.mode.story{min-height:210px}.mode.wide{min-height:120px}.mode.wide .rkx{display:none}}
+  @media (max-height:520px){.mtitle{font-size:32px;margin-bottom:8px;-webkit-text-stroke:7px #3a2308}.slist{max-height:58vh}.cslot{min-height:72px}
+    .mscreen{gap:8px;padding-top:12px;padding-bottom:12px}.mbar{min-height:44px}.mbar .mtitle{font-size:26px;margin:0}.mbar .who .hd{width:42px;height:42px}.mbar .who b{font-size:20px}
+    .mlist{grid-template-rows:repeat(2,minmax(92px,24vh)) 1fr;gap:14px 20px;padding-bottom:18px}.mode{padding:16px 14px 14px}.mode .mi{font-size:56px}.mode.wide .mi{font-size:40px}.mode.wide{padding:8px 20px;gap:16px}.mode .mt b,.mode.wide .mt b{font-size:22px}.mode .mt .sub{font-size:14px}.mode .mt small{display:none}.mode .play{padding:5px 18px;font-size:16px}}
+</style>
+<div id="over" class="panel" hidden><div class="card"><h2>Cat Down!</h2><div class="stats"><div><b id="sW">1</b><span>Wave</span></div><div><b id="sK">0</b><span>KOs</span></div><div><b id="sS">0</b><span>Score</span></div></div><p id="best"></p>
+  <div class="row"><button id="again" class="btn green">Try Again</button><button id="home" class="btn gold">Title</button></div></div></div>
+<script>
+// Shrinks the title menu and the popup cards so they always fit the screen (any size, any orientation).
+(function(){
+  const SEL='#title .tbox,.card,.mcard';
+  function fit(){
+    const els=document.querySelectorAll(SEL);
+    els.forEach(e=>e.style.zoom='');
+    els.forEach(e=>{
+      const r=e.getBoundingClientRect();if(!r.width||!r.height)return;
+      const z=Math.min(1,(innerHeight*.94)/r.height,(innerWidth*.96)/r.width);
+      if(z<.999)e.style.zoom=z.toFixed(3);
+    });
+  }
+  let q=0;const later=()=>{cancelAnimationFrame(q);q=requestAnimationFrame(fit)};
+  addEventListener('resize',later);addEventListener('orientationchange',()=>setTimeout(later,200));addEventListener('load',later);
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(later);
+  new MutationObserver(later).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['hidden']});
+  document.querySelectorAll('img').forEach(i=>i.addEventListener('load',later));
+  later();
+})();
+</script>
+<script type="module" src="main.js"></script></body></html>
