@@ -27,6 +27,7 @@ const ICO={
   gfx:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="4" width="19" height="13" rx="2.5"/><path d="M8 21h8M12 17v4"/></svg>',
   aud:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9.5v5h4l5 4v-13l-5 4z"/><path d="M16.5 9a4 4 0 0 1 0 6M19 6.5a8 8 0 0 1 0 11"/></svg>',
   move:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>',
+  dev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16"/></svg>',
   reset:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M3.5 3.5v5h5"/></svg>'};
 const same=(a,b)=>ROWS.every(([,k])=>Math.abs(a[k]-b[k])<1e-6);
 
@@ -102,7 +103,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
   const el=document.createElement('div');el.id='gfx';el.hidden=true;
   const seg=(attr,opts)=>`<div class="seg" ${attr}>${opts.map(([v,t])=>`<button data-v="${v}">${t}</button>`).join('')}</div>`;
   el.innerHTML=`<div class="card gfxcard"><h2>Settings</h2>
-    <div class="gbody"><div class="gtabs"><button data-tab="ctl">${ICO.pad}<span>Controls</span></button><button data-tab="gfx">${ICO.gfx}<span>Graphics</span></button><button data-tab="aud">${ICO.aud}<span>Audio</span></button></div><div class="gmain">
+    <div class="gbody"><div class="gtabs"><button data-tab="ctl">${ICO.pad}<span>Controls</span></button><button data-tab="gfx">${ICO.gfx}<span>Graphics</span></button><button data-tab="aud">${ICO.aud}<span>Audio</span></button><button data-tab="dev">${ICO.dev}<span>Dev</span></button></div><div class="gmain">
     <div id="pCtl" hidden>
       <div class="grows" id="ctlM">
         <div class="grow"><span>Button size<small>Bigger buttons are easier to hit</small></span>${seg('data-c="scale"',[[.8,'S'],[1,'M'],[1.2,'L'],[1.4,'XL']])}</div>
@@ -122,6 +123,9 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
         <div class="grow"><span>Auto-lower when slow<small>Steps the preset down if the game lags</small></span>${seg('data-x="auto"',[[0,'Off'],[1,'On']])}</div></div>
     </div>
     <div id="pAud" hidden><div class="grows">${[['master','Master volume','Everything at once'],['sfx','Sound effects','Shots, hits, buttons'],['music','Music','Background music']].map(([k,n,h])=>`<div class="grow"><span>${n}<small>${h}</small></span><div class="fovr"><input type="range" data-a="${k}" min="0" max="100" step="5"><b></b></div></div>`).join('')}</div></div>
+    <div id="pDev" hidden><p class="khint">Developer tools. They open in a new tab, so your match keeps running behind this panel.</p><div class="grows">
+      <div class="grow"><span>Weapon overview<small>Every weapon model at once: search, filter, click one for a 3D detail view</small></span><button class="btn green sm" data-open="weapons-overview.html">${ICO.dev}Open overview</button></div>
+    </div></div>
     </div></div>
     <div class="row"><button id="gDone" class="btn green">Done</button></div></div>`;
   root.appendChild(el);
@@ -136,7 +140,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
       <div class="grows k2">${ACTIONS.map(a=>`<div class="grow"><span>${a.name}</span><button class="kbtn${listening===a.id?' wait':''}" data-bind="${a.id}">${listening===a.id?'Press a key…':kb.label(a.id)}</button></div>`).join('')}</div>
       <div class="gkeys kfix">${FIXED.map(([k,t])=>`<div><span>${t}</span><kbd>${k}</kbd></div>`).join('')}</div>
       <div class="krst"><button class="btn red sm" data-act="kreset">${ICO.reset}Reset controls</button></div>`};
-  const showTab=t=>{tab=t;el.querySelector('#pCtl').hidden=t!=='ctl';el.querySelector('#pGfx').hidden=t!=='gfx';el.querySelector('#pAud').hidden=t!=='aud';
+  const showTab=t=>{tab=t;el.querySelector('#pCtl').hidden=t!=='ctl';el.querySelector('#pGfx').hidden=t!=='gfx';el.querySelector('#pAud').hidden=t!=='aud';el.querySelector('#pDev').hidden=t!=='dev';
     el.querySelectorAll('.gtabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
     const m=mob();el.querySelector('#ctlM').hidden=!m;el.querySelector('#ctlK').hidden=!!m;if(!m)renderKeys()};
   const sync=()=>{const p=presetOf(st.q);st.preset=p;showTab(tab);const m=mob(),mc=m&&m.get();
@@ -149,6 +153,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
     if(e.target.id!=='fovR')return;st.fov=+e.target.value;el.querySelector('#fovV').textContent=st.fov+'°';save()});   // read live every frame by main.js
   el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
     if(b.id==='gDone'){api.close();return}
+    if(b.dataset.open){window.open(b.dataset.open,'_blank','noopener');return}   // dev pages open in a new tab
     if(b.dataset.bind){listening=listening===b.dataset.bind?null:b.dataset.bind;renderKeys();return}
     if(b.dataset.tab){listening=null;showTab(b.dataset.tab);return}
     if(b.dataset.act==='kreset'){kb&&kb.reset();listening=null;renderKeys();return}
