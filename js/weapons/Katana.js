@@ -4,11 +4,12 @@
 //   - tsuba   : round iron guard with a thin gold ring
 //   - habaki, fuchi, kashira, menuki : gold fittings (lathes + tiny ellipsoids)
 //   - tsuka   : the handle, a lofted oval with a diagonal wrap lattice (bump + colour), black-navy with slightly lighter diamonds
-// The weapon points along -Y: grip at the origin, the butt behind the hand (+Y), the tip at about y = -1.2. The edge faces +X.
+// The weapon points along -Y: grip at the origin, the butt behind the hand (+Y), the tip at y = -1.70 (after SHIFT). The edge faces +X.
 import * as T from 'three';
 import {PI,clamp,lerp,sm,C,grid,bands,lathe,ball,cap,se,goldCol,metalMat,softMat,addMesh} from './wlib.js';
 
-const B0=.105,B1=1.20,BL=B1-B0,HW0=.0215,HW1=.0165,TZ=.0082;     // blade start / end (u), length, half width at the base / near the tip, half thickness
+const SHIFT=.08,GIRTH=2.4,ROLL=Math.PI/2;   // SHIFT: slides the whole sword toward the tip so guard / grip / pommel line up with the Wooden Sword. ROLL: turns the sword about its own length so the broad face is seen from the side like the Wooden Sword (edge points down; use -Math.PI/2 to flip it up). GIRTH: widens x/z only (never the length); 1 = original slim look
+const B0=.105,B1=1.62,BL=B1-B0,HW0=.0215,HW1=.0165,TZ=.0082;     // blade start / end (u), length, half width at the base / near the tip, half thickness
 const HIRA=C('#9aa4b6'),HAMON=C('#eef2f9'),SHINO=C('#6b7589'),MUNE=C('#4c5468'),BEVEL=C('#f7f9fd');
 const IRON=C('#1d202b'),ITO=C('#1b1f30'),ITO_L=C('#2f3856'),ITO_H=C('#4a5373'),GOLD=C('#c9a24a');
 
@@ -37,7 +38,7 @@ const tsuka=grid(100,36,(t,th,o)=>{
   o.c.copy(ITO).lerp(ITO_L,clamp((m-.3)/.7,0,1)*.9);if(m<-.55)o.c.lerp(ITO_H,.7)});
 
 export default {
-  id:'katana',name:'Katana',kind:'melee',handling:'sword',
+  id:'katana',name:'Katana',kind:'melee',handling:'sword',great:'blade',fore:[-.14,0],
   stats:{range:2.7,arc:-.1,dmg:3.2,dur:.34,dash:1.1,move:1.05},
   build(){
     const g=new T.Group();
@@ -50,6 +51,7 @@ export default {
     for(const sd of[1,-1])for(const u of[-.04,-.14])trim.push(ball([0,-u,sd*.0185],.0075,GOLD,[1,1.5,.55]));                                                       // menuki
     addMesh(g,trim,metalMat());
     addMesh(g,tsuka,softMat({roughness:.8}));
+    g.position.y=-SHIFT;g.scale.set(GIRTH,1,GIRTH);g.rotation.y=ROLL;   // tip lands at u=1.70 (.55 longer than the Wooden Sword) and the butt at about -.19, same as the Wooden Sword
     return {group:g};
   }
 };
