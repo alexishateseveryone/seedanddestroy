@@ -8,6 +8,7 @@
 import * as T from 'three';
 import {PI,clamp,lerp,sm,C,grid,bands,lathe,tube,ball,vn,goldCol,metalMat,softMat,woodMat,addMesh} from './wlib.js';
 
+const SIZE=1.35,LEN=1.15,ROLL=Math.PI/2;   // SIZE: overall scale. LEN: extra stretch along the length only. ROLL: turns the weapon about its own length so the broad face is seen from the side (same as Wooden Sword / Katana; edge points down, -Math.PI/2 flips it up)
 const EBONY=C('#1c1b24'),EBONY_L=C('#2e2d3b'),GOLD=C('#c9a24a'),GOLD_D=C('#8f6f2a'),BEVEL=C('#f2f5fb'),POL=C('#b4bccb'),GUN=C('#262b39'),GUN_D=C('#1b1e29');
 
 // ---- blade centreline: direction angle turns from slightly "up" to well "down" along the blade
@@ -33,7 +34,7 @@ const sp=[[SU0,0],[SU0+.003,.012]];for(let u=SU0+.03;u<SU1-.02;u+=.045)sp.push([
 const snCol=(u,r,th,c)=>c.copy(EBONY).lerp(EBONY_L,clamp(.35*Math.sin(th*5+u*4)+.5*vn(u*18,th),0,1)*.6);
 
 export default {
-  id:'scythe',name:'Scythe',kind:'melee',handling:'sword',
+  id:'scythe',name:'Scythe',kind:'melee',handling:'sword',great:'shoulder',fore:[-.4,0],
   stats:{range:3,arc:.1,dmg:4.5,dur:.74,dash:.9,move:.95},
   build(){
     const g=new T.Group();
@@ -46,6 +47,7 @@ export default {
       lathe([[1.08,0],[1.08,.026],[1.10,.031],[1.13,.0285],[1.17,.028],[1.20,.0285],[1.225,.032],[1.255,.026],[1.27,0]],{col:(u,r,th,c)=>{c.copy(GOLD).lerp(GOLD_D,.3+.25*Math.sin(th*2));if(u>1.165&&u<1.205)c.copy(GUN)},seg:32,ez:.9}),   // blade mount
       ball([-.125,-.355,0],.0125,GOLD)];                                                                                                                         // nib cap
     addMesh(g,trim,metalMat());
+    g.scale.set(SIZE,SIZE*LEN,SIZE);g.rotation.y=ROLL;
     return {group:g};
   }
 };
