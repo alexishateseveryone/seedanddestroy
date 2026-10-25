@@ -1,7 +1,8 @@
 import * as T from 'three';
 import {createCatAvatar} from './js/catAvatar.js';
 import {buildMap} from './js/forestMap.js';
-import {buildArena} from './js/arenaMap.js';
+import {buildArena,ARENA_THEMES} from './js/arenaMap.js';
+import {spinRoulette} from './js/weaponRoulette.js';
 import {buildEnemy,STATS} from './js/enemies/index.js';
 import {openMaker} from './js/catMaker.js';
 import {createFX} from './js/effects.js';
@@ -79,10 +80,11 @@ const WP=()=>WEAPONS[P.wpn],isGunW=()=>WP().kind==='gun';
 const ammo=WEAPONS.map(w=>w.stats.mag||0),RL={t:0,dur:1};
 const hasMag=()=>isGunW()&&!!WP().stats.mag,refill=()=>{WEAPONS.forEach((w,i)=>ammo[i]=w.stats.mag||0);RL.t=0};
 function reload(){if(state!=='play'||paused||!hasMag()||RL.t>0||P.dead||P.frozen||ammo[P.wpn]>=WP().stats.mag)return;RL.t=RL.dur=WP().stats.reload||1.2;P.scope=false}
-const hudAmmo=()=>hasMag()?hud.ammo(ammo[P.wpn],WP().stats.mag,RL.t>0?1-RL.t/RL.dur:-1):hud.ammo(0,0,-1);
+const hudAmmo=()=>!P.unarmed&&hasMag()?hud.ammo(ammo[P.wpn],WP().stats.mag,RL.t>0?1-RL.t/RL.dur:-1):hud.ammo(0,0,-1);
 function equipIdx(i){P.wpn=i;P.scope=false;RL.t=0;cat.userData.equip(WEAPONS[i]);hud.weapon(i);hudAmmo()}
 function setCat(){if(cat){cat.userData.dispose&&cat.userData.dispose();scene.remove(cat)}cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.fx=fx;cat.userData.equip(WP());hud.weapon(P.wpn)}
-function setWeapon(i){i=(i+WEAPONS.length)%WEAPONS.length;if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
+function setWeapon(i){if(P.unarmed)return;i=(i+WEAPONS.length)%WEAPONS.length;const lo=gm==='v5'&&P.loadout;if(lo&&!lo.includes(i))i=lo[0]===P.wpn?lo[1]:lo[0];   // 5v5: wheel / buttons just flip between your two roulette weapons
+  if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
 function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false,kill=false;
   enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;if(e.hp<=0)kill=true;e.hbT=2.5;e.fl=.2;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;const hp_=new T.Vector3(e.x,(e.gy||0)+.9,e.z);fx.slashHit(hp_,P.camYaw,d,st.slashColor||'#ffe8a8',e.hp<=0?1.35:1);hitAny=true}});
   for(let i=ebul.length-1;i>=0;i--){const b=ebul[i],p=b.m.position;if(Math.hypot(p.x-P.x,p.z-P.z)<Math.min(2.4,st.range)){fx.hit(p,'#ffd8a0',5);scene.remove(b.m);ebul.splice(i,1)}}
@@ -304,8 +306,15 @@ function update(dt){
 }
 // ---- 5v5 SPIKE RUSH: hooks the mode in js/5v5.js needs (it drives 9 AI cats; you play on the blue team)
 let wuid=0;
-function leave5(){mode5&&mode5.stop();saveWorldPos();storyMap&&(storyMap.group.visible=false);document.body.classList.remove('story');gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
+function leave5(){P.unarmed=false;P.loadout=null;hud.loadout&&hud.loadout(null);mode5&&mode5.stop();saveWorldPos();storyMap&&(storyMap.group.visible=false);document.body.classList.remove('story');gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
 function ensureArena(){if(!arena){arena=buildArena(11,atm.envMap);scene.add(arena.group);arena.setQuality(lastQ);arena.group.visible=false}}
+// 5v5: every round is played on a freshly generated random map (js/5v5.js calls ctx.newMap behind the loading screen). The new arena replaces the old one everywhere (arena / map).
+function swapArena(theme,seed){
+  if(arena){scene.remove(arena.group);try{arena.dispose&&arena.dispose()}catch(e){}arena.group.traverse(o=>{o.geometry&&o.geometry.dispose&&o.geometry.dispose()})}   // free the old map's buffers
+  arena=buildArena(seed,atm.envMap,theme);scene.add(arena.group);arena.setQuality(lastQ);arena.group.visible=true;if(gm==='v5')map=arena;
+  try{renderer.compile(scene,cam)}catch(e){}
+  hud.prepMap&&hud.prepMap(arena);               // paint the paper minimap now, not during the first frame
+  return arena}
 // compile every shader / upload every geometry once, behind the loading screen, so nothing hitches the first time it appears
 function warm(){try{
   const g=new T.Group();g.position.set(0,-80,0);
@@ -314,20 +323,55 @@ function warm(){try{
   const fv=forest.group.visible;renderer.compile(scene,cam);
   if(arena){const av=arena.group.visible;arena.group.visible=true;forest.group.visible=false;renderer.compile(scene,cam);renderer.render(scene,cam);arena.group.visible=av;forest.group.visible=fv}else renderer.render(scene,cam);
   scene.remove(g)}catch(e){console.warn('warm-up skipped',e)}}
-function start5v5(){leave5();clearAll();refill();gm='v5';
-  ensureArena();
+// starting a 5v5 match runs behind the loading screen (fresh random map, 9 cats, shader compile), so nobody watches the game stall while it renders
+let starting5=false,rouletteOn=false;
+async function start5v5(){
+  if(starting5)return;starting5=true;let ok=false,rp=null,openGate=()=>{};const gate=new Promise(r=>openGate=r);
+  try{
+    try{lockPtr()}catch(e){}                                   // pointer lock needs the click that started us: ask for it before the first await
+    loading.show('Getting the arena ready…','5V5');await tick();await tick();
+    leave5();clearAll();refill();                              // gm stays 'wave' until everything is built, so the frame loop never sees a half-made match
+    ensureArena();
+    loading.set(.2,'Picking a random map…');await tick();
+    const ids=ARENA_THEMES.map(t=>t.id).filter(id=>id!==arena.theme);
+    swapArena(ids[(Math.random()*ids.length)|0],(Math.random()*1e9)|0);
+    loading.set(.55,'Spawning the cats…');await tick();
+    if(!mode5)mode5=mk5();
+    begin5v5();P.frozen=true;                                  // the arena is visible behind the roulette, the match has not started yet
+    loading.set(.8,'Preparing the weapon roulette…');await tick();
+    rouletteOn=true;rp=spinRoulette(WEAPONS,{count:2,wait:gate});rp.catch(()=>{});   // built hidden now, spins the instant the loading screen starts to leave
+    loading.set(.9,'Compiling shaders…');await tick();
+    try{renderer.compile(scene,cam)}catch(e){}
+    await tick();ok=true;
+  }catch(e){console.error('5v5 start failed',e)}
+  const ld=loading.done();openGate();                          // the loading screen leaves and the roulette opens over it at the same moment: no gap
+  if(!ok){rouletteOn=false;await ld;starting5=false;enterTitle();return}
+  paused=false;hud.pause(false);P.frozen=true;mouse.l=false;
+  await ld;
+  let lo=null;
+  try{lo=await rp}catch(e){console.error('weapon roulette failed, auto-picking',e)}
+  if(!lo||lo.length<2){lo=WEAPONS.map((_,i)=>i).sort(()=>Math.random()-.5).slice(0,2)}   // auto-pick when the roulette could not run
+  rouletteOn=false;
+  P.unarmed=false;P.loadout=lo;hud.loadout(lo);equipIdx(lo[0]);
+  paused=false;hud.pause(false);P.frozen=false;state='play';
+  lockPtr();
+  go5v5();starting5=false}
+function begin5v5(){gm='v5';
   forest.group.visible=false;arena.group.visible=true;map=arena;if(scene.fog){scene.fog.near=35;scene.fog.far=170}
-  if(!mode5)mode5=mk5();
  P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
   hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
-  document.body.classList.add('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='ROUND';lockPtr();equipIdx(0);hud.name(cfg.name);
-  mode5.start();mode5.bots.forEach(b=>casts(b.cat))}
+  document.body.classList.add('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='ROUND';lockPtr();
+  P.unarmed=true;P.wpn=0;P.scope=false;RL.t=0;try{cat.userData.equip(null)}catch(e){}hud.loadout([]);hudAmmo();   // 5v5 starts with empty hands: the roulette hands out the weapons
+  hud.name(cfg.name);
+  }
+function go5v5(){mode5.start();mode5.bots.forEach(b=>casts(b.cat));try{renderer.compile(scene,cam)}catch(e){}}
 function hurt5(n){if(P.inv>0||P.dead)return false;hud.hurt();P.hp-=n;P.inv=.12;P.shake=Math.max(P.shake,.35);hud.hp(Math.max(0,P.hp),P.max);
   if(P.hp<=0){P.hp=0;P.dead=true;mouse.l=false;P.scope=false;mode5.onPlayerDown()}return true}
 function resetPlayer(x,z,yaw){refill();arena&&arena.prime(x,z,60);P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;resetAir();P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max);if(gm==='v5'&&state==='play'&&!paused&&!document.pointerLockElement)lockPtr()}
-function hud5(){const S=mode5.state();hud.hp(P.hp,P.max);hud.wave(S.round);const s=$('#score');if(s)s.textContent=`${S.score.A} : ${S.score.B}`}
+let hudLo=null;
+function hud5(){if(P.loadout&&hudLo!==P.loadout){hudLo=P.loadout;hud.loadout(P.loadout)}const S=mode5.state();hud.hp(P.hp,P.max);hud.wave(S.round);const s=$('#score');if(s)s.textContent=`${S.score.A} : ${S.score.B}`}
 function endMatch(){try{const S=mode5.state();audio.play(S.score.A>S.score.B?'win':'lose')}catch(e){}state='over';mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock();hud.show(false)}
-const mk5=()=>createMode5v5({scene,cam,fx,map:arena,P,keys,W:arena.W,H:arena.H,bullets,los,push,start5v5,home:()=>enterTitle(),
+const mk5=()=>createMode5v5({scene,cam,fx,get map(){return arena},newMap:(theme,seed)=>swapArena(theme,seed),P,keys,W:arena.W,H:arena.H,bullets,los,push,start5v5,home:()=>enterTitle(),
   toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,heightAt:(x,z)=>arena.heightAt(x,z),walk:(id,x,z,mv)=>arena.walk(id,x,z,mv),ripple:(x,z,a)=>arena.ripple(x,z,a),hud:hud5,cat:()=>cat,endMatch,
   clearBullets:()=>{bullets.forEach(b=>scene.remove(b.m));bullets.length=0}});
 // ---- touch controls: only created on phones / tablets (see js/mobile.js); on PC this is a no-op
@@ -343,6 +387,7 @@ L.set(.8,'Compiling shaders…');await tick();warm();
 L.set(.92,'Loading fonts & images…');
 await Promise.all([document.fonts&&document.fonts.ready,...[...document.images].map(i=>i.decode?i.decode().catch(()=>{}):0)]);
 L.set(.98,'Almost there…');await tick();
+const SPEC_H=24;   // how high the spectator camera hangs above the ally you watch
 const SVO=Object.create(P);   // stand-in for P while spectating an ally in 5v5 (same fields, own x / z / ey / camYaw)
 let lf=0,lastDraw=0;const PROF=/[?&]prof/.test(location.search),NOB=/[?&]nobots/.test(location.search),NOA=/[?&]noarena/.test(location.search),pf={n:0,u:0,r:0,fx:0,t0:performance.now()};   // open the game with ?prof to log where the frame time goes (console, every 120 frames)
 (function loop(now){requestAnimationFrame(loop);
@@ -368,17 +413,17 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     cat.userData.setAim(P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.setAir&&cat.userData.setAir(P.air?P.jy:0,P.vy);cat.userData.holster(false);cat.userData.update(paused?0:lag?dt*.06:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
     P.shake=Math.max(0,P.shake-dt*1.2);const sh=P.shake*P.shake*1.2;
     
-    const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),dist=(state==='title'?4.8:lerp2(P.camDist,1.7,aw))+kk*.12,rightOffset=state==='title'?.5:lerp2(1.4,.8,aw);
+    const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),dist=(SV?SPEC_H:state==='title'?4.8:lerp2(P.camDist,1.7,aw))+kk*.12,rightOffset=SV?0:state==='title'?.5:lerp2(1.4,.8,aw);
     const targetFov=lerp2(gfx.get().fov||70,WP().stats.zoom||40,aw)+kk*2+P.fk*7;if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
-    const vy=state==='title'?P.viewYaw+camAz-spin:FOC.camYaw,pit=(state==='title'?-.25:SV?.06:P.camPitch)+kk*.02;
+    const vy=state==='title'?P.viewYaw+camAz-spin:FOC.camYaw,pit=(state==='title'?-.25:SV?-1.18:P.camPitch)+kk*.02;   // spectating = TOP VIEW: high above the ally, looking steeply down
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
     const px=FOC.x+rx*rightOffset,pz=FOC.z+rz*rightOffset;
     const camX=px-dX*dist+rx*rnd(-sh,sh)*.7,camZ=pz-dZ*dist+rz*rnd(-sh,sh)*.7;let camY=FOC.ey+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+map.heightAt(camX,camZ),camY);
-    cam.position.set(camX,camY,camZ);for(const o of near(map.obs,cam.position.x,cam.position.z)){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
+    cam.position.set(camX,camY,camZ);if(!SV)for(const o of near(map.obs,cam.position.x,cam.position.z)){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
     cam.lookAt(FOC.x+dX*11,1+FOC.ey+dY*11,FOC.z+dZ*11);   // looks at the point the bullets converge on
     cam.rotation.z+=rnd(-sh,sh)*.02+(P.roll>0?Math.sin(P.roll*14)*.02:0);
     if(state==='play'){cam.updateMatrixWorld();hudAmmo();hud.scope(aw);hud.crosshair(7+kk*34+(P.mv?3:0)+(P.scope?-3:0)+P.shake*10,!paused&&!SV);hud.tumble(1-P.rcd/.95);
-      hud.combo(Math.min(5,1+Math.floor(P.chain/3)),P.chain,P.chainT/3.2);hud.bars(enemies,cam,clock);hud.radar(P,enemies,pickups,map,P.camYaw)}
+      hud.combo(Math.min(5,1+Math.floor(P.chain/3)),P.chain,P.chainT/3.2);hud.bars(enemies,cam,clock);hud.radar(FOC,enemies,pickups,map,FOC.camYaw)}
   }
   else{const mk=state==='maker';let mv=false;
     if(mk&&run){ang+=dt*3;cat.position.set(Math.cos(ang)*.9,0,3+Math.sin(ang)*.9);cat.rotation.y=Math.atan2(-Math.sin(ang),Math.cos(ang));mv=true}
@@ -393,7 +438,7 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     pf.n=pf.u=pf.r=0;pf.t0=t;if(globalThis.__botProf){bp.think=0;bp.avatar=0}}}})(last);
 // audio: browsers keep sound locked until a click / key press; every button also gets the click sound
 addEventListener('pointerdown',e=>{audio.unlock();if(e.target.closest&&e.target.closest('button,.btn,.mode,.cslot'))audio.play('click')},true);
-addEventListener('keydown',e=>{audio.unlock();const c=kb.canon(e.code);if(c===null){if(e.code==='Space')e.preventDefault();return}keys[c]=true;if(c==='Escape'&&state==='play'&&!paused)setPaused(true);else if(c==='KeyP'&&state==='play')setPaused(!paused);if(c==='KeyR'&&state==='play')reload();if(c==='KeyR'&&state==='over')(gm==='v5'?start5v5():start());if(c==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(c))setWeapon(+c[5]-1);if(c==='Space'){e.preventDefault();if(!e.repeat)jump()}if(c==='ShiftLeft'&&!e.repeat)tumble();});addEventListener('keyup',e=>{const c=kb.canon(e.code);if(c)keys[c]=false});
+addEventListener('keydown',e=>{audio.unlock();const c=kb.canon(e.code);if(c===null){if(e.code==='Space')e.preventDefault();return}keys[c]=true;if(c==='Escape'&&state==='play'&&!paused)setPaused(true);else if(c==='KeyP'&&state==='play')setPaused(!paused);if(c==='KeyR'&&state==='play')reload();if(c==='KeyR'&&state==='over')(gm==='v5'?start5v5():start());if(c==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(c)){const n=+c[5]-1;setWeapon(gm==='v5'&&P.loadout?(P.loadout[n]??P.wpn):n)}if(c==='Space'){e.preventDefault();if(!e.repeat)jump()}if(c==='ShiftLeft'&&!e.repeat)tumble();});addEventListener('keyup',e=>{const c=kb.canon(e.code);if(c)keys[c]=false});
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
 addEventListener('mousedown',e=>{if(state!=='play')return;
@@ -402,7 +447,8 @@ addEventListener('mousedown',e=>{if(state!=='play')return;
 addEventListener('mouseup',e=>{if(e.button===0)mouse.l=false;if(e.button===2)P.scope=false});
 addEventListener('mousemove',e=>{if(state==='play'&&!paused&&document.pointerLockElement){P.camYaw-=e.movementX*.0026;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-e.movementY*.0022))}});
 addEventListener('wheel',e=>{if(state==='play'&&!paused)setWeapon(P.wpn+(e.deltaY>0?1:-1))},{passive:true});
-document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&state==='play'&&!paused&&!(gm==='v5'&&P.dead))setPaused(true)});
+document.addEventListener('pointerlockchange',()=>{if(rouletteOn||starting5)return;   // setting up a match / roulette is not a pause
+  if(!document.pointerLockElement&&state==='play'&&!paused&&!(gm==='v5'&&P.dead))setPaused(true)});
 addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('pointermove',e=>{if(mkOn&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
 // ---- menu flow: Title (Play / Settings / Exit) -> Character slots -> [Character maker if new] -> Mode select -> game
