@@ -14,6 +14,8 @@ import {createMode5v5} from './js/5v5.js';
 import {near,blocked,segBlocked} from './js/obsGrid.js';
 import {patchCat} from './js/enemies/playersAi.js';
 import {createMobile} from './js/mobile.js';
+import {createNet} from './js/net.js';             // PVP: WebRTC (PeerJS) peer-to-peer, no game server
+import {createPvpLobby} from './js/pvpLobby.js';   // ... Host / Join / lobby screens
 import {renderPill} from './js/rank.js';
 import {createAudio} from './js/audio.js';
 import {createKeybinds} from './js/keybinds.js';
@@ -64,7 +66,7 @@ const SLOTN=5;let curSlot=-1;
 function loadSlots(){let s=null;try{s=JSON.parse(localStorage.getItem('sad.slots'))}catch(e){}
   if(!Array.isArray(s)){s=[];try{const c=JSON.parse(localStorage.getItem('sad.cat')||'null');if(c&&Object.keys(c).length)s[0]={cfg:c,best:+localStorage.getItem('sad.best')||0}}catch(e){}}
   s=s.slice(0,SLOTN).map(x=>x&&x.cfg?x:null);while(s.length<SLOTN)s.push(null);return s}
-const MENUS=['title','slots','modes','worlds'];   // declared up here: enterTitle() runs during start-up, before the menu code further down
+const MENUS=['title','slots','modes','worlds','pvp','search','lobby'];let lobby=null;   // lobby = the PVP LOCAL screens (created further down); declared here because enterTitle() runs during start-up   // declared up here: enterTitle() runs during start-up, before the menu code further down
 let slots=loadSlots();const saveSlots=()=>localStorage.setItem('sad.slots',JSON.stringify(slots));
 let gm='wave',elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
 const P={x:0,z:0,hp:5,max:5,inv:0,cd:0,mv:false,aim:0,shake:0,hx:0,hz:0,rel:1,camDist:2.8,camYaw:0,camPitch:0,roll:0,rcd:0,rdx:0,rdz:1,kick:0,wpn:0,blink:0,scope:false,hs:0,dash:0,dx:0,dz:1,fwd:0,side:0,viewYaw:0,chain:0,chainT:0,dead:false,frozen:false,gy:0,y:0,vy:0,jy:0,ey:0,air:false,canDash:true,ad:0,fk:0},bullets=[],ebul=[],enemies=[],pickups=[],keys={},mouse={l:false};
@@ -108,7 +110,7 @@ function lockPtr(){try{const r=$('#c').requestPointerLock&&$('#c').requestPointe
 function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
 function clearAll(){[enemies,pickups].forEach(a=>{a.forEach(e=>scene.remove(e.g||e.m));a.length=0});[bullets,ebul].forEach(a=>{a.forEach(b=>scene.remove(b.m));a.length=0})}
 function push(o,rad){for(const r of near(map.obs,o.x,o.z)){const dx=o.x-r.x,dz=o.z-r.z,d=Math.hypot(dx,dz),m=r.r+rad;if(d<m&&d>0){o.x=r.x+dx/d*m;o.z=r.z+dz/d*m}}}
-function enterTitle(){leave5();clearAll();refill();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
+function enterTitle(){lobby&&lobby.leave();leave5();clearAll();refill();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
   P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.dash=0;wave=3;spawnT=.6;bot.t=0;bot.wt=0;hud.show(false);
   equipIdx(0);setView(-.17);$('#over').hidden=true;showMenu('title');$('#bestT').textContent=best;renderPill($('#rkpill'))}   // rank card on the title (refreshes after every ranked match)
 function start(){leave5();clearAll();refill();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
@@ -132,7 +134,8 @@ function shoot(){const w=WP(),st=w.stats;
   for(let n=0;n<(st.pellets||1);n++){
     const k=st.spread*(1-sc*(st.scopeSteady??.7)),yaw=baseYaw+(Math.random()-.5)*k,el=baseEl+(Math.random()-.5)*k*.5,ce=Math.cos(el),m=fx.bullet(st.color,sp);
     m.position.copy(o);m.rotation.order='YXZ';m.rotation.set(-el,yaw,0);if(fast)m.scale.setScalar(.8);else if(st.size)m.scale.setScalar(st.size);scene.add(m);
-    bullets.push({m,vx:Math.sin(yaw)*ce*sp,vy:Math.sin(el)*sp,vz:Math.cos(yaw)*ce*sp,life:st.life||1,dmg:st.dmg,pierce:st.pierce||0,hit:new Set(),col:st.color,fast,after:!!st.after})}
+    bullets.push({m,vx:Math.sin(yaw)*ce*sp,vy:Math.sin(el)*sp,vz:Math.cos(yaw)*ce*sp,life:st.life||1,dmg:st.dmg,pierce:st.pierce||0,hit:new Set(),col:st.color,fast,after:!!st.after})
+    if(gm==='v5'&&mode5&&mode5.pvp){const q=bullets[bullets.length-1];mode5.localShot({x:o.x,y:o.y,z:o.z,vx:q.vx,vy:q.vy,vz:q.vz,life:q.life,col:q.col})}}   // custom battle: the other players simulate this bullet too
   fx.muzzle(o,baseYaw,st,P.gy);P.shake=Math.max(P.shake,st.shake||.1);P.kick=Math.max(.2,(st.kick||1)*.5);P.dx=-Math.sin(P.camYaw);P.dz=-Math.cos(P.camYaw);P.dash=st.push||1}
 // clear line between two points (trees block sight and bullets)
 function los(ax,az,bx,bz){const dx=bx-ax,dz=bz-az,l2=dx*dx+dz*dz||1;
@@ -236,8 +239,9 @@ function botInput(dt){
 }
 function update(dt){
   const demo=state==='title';
-  if(!(state==='play'||demo)||paused)return;
-  if(P.hs>0){P.hs-=dt;dt*=.03}   // hit-lag: the world nearly freezes for a moment
+  const pvpLive=state==='play'&&gm==='v5'&&!!mode5&&mode5.pvp;   // a custom battle never stops for one player's pause menu or hit-lag: the others are still fighting
+  if(!(state==='play'||demo)||(paused&&!pvpLive))return;
+  if(P.hs>0){P.hs-=dt;if(!pvpLive)dt*=.03}   // hit-lag: the world nearly freezes for a moment
   if(demo){spawnT-=dt;if(spawnT<=0&&enemies.length<5){spawn();spawnT=2.2}}
   else if(gm!=='v5'&&gm!=='story'){elapsed+=dt;
     if(WV.phase==='intro'){WV.t-=dt;if(WV.t<=0)WV.phase='fight'}
@@ -250,15 +254,15 @@ function update(dt){
   
   // Camera rotation using Arrow keys
   const turnSpeed = 2.2, pitchSpeed = 1.8;
-  if(keys.ArrowLeft) P.camYaw += turnSpeed * dt;
+  if(!paused){if(keys.ArrowLeft) P.camYaw += turnSpeed * dt;
   if(keys.ArrowRight) P.camYaw -= turnSpeed * dt;
   if(keys.ArrowUp) P.camPitch += pitchSpeed * dt;
-  if(keys.ArrowDown) P.camPitch -= pitchSpeed * dt;
+  if(keys.ArrowDown) P.camPitch -= pitchSpeed * dt;}
   P.camPitch = Math.max(-0.5, Math.min(0.6, P.camPitch));
 
   // Player movement using WASD
   const inp=demo?botInput(dt):null;
-  let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0),side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0);if(P.dead||P.frozen){fwd=0;side=0}
+  let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0),side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0);if(P.dead||P.frozen||paused){fwd=0;side=0}
   P.fwd=fwd;P.side=side;P.rel=fwd<0?-1:1;cat.userData.move.f=fwd;cat.userData.move.s=side;
   P.mv=(fwd!==0||side!==0)&&P.roll<=0;P.rcd=Math.max(0,P.rcd-dt);if(demo&&inp.roll)tumble();
   const px0=P.x,pz0=P.z,sp=(P.scope&&isGunW()?3.2:6.5)*(WP().stats.move||1);
@@ -287,7 +291,7 @@ function update(dt){
   P.cd-=dt;P.inv-=dt;cat.userData.setScope(P.scope&&isGunW()&&P.roll<=0);
   
   // Attack trigger is E (KeyE)
-  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;if(!demo){const s=WP().sfx||{};audio.play(s.slash||'slash',{vol:s.vol,pitch:s.pitch})}P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash;if(st.dash)fx.lunge(fp.set(P.x,P.gy+.1,P.z),P.dx,P.dz)}}
+  if((keys.KeyE||mouse.l||(demo&&inp.atk))&&!paused&&P.cd<=0&&P.roll<=0&&!P.dead&&!P.frozen){if(isGunW())shoot();else if(cat.userData.slash()){const st=WP().stats;if(!demo){const s=WP().sfx||{};audio.play(s.slash||'slash',{vol:s.vol,pitch:s.pitch})}P.cd=st.dur+.05;P.dx=Math.sin(P.camYaw);P.dz=Math.cos(P.camYaw);P.dash=st.dash;if(st.dash)fx.lunge(fp.set(P.x,P.gy+.1,P.z),P.dx,P.dz)}}
 
   for(let i=bullets.length-1;i>=0;i--){const b=bullets[i];b.m.position.x+=b.vx*dt;b.m.position.y+=(b.vy||0)*dt;b.m.position.z+=b.vz*dt;b.life-=dt;const p=b.m.position;let dead=b.life<=0||p.y<map.heightAt(p.x,p.z)+.03||p.y>(gm==='v5'?24:16)||Math.abs(p.x)>map.W/2||Math.abs(p.z)>map.H/2||blocked(map.obs,p.x,p.z,0),flesh=false;
     for(const e of enemies)if(!dead&&Math.hypot(p.x-e.x,p.z-e.z)<e.r+.2&&e.dodge<=0&&!b.hit.has(e)&&Math.abs(p.y-.7-(e.gy||0)-(e.jy||0))<1.2){e.hp-=b.dmg;e.hbT=2.5;e.fl=.12;e.stun=.12;e.alert=6;flesh=true;if(!demo){hud.hit(false);audio.play('hit')}fx.splat(p,b.vx,b.vz);if(b.after)fx.shock(p,b.col);e.x+=b.vx*.012;e.z+=b.vz*.012;if(b.pierce>0){b.pierce--;b.hit.add(e)}else dead=true}
@@ -324,17 +328,18 @@ function warm(){try{
   if(arena){const av=arena.group.visible;arena.group.visible=true;forest.group.visible=false;renderer.compile(scene,cam);renderer.render(scene,cam);arena.group.visible=av;forest.group.visible=fv}else renderer.render(scene,cam);
   scene.remove(g)}catch(e){console.warn('warm-up skipped',e)}}
 // starting a 5v5 match runs behind the loading screen (fresh random map, 9 cats, shader compile), so nobody watches the game stall while it renders
-let starting5=false,rouletteOn=false;
-async function start5v5(){
-  if(starting5)return;starting5=true;let ok=false,rp=null,openGate=()=>{};const gate=new Promise(r=>openGate=r);
+let starting5=false,rouletteOn=false,pvpClosed=false;
+async function start5v5(pv){   // pv = a custom battle ({slots,theme,seed,host,mySlot,name} from the PVP lobby); nothing = the normal 5v5 spike rush
+  if(starting5)return;pvpClosed=false;starting5=true;let ok=false,rp=null,openGate=()=>{};const gate=new Promise(r=>openGate=r);
   try{
     try{lockPtr()}catch(e){}                                   // pointer lock needs the click that started us: ask for it before the first await
-    loading.show('Getting the arena ready…','5V5');await tick();await tick();
+    loading.show('Getting the arena ready…',pv?'PVP':'5V5');await tick();await tick();
     leave5();clearAll();refill();                              // gm stays 'wave' until everything is built, so the frame loop never sees a half-made match
     ensureArena();
-    loading.set(.2,'Picking a random map…');await tick();
-    const ids=ARENA_THEMES.map(t=>t.id).filter(id=>id!==arena.theme);
-    swapArena(ids[(Math.random()*ids.length)|0],(Math.random()*1e9)|0);
+    loading.set(.2,pv?'Building the host\'s map…':'Picking a random map…');await tick();
+    if(pv)swapArena(pv.theme,pv.seed);                         // every player builds the SAME map from the host's theme + seed
+    else{const ids=ARENA_THEMES.map(t=>t.id).filter(id=>id!==arena.theme);
+      swapArena(ids[(Math.random()*ids.length)|0],(Math.random()*1e9)|0)}
     loading.set(.55,'Spawning the cats…');await tick();
     if(!mode5)mode5=mk5();
     begin5v5();P.frozen=true;                                  // the arena is visible behind the roulette, the match has not started yet
@@ -352,10 +357,11 @@ async function start5v5(){
   try{lo=await rp}catch(e){console.error('weapon roulette failed, auto-picking',e)}
   if(!lo||lo.length<2){lo=WEAPONS.map((_,i)=>i).sort(()=>Math.random()-.5).slice(0,2)}   // auto-pick when the roulette could not run
   rouletteOn=false;
+  if(pv&&pvpClosed){starting5=false;enterTitle();return}      // the host left while we were loading
   P.unarmed=false;P.loadout=lo;hud.loadout(lo);equipIdx(lo[0]);
   paused=false;hud.pause(false);P.frozen=false;state='play';
   lockPtr();
-  go5v5();starting5=false}
+  go5v5(pv);starting5=false}
 function begin5v5(){gm='v5';
   forest.group.visible=false;arena.group.visible=true;map=arena;if(scene.fog){scene.fog.near=35;scene.fog.far=170}
  P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
@@ -364,13 +370,13 @@ function begin5v5(){gm='v5';
   P.unarmed=true;P.wpn=0;P.scope=false;RL.t=0;try{cat.userData.equip(null)}catch(e){}hud.loadout([]);hudAmmo();   // 5v5 starts with empty hands: the roulette hands out the weapons
   hud.name(cfg.name);
   }
-function go5v5(){mode5.start();mode5.bots.forEach(b=>casts(b.cat));try{renderer.compile(scene,cam)}catch(e){}}
+function go5v5(pv){mode5.start(pv?{pvp:true,net,host:pv.host,mySlot:pv.mySlot,slots:pv.slots,name:pv.name}:undefined);mode5.bots.forEach(b=>casts(b.cat));try{renderer.compile(scene,cam)}catch(e){}}
 function hurt5(n){if(P.inv>0||P.dead)return false;hud.hurt();P.hp-=n;P.inv=.12;P.shake=Math.max(P.shake,.35);hud.hp(Math.max(0,P.hp),P.max);
   if(P.hp<=0){P.hp=0;P.dead=true;mouse.l=false;P.scope=false;mode5.onPlayerDown()}return true}
 function resetPlayer(x,z,yaw){refill();arena&&arena.prime(x,z,60);P.x=x;P.z=z;P.camYaw=yaw;P.viewYaw=yaw;P.camPitch=0;P.hp=P.max;P.dead=false;P.frozen=false;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;resetAir();P.dash=0;P.kick=0;mouse.l=false;hud.hp(P.hp,P.max);if(gm==='v5'&&state==='play'&&!paused&&!document.pointerLockElement)lockPtr()}
 let hudLo=null;
 function hud5(){if(P.loadout&&hudLo!==P.loadout){hudLo=P.loadout;hud.loadout(P.loadout)}const S=mode5.state();hud.hp(P.hp,P.max);hud.wave(S.round);const s=$('#score');if(s)s.textContent=`${S.score.A} : ${S.score.B}`}
-function endMatch(){try{const S=mode5.state();audio.play(S.score.A>S.score.B?'win':'lose')}catch(e){}state='over';mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock();hud.show(false)}
+function endMatch(){try{const S=mode5.state(),me=mode5.myTeam,o=me==='A'?'B':'A';audio.play(S.score[me]>S.score[o]?'win':'lose')}catch(e){}state='over';mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock();hud.show(false)}
 const mk5=()=>createMode5v5({scene,cam,fx,get map(){return arena},newMap:(theme,seed)=>swapArena(theme,seed),P,keys,W:arena.W,H:arena.H,bullets,los,push,start5v5,home:()=>enterTitle(),
   toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,heightAt:(x,z)=>arena.heightAt(x,z),walk:(id,x,z,mv)=>arena.walk(id,x,z,mv),ripple:(x,z,a)=>arena.ripple(x,z,a),hud:hud5,cat:()=>cat,endMatch,
   clearBullets:()=>{bullets.forEach(b=>scene.remove(b.m));bullets.length=0}});
@@ -394,7 +400,7 @@ let lf=0,lastDraw=0;const PROF=/[?&]prof/.test(location.search),NOB=/[?&]nobots/
   {const iv=gfx.fpsInterval();if(iv){if(now-lastDraw<iv-1)return;lastDraw=now-((now-lastDraw)%iv)}else lastDraw=now}   // FPS limit (Settings > Graphics): skip animation frames that come sooner than the cap
   gfx.ingame(state==='play');
   if(lf<5&&++lf===5)L.done();   // the loading screen leaves once the game has really drawn a few frames
-const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();const lag=P.hs>0&&!paused;if(PROF){renderer.info.autoReset=false;renderer.info.reset();globalThis.__hideBots=NOB;if(NOA&&arena&&gm==='v5')arena.group.visible=false}   // ?prof&nobots / &noarena hide the bots / the arena so you can see what each costs
+const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();const lag=P.hs>0&&!paused&&!(gm==='v5'&&mode5&&mode5.pvp);if(PROF){renderer.info.autoReset=false;renderer.info.reset();globalThis.__hideBots=NOB;if(NOA&&arena&&gm==='v5')arena.group.visible=false}   // ?prof&nobots / &noarena hide the bots / the arena so you can see what each costs
   const _u0=performance.now();update(dt);pf.u+=performance.now()-_u0;fx.update(lag?dt*.3:dt);   // sparks keep moving in slow motion during the freeze
   {const c=cam.userData.off||0;if(c!==viewTo){const n=Math.abs(viewTo-c)<.001?viewTo:c+(viewTo-c)*Math.min(1,dt*6);cam.userData.off=n;const W=Math.max(1,renderer.domElement.clientWidth||innerWidth),H=Math.max(1,renderer.domElement.clientHeight||innerHeight);n?cam.setViewOffset(W,H,W*n,0,W,H):cam.clearViewOffset();cam.updateProjectionMatrix()}   // maker open/close: the cat glides to the other side of the screen
   let d=camTo-camAz;d=Math.atan2(Math.sin(d),Math.cos(d));camAz+=d*Math.min(1,dt*5);   // maker: camera swings round the cat (0 = behind it as usual, PI = in front of it)
@@ -453,7 +459,7 @@ addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('pointermove',e=>{if(mkOn&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
 // ---- menu flow: Title (Play / Settings / Exit) -> Character slots -> [Character maker if new] -> Mode select -> game
 function hideMenus(){MENUS.forEach(m=>$('#'+m).hidden=true);$('#menuBack').hidden=true}
-function showMenu(w){MENUS.forEach(m=>$('#'+m).hidden=m!==w);$('#menuBack').hidden=!(w==='slots'||w==='modes'||w==='worlds')}   // one shared Back button: switching slots <-> modes never re-animates it
+function showMenu(w){MENUS.forEach(m=>$('#'+m).hidden=m!==w);$('#menuBack').hidden=!(w==='slots'||w==='modes'||w==='worlds'||w==='pvp'||w==='search'||w==='lobby')}   // one shared Back button: switching slots <-> modes never re-animates it
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const headHTML=c=>{const u=headIconURL(c);return u?`<img src="${u}" alt="" draggable="false">`:''};   // 3D head of the cat (falls back to a coat-coloured dot)
 const dotBg=c=>`background:radial-gradient(circle at 35% 30%,${c.pat||'#ee9a48'} 0 28%,${c.fur||'#f6dfbd'} 30%)`;
@@ -513,11 +519,19 @@ function selectSlot(i){curSlot=i;cfg=JSON.parse(JSON.stringify(slots[i].cfg));be
   const h=headHTML(cfg),hd=$('#modeHd');hd.innerHTML=h;hd.style.cssText=h?'':dotBg(cfg);renderPill($('#rkpill'));showMenu('modes')}
 $('#play').onclick=()=>{renderSlots();showMenu('slots');const b=$('#menuBack');b.classList.remove('in');void b.offsetWidth;b.classList.add('in')};   // Play is the only time Back swipes in
 $('#menuBack').addEventListener('animationend',e=>e.currentTarget.classList.remove('in'));
-$('#menuBack').onclick=()=>{if(!$('#worlds').hidden){showMenu('modes');return}if(!$('#modes').hidden){renderSlots();showMenu('slots')}else showMenu('title')};
+$('#menuBack').onclick=()=>{if(lobby.active()){lobby.back();return}if(!$('#worlds').hidden){showMenu('modes');return}if(!$('#modes').hidden){renderSlots();showMenu('slots')}else showMenu('title')};
 $('#mRogue').onclick=()=>{hideMenus();start()};          // roguelike endless = the forest map
 $('#mV5').onclick=()=>{hideMenus();start5v5()};
+// ---- PVP (custom battle): WebRTC room (host's browser = the room) + the Host / Join / lobby screens
+const net=createNet();
+lobby=createPvpLobby({$,net,showMenu,headHTML,profile:()=>({name:cfg.name||'Ming',cfg:JSON.parse(JSON.stringify(cfg))}),begin:info=>{hideMenus();start5v5(info)},themes:()=>ARENA_THEMES.map(t=>t.id)});
+const inPvp=()=>gm==='v5'&&!!mode5&&mode5.pvp;
+net.onPeer=(from,d)=>{if(lobby.onPeer(from,d))return;if(!mode5)mode5=mk5();mode5.onNet(from,d)};   // lobby messages stay in the lobby, the rest belongs to the match
+net.onSrv=m=>{if(m.t==='closed'&&(starting5||inPvp())){pvpClosed=true;if(inPvp()){hud.banner('HOST LEFT','back to the title');enterTitle()}return}
+  if(inPvp()){if(m.t==='peer-')mode5.peerLeft(m.id);return}lobby.onSrv(m)};
+$('#mPvp').onclick=()=>lobby.open();
 $('#mStory').onclick=()=>{renderWorlds();showMenu('worlds')};          // story = generated world, 3 save slots
-['#mRogue','#mV5','#mStory'].forEach(s=>$(s).addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();$(s).click()}}));
+['#mRogue','#mV5','#mStory','#mPvp'].forEach(s=>$(s).addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();$(s).click()}}));
 $('#slotList').onclick=e=>{const el=e.target.closest(".cslot");if(!el)return;const i=+el.dataset.i,a=e.target.closest('button')?.dataset.a;
   if(a==='del'){if(confirm('Delete '+(slots[i].cfg.name||'this cat')+'? This cannot be undone.')){slots[i]=null;saveSlots();renderSlots()}return}
   if(a==='edit'){openCreator(i);return}
@@ -540,9 +554,9 @@ function openCreator(slotIdx){
   const vis=e=>{if(!e||e.hidden)return false;const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity)>.05};
   const touchy=()=>document.body.classList.contains('mobile')||matchMedia('(hover:none)').matches||matchMedia('(pointer:coarse)').matches||matchMedia('(max-width:900px) and (max-height:520px)').matches;   // phones / tablets: no key guide
   const UP=['KeyW','ArrowUp'],DN=['KeyS','ArrowDown'],LT=['KeyA','ArrowLeft'],RT=['KeyD','ArrowRight'],OK=['Enter','NumpadEnter','KeyE'],BACK=['Escape','Backspace'];
-  const SEL={title:'#title button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',modes:'#modes .mode',over:'#over button',pause:'#pause button',bye:'#bye button',
+  const SEL={title:'#title button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',modes:'#modes .mode',pvp:'#pvp .mode',search:'#search input[type=text],#search .btn',lobby:'#lobby .cslot,#lobby .cslot button,#lobby .btn',over:'#over button',pause:'#pause button',bye:'#bye button',
     settings:'#gfx button,#gfx input[type=range]',maker:'#maker button,#maker input'};
-  const BACKS=new Set(['slots','worlds','modes','bye','settings','maker']);
+  const BACKS=new Set(['slots','worlds','modes','pvp','search','lobby','bye','settings','maker']);
   function screen(){
     const L=$('#loading');if(L&&!L.classList.contains('out'))return null;
     if(document.pointerLockElement)return null;                          // mouse captured = you are playing, never a menu
@@ -552,7 +566,7 @@ function openCreator(slotIdx){
     if(mkOn||vis($('#maker')))return 'maker';
     if(vis($('#pause')))return 'pause';
     if(vis($('#over')))return 'over';
-    for(const s of ['slots','worlds','modes','title'])if(vis($('#'+s)))return s;
+    for(const s of ['pvp','search','lobby','slots','worlds','modes','title'])if(vis($('#'+s)))return s;
     return null}
   const items=sc=>sc?q(SEL[sc]).filter(e=>e.getClientRects().length>0&&!e.disabled):[];
   const isText=e=>!!e&&((e.tagName==='INPUT'&&e.type==='text')||e.tagName==='TEXTAREA'||e.tagName==='SELECT');
@@ -577,7 +591,7 @@ function openCreator(slotIdx){
   document.addEventListener('pointerlockchange',later);setInterval(apply,250);   // a match starting / mouse capture is not a DOM change, so also re-check a few times a second
   new MutationObserver(later).observe(document.body,{subtree:true,attributes:true,attributeFilter:['hidden','class']});
   new MutationObserver(later).observe(document.body,{childList:true});
-  ['#slotList','#worldList','#maker','#gfx'].forEach(s=>{const e=$(s);e&&new MutationObserver(later).observe(e,{childList:true,subtree:s==='#maker'||s==='#gfx'})});
+  ['#slotList','#worldList','#lbA','#lbB','#lbFoot','#maker','#gfx'].forEach(s=>{const e=$(s);e&&new MutationObserver(later).observe(e,{childList:true,subtree:s==='#maker'||s==='#gfx'})});
   addEventListener('mousemove',e=>{if(kbUsed&&Math.abs(e.movementX)+Math.abs(e.movementY)>3){kbUsed=false;apply()}},{passive:true});
   // nearest item in a direction (centres; items right ahead win over ones off to the side)
   const mid=e=>{const r=e.getBoundingClientRect();return [r.left+r.width/2,r.top+r.height/2]};
