@@ -30,13 +30,12 @@ const HV_SPEED=1,HV_FADE=.06,TAU2=Math.PI*2;   // HV_SPEED = playback speed of t
 const mixPose=(a,b,t)=>{const o={};for(const k in b)o[k]=a[k]===undefined?b[k]:a[k]+(b[k]-a[k])*t;return o};
 // <WEAPON_ANIMS>
 // Animations exported from animation_maker.html (do not edit by hand: re-export from the maker).
-// One set per weapon TYPE, stored under the type's main weapon:  normal = woodensword (spear too) | heavy = axe (scythe too) | dual = dual blades | longblade = katana.
+// One set per WEAPON (axe, scythe, katana...). 'type:<type>' = shared fallback for weapons of that type with no set of their own; without it the type's main weapon is used (normal = woodensword, heavy = axe, dual = dualdagger, longblade = katana).
 // chain = attack combo order, state = idle / run / air / dash. Events may carry sfx/vol/pitch/skip.
 const WEAPON_ANIMS={
  "woodensword":{chain:["attack1","attack2"],state:{"idle":"idle","run":"run","air":"air","dash":"dash"},anims:{
   "attack1":{fps:30,frames:16,loop:false,role:"attack",dir:1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
    keys:[
-    {"f":0,"ease":"linear","pose":{"wX":-0.399,"wZ":-0.139,"oX":0.079,"oZ":0.286,"wrist":-0.643,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.017,"bodyY":0.057,"bodyZ":0,"lift":0,"legLx":0.013,"legRx":0.028,"legLz":0,"legRz":0,"headX":0.007,"headY":-0.099,"headZ":0.04,"trail":0}},
     {"f":2,"ease":"linear","pose":{"wX":-2.206,"wZ":0.357,"oX":0.402,"oZ":0.284,"wrist":-0.149,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.096,"bodyY":0.321,"bodyZ":0,"lift":0,"legLx":0.07,"legRx":0.154,"legLz":0,"legRz":0,"headX":0.038,"headY":-0.224,"headZ":0.04,"trail":0}},
     {"f":3,"ease":"linear","pose":{"wX":-2.492,"wZ":0.347,"oX":0.497,"oZ":0.283,"wrist":-0.029,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.079,"bodyY":0.305,"bodyZ":0,"lift":0,"legLx":0.054,"legRx":0.12,"legLz":0,"legRz":0,"headX":0.031,"headY":-0.214,"headZ":0.04,"trail":1}},
     {"f":4,"ease":"linear","pose":{"wX":-0.885,"wZ":-0.686,"oX":0.5,"oZ":0.282,"wrist":-0.186,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.193,"bodyY":-0.309,"bodyZ":0,"lift":0,"legLx":-0.164,"legRx":-0.361,"legLz":0,"legRz":0,"headX":-0.077,"headY":0.097,"headZ":0.04,"trail":1}},
@@ -120,6 +119,174 @@ const WEAPON_ANIMS={
     {"f":7,"ease":"linear","pose":{"wX":0.279,"wZ":-0.246,"oX":0.284,"oZ":0.272,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.347,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0.295,"legRx":0.208,"legLz":0,"legRz":0,"headX":0,"headY":-0.159,"headZ":0.024,"trail":0}},
     {"f":8,"ease":"linear","pose":{"wX":-0.004,"wZ":-0.244,"oX":0.006,"oZ":0.284,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.157,"headZ":0.025,"trail":0}},
     {"f":10,"ease":"linear","pose":{"wX":-0.006,"wZ":-0.246,"oX":0.008,"oZ":0.286,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.154,"headZ":0.027,"trail":0}},
+   ],
+   events:[]
+  },
+ }},
+ "axe":{chain:["sweep","smash","spin"],state:{"idle":"idle","run":"run","air":"air","dash":"dash"},anims:{
+  "sweep":{fps:30,frames:36,loop:false,role:"attack",dir:1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":4,"ease":"smooth","pose":{"wX":-0.2816,"wZ":-0.5075,"oX":0,"oZ":0.28,"wrist":-0.6268,"wrist2":-0.85,"roll":-0.2816,"grip":0,"bodyX":-0.09,"bodyY":-0.1584,"bodyZ":0.0704,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":-0.2,"headY":-0.47,"headZ":0,"trail":0}},
+    {"f":10,"ease":"smooth","pose":{"wX":-0.8,"wZ":-1.07,"oX":-1.67,"oZ":0.34,"wrist":-0.44,"wrist2":-2.02,"roll":-1.95,"grip":0,"bodyX":-0.1,"bodyY":-0.45,"bodyZ":0.2,"lift":0,"legLx":0.36,"legRx":-0.83,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":18,"ease":"smooth","pose":{"wX":-1.5,"wZ":-1.91,"oX":0.32,"oZ":1.47,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":-0.2,"bodyY":-0.9,"bodyZ":0.4,"lift":0,"legLx":0.03,"legRx":0.18,"legLz":-0.73,"legRz":0.58,"headX":0,"headY":0,"headZ":0,"trail":1}},
+    {"f":22,"ease":"smooth","pose":{"wX":-1.23,"wZ":0.45,"oX":1.61,"oZ":0.84,"wrist":0.15,"wrist2":-0.2,"roll":-1.61,"grip":0,"bodyX":0.45,"bodyY":1,"bodyZ":-0.54,"lift":0,"legLx":-1.26,"legRx":-0.66,"legLz":0.03,"legRz":0.2,"headX":0.4,"headY":0.77,"headZ":0,"trail":1}},
+    {"f":24,"ease":"smooth","pose":{"wX":-1.5,"wZ":1.47,"oX":0.76,"oZ":-0.21,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0.4,"bodyY":1,"bodyZ":-0.55,"lift":0,"legLx":0.18,"legRx":-0.83,"legLz":-0.8,"legRz":0.26,"headX":0.38,"headY":0.91,"headZ":0,"trail":1}},
+    {"f":27,"ease":"smooth","pose":{"wX":-1.5,"wZ":1.35,"oX":0,"oZ":0.28,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0.4,"bodyY":1,"bodyZ":-0.55,"lift":0,"legLx":0.53,"legRx":-0.91,"legLz":-0.66,"legRz":0,"headX":0.46,"headY":1.12,"headZ":0,"trail":0}},
+    {"f":35,"ease":"smooth","pose":{"wX":-2.31,"wZ":-1.16,"oX":0.12,"oZ":0.95,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":-0.04,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+   ],
+   events:[{"f":17,"name":"swing","sfx":"assets/sfx/slash.wav"},{"f":20,"name":"hit"},{"f":21,"name":"step"}]
+  },
+  "smash":{fps:30,frames:36,loop:false,role:"attack",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":10,"ease":"smooth","pose":{"wX":-1.4,"wZ":-0.02,"oX":-0.82,"oZ":1,"wrist":-0.8,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.3,"bodyY":-0.28,"bodyZ":0.15,"lift":-0.05,"legLx":0.56,"legRx":-0.79,"legLz":-0.33,"legRz":0.27,"headX":-0.29,"headY":0,"headZ":0,"trail":0}},
+    {"f":18,"ease":"smooth","pose":{"wX":-2.99,"wZ":-0.97,"oX":-0.23,"oZ":1.11,"wrist":-1.43,"wrist2":-1.2,"roll":-0.86,"grip":0.09,"bodyX":-0.34,"bodyY":0,"bodyZ":0.1,"lift":-0.07,"legLx":0.88,"legRx":-1.05,"legLz":-0.19,"legRz":-0.21,"headX":-0.41,"headY":0,"headZ":0,"trail":1}},
+    {"f":22,"ease":"smooth","pose":{"wX":-1,"wZ":-0.2,"oX":1.61,"oZ":1.4,"wrist":-0.3,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.38,"bodyY":0,"bodyZ":-0.12,"lift":-0.04,"legLx":1,"legRx":-0.72,"legLz":0.08,"legRz":0,"headX":0.42,"headY":0,"headZ":0,"trail":1}},
+    {"f":24,"ease":"smooth","pose":{"wX":-0.85,"wZ":-0.2,"oX":0,"oZ":0.28,"wrist":-0.3,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.49,"bodyY":0,"bodyZ":-0.12,"lift":-0.12,"legLx":-0.81,"legRx":-0.85,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":27,"ease":"smooth","pose":{"wX":-1.2,"wZ":-0.7,"oX":0,"oZ":0.28,"wrist":-0.12,"wrist2":-0.85,"roll":-1.22,"grip":0,"bodyX":0.16,"bodyY":0,"bodyZ":-0.12,"lift":-0.12,"legLx":-0.81,"legRx":-0.85,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":35,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+   ],
+   events:[{"f":18,"name":"swing","sfx":"assets/sfx/slash.wav","pitch":0.23},{"f":22,"name":"hit"}]
+  },
+  "spin":{fps:30,frames:39,loop:false,role:"attack",dir:-1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":12,"ease":"smooth","pose":{"wX":-0.9,"wZ":-0.8,"oX":0.67,"oZ":0.91,"wrist":-0.4,"wrist2":-0.85,"roll":-0.8,"grip":0,"bodyX":0,"bodyY":-0.45,"bodyZ":0.12,"lift":-0.05,"legLx":0.52,"legRx":-0.96,"legLz":0,"legRz":0.46,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":20,"ease":"smooth","pose":{"wX":-1.45,"wZ":-1.3,"oX":-1.9,"oZ":1.25,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":-0.9,"bodyZ":0.25,"lift":-0.03,"legLx":-0.64,"legRx":0,"legLz":0,"legRz":0.52,"headX":0,"headY":-0.29,"headZ":0,"trail":1}},
+    {"f":24,"ease":"smooth","pose":{"wX":-1.45,"wZ":-0.45,"oX":-1.35,"oZ":0.7,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":2.6,"bodyZ":0.1,"lift":0.12,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":1}},
+    {"f":28,"ease":"smooth","pose":{"wX":-1.45,"wZ":0.4,"oX":-1.23,"oZ":1.63,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":6.08,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":1}},
+    {"f":31,"ease":"smooth","pose":{"wX":-1.45,"wZ":0.4,"oX":0,"oZ":0.28,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":6.283,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":37,"ease":"hold","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":6.283,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":38,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+   ],
+   events:[{"f":19,"name":"swing","sfx":"assets/sfx/slash.wav"},{"f":26,"name":"hit"},{"f":21,"name":"custom","sfx":"assets/sfx/slash.wav","pitch":0.25}]
+  },
+  "idle":{fps:30,frames:85,loop:true,role:"idle",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"linear","pose":{"wX":-0.23,"wZ":-0.9,"oX":-0.011,"oZ":0.271,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
+    {"f":36,"ease":"smooth","pose":{"wX":-0.33,"wZ":-1.06,"oX":-0.011,"oZ":0.271,"wrist":1.1,"wrist2":-0.85,"roll":0.45,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
+    {"f":84,"ease":"smooth","pose":{"wX":-0.23,"wZ":-0.9,"oX":-0.011,"oZ":0.271,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
+   ],
+   events:[]
+  },
+  "run":{fps:30,frames:14,loop:true,role:"run",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":0.23,"wZ":-1.17,"oX":0.031,"oZ":0.352,"wrist":0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.2,"bodyY":0.001,"bodyZ":0,"lift":0,"legLx":0.015,"legRx":-0.015,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":3,"ease":"smooth","pose":{"wX":0.46,"wZ":-1.28,"oX":0.031,"oZ":0.352,"wrist":-0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.34,"bodyY":0.001,"bodyZ":0,"lift":-0.07,"legLx":-1.15,"legRx":0.53,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":4,"ease":"smooth","pose":{"wX":0.46,"wZ":-1.28,"oX":0.031,"oZ":0.352,"wrist":-0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.34,"bodyY":0.001,"bodyZ":0,"lift":-0.07,"legLx":-1.15,"legRx":0.53,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":6,"ease":"linear","pose":{"wX":0.49,"wZ":-1.44,"oX":0.031,"oZ":0.352,"wrist":-0.54,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.17,"bodyY":0.001,"bodyZ":0,"lift":-0.14,"legLx":-0.25,"legRx":-0.81,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":9,"ease":"smooth","pose":{"wX":0.49,"wZ":-1.44,"oX":0.031,"oZ":0.352,"wrist":-0.54,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.4,"bodyY":0.001,"bodyZ":0,"lift":-0.04,"legLx":1,"legRx":-1.48,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":11,"ease":"smooth","pose":{"wX":0.49,"wZ":-1.44,"oX":0.031,"oZ":0.352,"wrist":-0.54,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.17,"bodyY":0.001,"bodyZ":0,"lift":-0.14,"legLx":-0.25,"legRx":-0.81,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":13,"ease":"smooth","pose":{"wX":0.23,"wZ":-1.17,"oX":0.031,"oZ":0.352,"wrist":0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.2,"bodyY":0.001,"bodyZ":0,"lift":0,"legLx":0.015,"legRx":-0.015,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+   ],
+   events:[]
+  },
+  "air":{fps:30,frames:21,loop:false,role:"air",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"linear","pose":{"wX":0.004,"wZ":-0.75,"oX":-0.303,"oZ":0.356,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.114,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.597,"legRx":-0.338,"legLz":0,"legRz":0,"headX":0,"headY":0.142,"headZ":-0.031,"trail":0}},
+    {"f":1,"ease":"linear","pose":{"wX":-0.172,"wZ":-0.75,"oX":-0.445,"oZ":0.399,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.152,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.885,"legRx":-0.5,"legLz":0,"legRz":0,"headX":0,"headY":0.144,"headZ":-0.03,"trail":0}},
+    {"f":2,"ease":"linear","pose":{"wX":-0.26,"wZ":-0.75,"oX":-0.516,"oZ":0.42,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.155,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-1.002,"legRx":-0.559,"legLz":0,"legRz":0,"headX":0,"headY":0.147,"headZ":-0.029,"trail":0}},
+    {"f":3,"ease":"linear","pose":{"wX":-0.306,"wZ":-0.75,"oX":-0.553,"oZ":0.43,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.144,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-1.007,"legRx":-0.542,"legLz":0,"legRz":0,"headX":0,"headY":0.149,"headZ":-0.029,"trail":0}},
+    {"f":5,"ease":"linear","pose":{"wX":-0.346,"wZ":-0.75,"oX":-0.586,"oZ":0.438,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.106,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.845,"legRx":-0.381,"legLz":0,"legRz":0,"headX":0,"headY":0.153,"headZ":-0.027,"trail":0}},
+    {"f":10,"ease":"linear","pose":{"wX":-0.385,"wZ":-0.75,"oX":-0.615,"oZ":0.443,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.006,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.249,"legRx":0.161,"legLz":0,"legRz":0,"headX":0,"headY":0.161,"headZ":-0.023,"trail":0}},
+    {"f":12,"ease":"linear","pose":{"wX":-0.397,"wZ":-0.75,"oX":-0.624,"oZ":0.445,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.051,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.151,"legRx":0.249,"legLz":0,"legRz":0,"headX":0,"headY":0.164,"headZ":-0.021,"trail":0}},
+    {"f":20,"ease":"linear","pose":{"wX":-0.446,"wZ":-0.75,"oX":-0.66,"oZ":0.45,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.231,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.15,"legRx":0.25,"legLz":0,"legRz":0,"headX":0,"headY":0.174,"headZ":-0.014,"trail":0}},
+   ],
+   events:[]
+  },
+  "dash":{fps:30,frames:11,loop:false,role:"dash",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"linear","pose":{"wX":0.79,"wZ":-0.305,"oX":0.722,"oZ":0.254,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.89,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.756,"legRx":0.534,"legLz":0,"legRz":0,"headX":0,"headY":0.168,"headZ":0.019,"trail":0}},
+    {"f":1,"ease":"linear","pose":{"wX":0.845,"wZ":-0.25,"oX":0.81,"oZ":0.25,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":1,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.85,"legRx":0.6,"legLz":0,"legRz":0,"headX":0,"headY":0.167,"headZ":0.019,"trail":0}},
+    {"f":5,"ease":"linear","pose":{"wX":0.845,"wZ":-0.25,"oX":0.81,"oZ":0.25,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":1,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.85,"legRx":0.6,"legLz":0,"legRz":0,"headX":0,"headY":0.161,"headZ":0.023,"trail":0}},
+    {"f":6,"ease":"linear","pose":{"wX":0.791,"wZ":-0.305,"oX":0.72,"oZ":0.253,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.89,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.756,"legRx":0.534,"legLz":0,"legRz":0,"headX":0,"headY":0.16,"headZ":0.024,"trail":0}},
+    {"f":7,"ease":"linear","pose":{"wX":0.525,"wZ":-0.576,"oX":0.278,"oZ":0.267,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.347,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.295,"legRx":0.208,"legLz":0,"legRz":0,"headX":0,"headY":0.158,"headZ":0.025,"trail":0}},
+    {"f":8,"ease":"linear","pose":{"wX":0.355,"wZ":-0.75,"oX":-0.007,"oZ":0.275,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0.156,"headZ":0.026,"trail":0}},
+    {"f":10,"ease":"linear","pose":{"wX":0.357,"wZ":-0.75,"oX":-0.009,"oZ":0.273,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0.152,"headZ":0.027,"trail":0}},
+   ],
+   events:[]
+  },
+ }},
+ "scythe":{chain:["sweep","spin","smash"],state:{"idle":"idle","run":"run","air":"air","dash":"dash"},anims:{
+  "sweep":{fps:30,frames:24,loop:false,role:"attack",dir:1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":2,"ease":"smooth","pose":{"wX":-0.2816,"wZ":-0.5075,"oX":0,"oZ":0.28,"wrist":-0.6268,"wrist2":-0.85,"roll":-0.2816,"grip":0,"bodyX":-0.09,"bodyY":-0.1584,"bodyZ":0.0704,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":-0.2,"headY":-0.47,"headZ":0,"trail":0}},
+    {"f":5,"ease":"smooth","pose":{"wX":-0.8,"wZ":-1.07,"oX":-1.67,"oZ":0.34,"wrist":-0.44,"wrist2":-2.02,"roll":-1.95,"grip":0,"bodyX":-0.1,"bodyY":-0.45,"bodyZ":0.2,"lift":0,"legLx":0.36,"legRx":-0.83,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":7,"ease":"smooth","pose":{"wX":-1.5,"wZ":-1.91,"oX":0.32,"oZ":1.47,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":-0.2,"bodyY":-0.9,"bodyZ":0.4,"lift":0,"legLx":0.03,"legRx":0.18,"legLz":-0.73,"legRz":0.58,"headX":0,"headY":0,"headZ":0,"trail":1}},
+    {"f":10,"ease":"smooth","pose":{"wX":-1.23,"wZ":0.45,"oX":1.61,"oZ":0.84,"wrist":0.15,"wrist2":-0.2,"roll":-1.61,"grip":0,"bodyX":0.45,"bodyY":1,"bodyZ":-0.54,"lift":0,"legLx":-1.26,"legRx":-0.66,"legLz":0.03,"legRz":0.2,"headX":0.4,"headY":0.77,"headZ":0,"trail":1}},
+    {"f":12,"ease":"smooth","pose":{"wX":-1.5,"wZ":1.47,"oX":0.76,"oZ":-0.21,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0.4,"bodyY":1,"bodyZ":-0.55,"lift":0,"legLx":0.18,"legRx":-0.83,"legLz":-0.8,"legRz":0.26,"headX":0.38,"headY":0.91,"headZ":0,"trail":1}},
+    {"f":16,"ease":"smooth","pose":{"wX":-1.5,"wZ":1.35,"oX":0,"oZ":0.28,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0.4,"bodyY":1,"bodyZ":-0.55,"lift":0,"legLx":0.53,"legRx":-0.91,"legLz":-0.66,"legRz":0,"headX":0.46,"headY":1.12,"headZ":0,"trail":0}},
+    {"f":23,"ease":"smooth","pose":{"wX":-2.31,"wZ":-1.16,"oX":0.12,"oZ":0.95,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":-0.04,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+   ],
+   events:[{"f":10,"name":"swing","sfx":"assets/sfx/slash.wav"},{"f":12,"name":"hit"},{"f":13,"name":"step"}]
+  },
+  "spin":{fps:30,frames:25,loop:false,role:"attack",dir:-1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":-2.31,"wZ":-1.16,"oX":0.12,"oZ":0.95,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":-0.04,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":3,"ease":"smooth","pose":{"wX":-0.9,"wZ":-0.8,"oX":0.67,"oZ":0.91,"wrist":-0.4,"wrist2":-0.85,"roll":-0.8,"grip":0,"bodyX":0,"bodyY":-0.45,"bodyZ":0.12,"lift":-0.05,"legLx":0.52,"legRx":-0.96,"legLz":0,"legRz":0.46,"headX":0,"headY":0,"headZ":0,"trail":0}},
+    {"f":5,"ease":"smooth","pose":{"wX":-1.45,"wZ":-1.3,"oX":-1.9,"oZ":1.25,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":-0.9,"bodyZ":0.25,"lift":-0.03,"legLx":-0.64,"legRx":0,"legLz":0,"legRz":0.52,"headX":0,"headY":-0.29,"headZ":0,"trail":1}},
+    {"f":10,"ease":"smooth","pose":{"wX":-1.45,"wZ":0.4,"oX":-1.23,"oZ":1.63,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":6.08,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":1}},
+    {"f":14,"ease":"smooth","pose":{"wX":-1.45,"wZ":0.4,"oX":0,"oZ":0.28,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0.28,"bodyY":6.8,"bodyZ":0,"lift":0,"legLx":-0.64,"legRx":0,"legLz":0,"legRz":0.27,"headX":0.16,"headY":0.35,"headZ":0,"trail":0}},
+    {"f":24,"ease":"smooth","pose":{"wX":-1.71,"wZ":-1.33,"oX":0,"oZ":0.28,"wrist":0.26,"wrist2":-0.85,"roll":1.43,"grip":0,"bodyX":0.06,"bodyY":6.5,"bodyZ":0,"lift":-0.09,"legLx":-0.64,"legRx":0,"legLz":0,"legRz":0.27,"headX":-0.24,"headY":-0.24,"headZ":0,"trail":0}},
+   ],
+   events:[{"f":4,"name":"swing","sfx":"assets/sfx/slash.wav"},{"f":7,"name":"hit"}]
+  },
+  "smash":{fps:30,frames:25,loop:false,role:"attack",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":-1.12,"wZ":0.62,"oX":-0.28,"oZ":0.28,"wrist":-0.92,"wrist2":-0.85,"roll":1.32,"grip":0,"bodyX":-0.22,"bodyY":0.2,"bodyZ":0,"lift":-0.09,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0.2,"headY":0.57,"headZ":-0.26,"trail":0}},
+    {"f":2,"ease":"smooth","pose":{"wX":-1.25,"wZ":0.97,"oX":-1.79,"oZ":1.28,"wrist":-0.71,"wrist2":-0.49,"roll":1.41,"grip":0,"bodyX":-0.28,"bodyY":0.35,"bodyZ":0,"lift":-0.07,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0.21,"headY":0.7,"headZ":-0.26,"trail":0}},
+    {"f":4,"ease":"smooth","pose":{"wX":-1.3,"wZ":0.78,"oX":-1.79,"oZ":1.28,"wrist":-0.51,"wrist2":-0.49,"roll":1.41,"grip":0,"bodyX":-0.37,"bodyY":0.35,"bodyZ":0,"lift":-0.07,"legLx":0.56,"legRx":0.42,"legLz":0,"legRz":0,"headX":0.21,"headY":0.7,"headZ":-0.26,"trail":0}},
+    {"f":5,"ease":"smooth","pose":{"wX":-1.3,"wZ":0.78,"oX":-1.79,"oZ":1.28,"wrist":-0.51,"wrist2":-0.49,"roll":1.41,"grip":0,"bodyX":-0.4,"bodyY":0.6,"bodyZ":0,"lift":-0.07,"legLx":0.92,"legRx":0.42,"legLz":0,"legRz":0.3,"headX":0.21,"headY":0.7,"headZ":-0.26,"trail":1}},
+    {"f":7,"ease":"smooth","pose":{"wX":-2.71,"wZ":-1.65,"oX":0,"oZ":0.28,"wrist":-0.23,"wrist2":-0.97,"roll":2.5,"grip":0,"bodyX":0.45,"bodyY":0,"bodyZ":0,"lift":-0.1,"legLx":-1.08,"legRx":-0.03,"legLz":0,"legRz":0,"headX":-0.26,"headY":0,"headZ":0,"trail":1}},
+    {"f":10,"ease":"smooth","pose":{"wX":-2.6,"wZ":-1.84,"oX":0,"oZ":0.28,"wrist":-0.23,"wrist2":-0.97,"roll":2.5,"grip":0,"bodyX":0.45,"bodyY":-0.55,"bodyZ":0,"lift":-0.1,"legLx":-1.08,"legRx":-0.03,"legLz":0,"legRz":0,"headX":-0.26,"headY":0,"headZ":0,"trail":0}},
+    {"f":24,"ease":"smooth","pose":{"wX":-0.94,"wZ":-1.4,"oX":-0.28,"oZ":0.28,"wrist":0.15,"wrist2":-0.85,"roll":1.36,"grip":0,"bodyX":-0.22,"bodyY":-0.55,"bodyZ":0,"lift":-0.09,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0.51,"headY":0.14,"headZ":-0.26,"trail":0}},
+   ],
+   events:[{"f":7,"name":"swing","sfx":"assets/sfx/slash.wav","pitch":0.23},{"f":10,"name":"hit"}]
+  },
+  "idle":{fps:30,frames:85,loop:true,role:"idle",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"linear","pose":{"wX":-0.23,"wZ":-0.9,"oX":-0.011,"oZ":0.271,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
+    {"f":36,"ease":"smooth","pose":{"wX":-0.33,"wZ":-1.06,"oX":-0.011,"oZ":0.271,"wrist":1.1,"wrist2":-0.85,"roll":0.45,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
+    {"f":84,"ease":"smooth","pose":{"wX":-0.23,"wZ":-0.9,"oX":-0.011,"oZ":0.271,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
+   ],
+   events:[]
+  },
+  "run":{fps:30,frames:14,loop:true,role:"run",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"smooth","pose":{"wX":0.23,"wZ":-1.17,"oX":0.031,"oZ":0.352,"wrist":0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.2,"bodyY":0.001,"bodyZ":0,"lift":0,"legLx":0.015,"legRx":-0.015,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":3,"ease":"smooth","pose":{"wX":0.46,"wZ":-1.28,"oX":0.031,"oZ":0.352,"wrist":-0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.34,"bodyY":0.001,"bodyZ":0,"lift":-0.07,"legLx":-1.15,"legRx":0.53,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":4,"ease":"smooth","pose":{"wX":0.46,"wZ":-1.28,"oX":0.031,"oZ":0.352,"wrist":-0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.34,"bodyY":0.001,"bodyZ":0,"lift":-0.07,"legLx":-1.15,"legRx":0.53,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":6,"ease":"linear","pose":{"wX":0.49,"wZ":-1.44,"oX":0.031,"oZ":0.352,"wrist":-0.54,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.17,"bodyY":0.001,"bodyZ":0,"lift":-0.14,"legLx":-0.25,"legRx":-0.81,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":9,"ease":"smooth","pose":{"wX":0.49,"wZ":-1.44,"oX":0.031,"oZ":0.352,"wrist":-0.54,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.4,"bodyY":0.001,"bodyZ":0,"lift":-0.04,"legLx":1,"legRx":-1.48,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":11,"ease":"smooth","pose":{"wX":0.49,"wZ":-1.44,"oX":0.031,"oZ":0.352,"wrist":-0.54,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.17,"bodyY":0.001,"bodyZ":0,"lift":-0.14,"legLx":-0.25,"legRx":-0.81,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+    {"f":13,"ease":"smooth","pose":{"wX":0.23,"wZ":-1.17,"oX":0.031,"oZ":0.352,"wrist":0.1,"wrist2":0,"roll":-0.7,"grip":0,"bodyX":0.2,"bodyY":0.001,"bodyZ":0,"lift":0,"legLx":0.015,"legRx":-0.015,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
+   ],
+   events:[]
+  },
+  "air":{fps:30,frames:21,loop:false,role:"air",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"linear","pose":{"wX":0.004,"wZ":-0.75,"oX":-0.303,"oZ":0.356,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.114,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.597,"legRx":-0.338,"legLz":0,"legRz":0,"headX":0,"headY":0.142,"headZ":-0.031,"trail":0}},
+    {"f":1,"ease":"linear","pose":{"wX":-0.172,"wZ":-0.75,"oX":-0.445,"oZ":0.399,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.152,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.885,"legRx":-0.5,"legLz":0,"legRz":0,"headX":0,"headY":0.144,"headZ":-0.03,"trail":0}},
+    {"f":2,"ease":"linear","pose":{"wX":-0.26,"wZ":-0.75,"oX":-0.516,"oZ":0.42,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.155,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-1.002,"legRx":-0.559,"legLz":0,"legRz":0,"headX":0,"headY":0.147,"headZ":-0.029,"trail":0}},
+    {"f":3,"ease":"linear","pose":{"wX":-0.306,"wZ":-0.75,"oX":-0.553,"oZ":0.43,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.144,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-1.007,"legRx":-0.542,"legLz":0,"legRz":0,"headX":0,"headY":0.149,"headZ":-0.029,"trail":0}},
+    {"f":5,"ease":"linear","pose":{"wX":-0.346,"wZ":-0.75,"oX":-0.586,"oZ":0.438,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.106,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.845,"legRx":-0.381,"legLz":0,"legRz":0,"headX":0,"headY":0.153,"headZ":-0.027,"trail":0}},
+    {"f":10,"ease":"linear","pose":{"wX":-0.385,"wZ":-0.75,"oX":-0.615,"oZ":0.443,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.006,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.249,"legRx":0.161,"legLz":0,"legRz":0,"headX":0,"headY":0.161,"headZ":-0.023,"trail":0}},
+    {"f":12,"ease":"linear","pose":{"wX":-0.397,"wZ":-0.75,"oX":-0.624,"oZ":0.445,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.051,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.151,"legRx":0.249,"legLz":0,"legRz":0,"headX":0,"headY":0.164,"headZ":-0.021,"trail":0}},
+    {"f":20,"ease":"linear","pose":{"wX":-0.446,"wZ":-0.75,"oX":-0.66,"oZ":0.45,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.231,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.15,"legRx":0.25,"legLz":0,"legRz":0,"headX":0,"headY":0.174,"headZ":-0.014,"trail":0}},
+   ],
+   events:[]
+  },
+  "dash":{fps:30,frames:11,loop:false,role:"dash",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
+   keys:[
+    {"f":0,"ease":"linear","pose":{"wX":0.79,"wZ":-0.305,"oX":0.722,"oZ":0.254,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.89,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.756,"legRx":0.534,"legLz":0,"legRz":0,"headX":0,"headY":0.168,"headZ":0.019,"trail":0}},
+    {"f":1,"ease":"linear","pose":{"wX":0.845,"wZ":-0.25,"oX":0.81,"oZ":0.25,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":1,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.85,"legRx":0.6,"legLz":0,"legRz":0,"headX":0,"headY":0.167,"headZ":0.019,"trail":0}},
+    {"f":5,"ease":"linear","pose":{"wX":0.845,"wZ":-0.25,"oX":0.81,"oZ":0.25,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":1,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.85,"legRx":0.6,"legLz":0,"legRz":0,"headX":0,"headY":0.161,"headZ":0.023,"trail":0}},
+    {"f":6,"ease":"linear","pose":{"wX":0.791,"wZ":-0.305,"oX":0.72,"oZ":0.253,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.89,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.756,"legRx":0.534,"legLz":0,"legRz":0,"headX":0,"headY":0.16,"headZ":0.024,"trail":0}},
+    {"f":7,"ease":"linear","pose":{"wX":0.525,"wZ":-0.576,"oX":0.278,"oZ":0.267,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.347,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.295,"legRx":0.208,"legLz":0,"legRz":0,"headX":0,"headY":0.158,"headZ":0.025,"trail":0}},
+    {"f":8,"ease":"linear","pose":{"wX":0.355,"wZ":-0.75,"oX":-0.007,"oZ":0.275,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0.156,"headZ":0.026,"trail":0}},
+    {"f":10,"ease":"linear","pose":{"wX":0.357,"wZ":-0.75,"oX":-0.009,"oZ":0.273,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0.152,"headZ":0.027,"trail":0}},
    ],
    events:[]
   },
@@ -211,96 +378,6 @@ const WEAPON_ANIMS={
    events:[]
   },
  }},
- "axe":{chain:["sweep","smash","spin"],state:{"idle":"idle","run":"run","air":"air","dash":"dash"},anims:{
-  "sweep":{fps:30,frames:36,loop:false,role:"attack",dir:1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
-   keys:[
-    {"f":0,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":4,"ease":"smooth","pose":{"wX":-0.2816,"wZ":-0.5075,"oX":0,"oZ":0.28,"wrist":-0.6268,"wrist2":-0.85,"roll":-0.2816,"grip":0,"bodyX":-0.09,"bodyY":-0.1584,"bodyZ":0.0704,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":-0.2,"headY":-0.47,"headZ":0,"trail":0}},
-    {"f":10,"ease":"smooth","pose":{"wX":-0.8,"wZ":-1.07,"oX":-1.67,"oZ":0.34,"wrist":-0.44,"wrist2":-2.02,"roll":-1.95,"grip":0,"bodyX":-0.1,"bodyY":-0.45,"bodyZ":0.2,"lift":0,"legLx":0.36,"legRx":-0.83,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":18,"ease":"smooth","pose":{"wX":-1.5,"wZ":-1.91,"oX":0.32,"oZ":1.47,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":-0.2,"bodyY":-0.9,"bodyZ":0.4,"lift":0,"legLx":0.03,"legRx":0.18,"legLz":-0.73,"legRz":0.58,"headX":0,"headY":0,"headZ":0,"trail":1}},
-    {"f":22,"ease":"smooth","pose":{"wX":-1.23,"wZ":0.45,"oX":1.61,"oZ":0.84,"wrist":0.15,"wrist2":-0.2,"roll":-1.61,"grip":0,"bodyX":0.45,"bodyY":1,"bodyZ":-0.54,"lift":0,"legLx":-1.26,"legRx":-0.66,"legLz":0.03,"legRz":0.2,"headX":0.4,"headY":0.77,"headZ":0,"trail":1}},
-    {"f":24,"ease":"smooth","pose":{"wX":-1.5,"wZ":1.47,"oX":0.76,"oZ":-0.21,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0.4,"bodyY":1,"bodyZ":-0.55,"lift":0,"legLx":0.18,"legRx":-0.83,"legLz":-0.8,"legRz":0.26,"headX":0.38,"headY":0.91,"headZ":0,"trail":1}},
-    {"f":27,"ease":"smooth","pose":{"wX":-1.5,"wZ":1.35,"oX":0,"oZ":0.28,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0.4,"bodyY":1,"bodyZ":-0.55,"lift":0,"legLx":0.53,"legRx":-0.91,"legLz":-0.66,"legRz":0,"headX":0.46,"headY":1.12,"headZ":0,"trail":0}},
-    {"f":35,"ease":"smooth","pose":{"wX":-2.31,"wZ":-1.16,"oX":0.12,"oZ":0.95,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":-0.04,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-   ],
-   events:[{"f":17,"name":"swing","sfx":"assets/sfx/slash.wav"},{"f":20,"name":"hit"},{"f":21,"name":"step"}]
-  },
-  "smash":{fps:30,frames:36,loop:false,role:"attack",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
-   keys:[
-    {"f":0,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":10,"ease":"smooth","pose":{"wX":-1.4,"wZ":-0.02,"oX":-0.82,"oZ":1,"wrist":-0.8,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.3,"bodyY":-0.28,"bodyZ":0.15,"lift":-0.05,"legLx":0.56,"legRx":-0.79,"legLz":-0.33,"legRz":0.27,"headX":-0.29,"headY":0,"headZ":0,"trail":0}},
-    {"f":18,"ease":"smooth","pose":{"wX":-2.99,"wZ":-0.97,"oX":-0.23,"oZ":1.11,"wrist":-1.43,"wrist2":-1.2,"roll":-0.86,"grip":0.09,"bodyX":-0.34,"bodyY":0,"bodyZ":0.1,"lift":-0.07,"legLx":0.88,"legRx":-1.05,"legLz":-0.19,"legRz":-0.21,"headX":-0.41,"headY":0,"headZ":0,"trail":1}},
-    {"f":22,"ease":"smooth","pose":{"wX":-1,"wZ":-0.2,"oX":1.61,"oZ":1.4,"wrist":-0.3,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.38,"bodyY":0,"bodyZ":-0.12,"lift":-0.04,"legLx":1,"legRx":-0.72,"legLz":0.08,"legRz":0,"headX":0.42,"headY":0,"headZ":0,"trail":1}},
-    {"f":24,"ease":"smooth","pose":{"wX":-0.85,"wZ":-0.2,"oX":0,"oZ":0.28,"wrist":-0.3,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.49,"bodyY":0,"bodyZ":-0.12,"lift":-0.12,"legLx":-0.81,"legRx":-0.85,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":27,"ease":"smooth","pose":{"wX":-1.2,"wZ":-0.7,"oX":0,"oZ":0.28,"wrist":-0.12,"wrist2":-0.85,"roll":-1.22,"grip":0,"bodyX":0.16,"bodyY":0,"bodyZ":-0.12,"lift":-0.12,"legLx":-0.81,"legRx":-0.85,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":35,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-   ],
-   events:[{"f":18,"name":"swing","sfx":"assets/sfx/slash.wav","pitch":0.23},{"f":22,"name":"hit"}]
-  },
-  "spin":{fps:30,frames:39,loop:false,role:"attack",dir:-1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
-   keys:[
-    {"f":0,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":12,"ease":"smooth","pose":{"wX":-0.9,"wZ":-0.8,"oX":0.67,"oZ":0.91,"wrist":-0.4,"wrist2":-0.85,"roll":-0.8,"grip":0,"bodyX":0,"bodyY":-0.45,"bodyZ":0.12,"lift":-0.05,"legLx":0.52,"legRx":-0.96,"legLz":0,"legRz":0.46,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":20,"ease":"smooth","pose":{"wX":-1.45,"wZ":-1.3,"oX":-1.9,"oZ":1.25,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":-0.9,"bodyZ":0.25,"lift":-0.03,"legLx":-0.64,"legRx":0,"legLz":0,"legRz":0.52,"headX":0,"headY":-0.29,"headZ":0,"trail":1}},
-    {"f":24,"ease":"smooth","pose":{"wX":-1.45,"wZ":-0.45,"oX":-1.35,"oZ":0.7,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":2.6,"bodyZ":0.1,"lift":0.12,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":1}},
-    {"f":28,"ease":"smooth","pose":{"wX":-1.45,"wZ":0.4,"oX":-1.23,"oZ":1.63,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":6.08,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":1}},
-    {"f":31,"ease":"smooth","pose":{"wX":-1.45,"wZ":0.4,"oX":0,"oZ":0.28,"wrist":-0.15,"wrist2":-0.85,"roll":-1.57,"grip":0,"bodyX":0,"bodyY":6.283,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":37,"ease":"hold","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":6.283,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-    {"f":38,"ease":"smooth","pose":{"wX":0,"wZ":-0.24,"oX":0,"oZ":0.28,"wrist":-0.75,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":0,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0,"headZ":0,"trail":0}},
-   ],
-   events:[{"f":19,"name":"swing","sfx":"assets/sfx/slash.wav"},{"f":26,"name":"hit"},{"f":21,"name":"custom","sfx":"assets/sfx/slash.wav","pitch":0.25}]
-  },
-  "idle":{fps:30,frames:85,loop:true,role:"idle",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
-   keys:[
-    {"f":0,"ease":"linear","pose":{"wX":-0.23,"wZ":-0.9,"oX":-0.011,"oZ":0.271,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
-    {"f":36,"ease":"smooth","pose":{"wX":-0.33,"wZ":-1.06,"oX":-0.011,"oZ":0.271,"wrist":1.1,"wrist2":-0.85,"roll":0.45,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
-    {"f":84,"ease":"smooth","pose":{"wX":-0.23,"wZ":-0.9,"oX":-0.011,"oZ":0.271,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":-0.115,"headZ":0.032,"trail":0}},
-   ],
-   events:[]
-  },
-  "run":{fps:30,frames:14,loop:true,role:"run",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
-   keys:[
-    {"f":0,"ease":"linear","pose":{"wX":0.332,"wZ":-0.79,"oX":0.031,"oZ":0.352,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":0.001,"bodyZ":0,"lift":0,"legLx":0.015,"legRx":-0.015,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
-    {"f":1,"ease":"linear","pose":{"wX":0.171,"wZ":-0.79,"oX":0.446,"oZ":0.351,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":0.038,"bodyZ":0,"lift":0,"legLx":0.455,"legRx":-0.455,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.012,"trail":0}},
-    {"f":2,"ease":"linear","pose":{"wX":0.048,"wZ":-0.79,"oX":0.763,"oZ":0.351,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":0.067,"bodyZ":0,"lift":0,"legLx":0.79,"legRx":-0.79,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":0.005,"trail":0}},
-    {"f":3,"ease":"linear","pose":{"wX":-0.008,"wZ":-0.79,"oX":0.908,"oZ":0.35,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":0.08,"bodyZ":0,"lift":0,"legLx":0.945,"legRx":-0.945,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":0.013,"trail":0}},
-    {"f":4,"ease":"linear","pose":{"wX":0.016,"wZ":-0.79,"oX":0.848,"oZ":0.349,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":0.074,"bodyZ":0,"lift":0,"legLx":0.883,"legRx":-0.883,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":0.009,"trail":0}},
-    {"f":5,"ease":"linear","pose":{"wX":0.114,"wZ":-0.79,"oX":0.597,"oZ":0.348,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":0.052,"bodyZ":0,"lift":0,"legLx":0.618,"legRx":-0.618,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.005,"trail":0}},
-    {"f":8,"ease":"linear","pose":{"wX":0.581,"wZ":-0.79,"oX":-0.601,"oZ":0.345,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":-0.054,"bodyZ":0,"lift":0,"legLx":-0.641,"legRx":0.641,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.072,"trail":0}},
-    {"f":9,"ease":"linear","pose":{"wX":0.675,"wZ":-0.79,"oX":-0.841,"oZ":0.344,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":-0.075,"bodyZ":0,"lift":0,"legLx":-0.894,"legRx":0.894,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.086,"trail":0}},
-    {"f":10,"ease":"linear","pose":{"wX":0.694,"wZ":-0.79,"oX":-0.888,"oZ":0.343,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":-0.079,"bodyZ":0,"lift":0,"legLx":-0.941,"legRx":0.941,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.089,"trail":0}},
-    {"f":11,"ease":"linear","pose":{"wX":0.633,"wZ":-0.79,"oX":-0.73,"oZ":0.342,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":-0.065,"bodyZ":0,"lift":0,"legLx":-0.773,"legRx":0.773,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.08,"trail":0}},
-    {"f":12,"ease":"linear","pose":{"wX":0.507,"wZ":-0.79,"oX":-0.404,"oZ":0.341,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":-0.036,"bodyZ":0,"lift":0,"legLx":-0.428,"legRx":0.428,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.062,"trail":0}},
-    {"f":13,"ease":"linear","pose":{"wX":0.332,"wZ":-0.79,"oX":0.031,"oZ":0.352,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.2,"bodyY":0.001,"bodyZ":0,"lift":0,"legLx":0.015,"legRx":-0.015,"legLz":0,"legRz":0,"headX":-0.16,"headY":0,"headZ":-0.035,"trail":0}},
-   ],
-   events:[]
-  },
-  "air":{fps:30,frames:21,loop:false,role:"air",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
-   keys:[
-    {"f":0,"ease":"linear","pose":{"wX":0.004,"wZ":-0.75,"oX":-0.303,"oZ":0.356,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.114,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.597,"legRx":-0.338,"legLz":0,"legRz":0,"headX":0,"headY":0.142,"headZ":-0.031,"trail":0}},
-    {"f":1,"ease":"linear","pose":{"wX":-0.172,"wZ":-0.75,"oX":-0.445,"oZ":0.399,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.152,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.885,"legRx":-0.5,"legLz":0,"legRz":0,"headX":0,"headY":0.144,"headZ":-0.03,"trail":0}},
-    {"f":2,"ease":"linear","pose":{"wX":-0.26,"wZ":-0.75,"oX":-0.516,"oZ":0.42,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.155,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-1.002,"legRx":-0.559,"legLz":0,"legRz":0,"headX":0,"headY":0.147,"headZ":-0.029,"trail":0}},
-    {"f":3,"ease":"linear","pose":{"wX":-0.306,"wZ":-0.75,"oX":-0.553,"oZ":0.43,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.144,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-1.007,"legRx":-0.542,"legLz":0,"legRz":0,"headX":0,"headY":0.149,"headZ":-0.029,"trail":0}},
-    {"f":5,"ease":"linear","pose":{"wX":-0.346,"wZ":-0.75,"oX":-0.586,"oZ":0.438,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":-0.106,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.845,"legRx":-0.381,"legLz":0,"legRz":0,"headX":0,"headY":0.153,"headZ":-0.027,"trail":0}},
-    {"f":10,"ease":"linear","pose":{"wX":-0.385,"wZ":-0.75,"oX":-0.615,"oZ":0.443,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.006,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.249,"legRx":0.161,"legLz":0,"legRz":0,"headX":0,"headY":0.161,"headZ":-0.023,"trail":0}},
-    {"f":12,"ease":"linear","pose":{"wX":-0.397,"wZ":-0.75,"oX":-0.624,"oZ":0.445,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.051,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.151,"legRx":0.249,"legLz":0,"legRz":0,"headX":0,"headY":0.164,"headZ":-0.021,"trail":0}},
-    {"f":20,"ease":"linear","pose":{"wX":-0.446,"wZ":-0.75,"oX":-0.66,"oZ":0.45,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.231,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":-0.15,"legRx":0.25,"legLz":0,"legRz":0,"headX":0,"headY":0.174,"headZ":-0.014,"trail":0}},
-   ],
-   events:[]
-  },
-  "dash":{fps:30,frames:11,loop:false,role:"dash",dir:0,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
-   keys:[
-    {"f":0,"ease":"linear","pose":{"wX":0.79,"wZ":-0.305,"oX":0.722,"oZ":0.254,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.89,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.756,"legRx":0.534,"legLz":0,"legRz":0,"headX":0,"headY":0.168,"headZ":0.019,"trail":0}},
-    {"f":1,"ease":"linear","pose":{"wX":0.845,"wZ":-0.25,"oX":0.81,"oZ":0.25,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":1,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.85,"legRx":0.6,"legLz":0,"legRz":0,"headX":0,"headY":0.167,"headZ":0.019,"trail":0}},
-    {"f":5,"ease":"linear","pose":{"wX":0.845,"wZ":-0.25,"oX":0.81,"oZ":0.25,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":1,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.85,"legRx":0.6,"legLz":0,"legRz":0,"headX":0,"headY":0.161,"headZ":0.023,"trail":0}},
-    {"f":6,"ease":"linear","pose":{"wX":0.791,"wZ":-0.305,"oX":0.72,"oZ":0.253,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.89,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.756,"legRx":0.534,"legLz":0,"legRz":0,"headX":0,"headY":0.16,"headZ":0.024,"trail":0}},
-    {"f":7,"ease":"linear","pose":{"wX":0.525,"wZ":-0.576,"oX":0.278,"oZ":0.267,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0.347,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0.295,"legRx":0.208,"legLz":0,"legRz":0,"headX":0,"headY":0.158,"headZ":0.025,"trail":0}},
-    {"f":8,"ease":"linear","pose":{"wX":0.355,"wZ":-0.75,"oX":-0.007,"oZ":0.275,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0.156,"headZ":0.026,"trail":0}},
-    {"f":10,"ease":"linear","pose":{"wX":0.357,"wZ":-0.75,"oX":-0.009,"oZ":0.273,"wrist":1,"wrist2":-0.85,"roll":0,"grip":0,"bodyX":0,"bodyY":0,"bodyZ":-0.05,"lift":0,"legLx":0,"legRx":0,"legLz":0,"legRz":0,"headX":0,"headY":0.152,"headZ":0.027,"trail":0}},
-   ],
-   events:[]
-  },
- }},
  "katana":{chain:["attack1","attack2"],state:{"idle":"idle","run":"run","air":"air","dash":"dash"},anims:{
   "attack1":{fps:30,frames:11,loop:false,role:"attack",dir:1,groups:{"arms":true,"weapon":true,"body":true,"legs":true,"head":true},
    keys:[
@@ -385,7 +462,7 @@ const WEAPON_ANIMS={
   },
  }}
 };
-const ANIM_ALIAS={"peanutjelly":"woodensword","scythe":"axe","spear":"woodensword"};   // spear etc. use another weapon's animations
+const ANIM_ALIAS={};   // optional: a weapon that borrows another weapon's animations
 // </WEAPON_ANIMS>
 
 // ---- which animation set a weapon plays: its own entry > the weapon it is aliased to > a shared 'type:<type>' entry > the main weapon of its type > none (procedural motion) ----
