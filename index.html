@@ -29,6 +29,8 @@
 }</script>
 <link rel="stylesheet" href="style.css">
 <link rel="preload" as="image" href="assets/images/sadmlogo.png">
+<script src="./node_modules/peerjs/dist/peerjs.min.js"></script>   <!-- WebRTC (PeerJS) -> window.Peer, used by js/net.js -->
+
 <style>
   /* Swaying & Floating Animation for the Logo */
   @keyframes logoSway {
@@ -146,7 +148,40 @@
         <div class="rkx"><div class="rkpill" id="rkpill"></div></div>
         <span class="play">Play <i class="bi bi-chevron-right"></i></span>
       </div>
+      <div class="mode pvp wide" id="mPvp" role="button" tabindex="0" style="--i:3">
+        <span class="mi"><i class="bi bi-globe2"></i></span>
+        <div class="mt"><b>PVP</b><span class="sub">Online</span><small>Custom battle with friends: host a lobby and share the room code, no spike, just fighting</small></div>
+        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
+      </div>
     </div>
+  </div>
+</div>
+
+<!-- PVP: Host / Join cards, the room-code card and the lobby (js/pvpLobby.js) -->
+<div id="pvp" class="menu" hidden>
+  <div class="mscreen">
+    <div class="mbar"><h2 class="mtitle">PVP</h2></div>
+    <div class="mlist">
+      <div class="mode hostc wide" id="pvpHost" role="button" tabindex="0" style="--i:0">
+        <span class="mi"><i class="bi bi-house-fill"></i></span>
+        <div class="mt"><b>Host</b><span class="sub">Create a lobby</span><small>Set up 5v5 slots, fill empty ones with AI cats or leave them empty</small></div>
+      </div>
+      <div class="mode joinc wide" id="pvpJoin" role="button" tabindex="0" style="--i:1">
+        <span class="mi"><i class="bi bi-search"></i></span>
+        <div class="mt"><b>Join</b><span class="sub">Find a lobby</span><small>Type the room code your friend shares with you</small></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="search" class="menu" hidden><div class="mcard"><h2 class="mtitle">Join Lobby</h2><p class="msub" id="srStatus"></p><div class="srcode"><input id="srCode" type="text" maxlength="5" placeholder="ROOM CODE" autocomplete="off" autocapitalize="characters" spellcheck="false"><button id="srGo" class="btn green">Join</button></div></div></div></div>
+<div id="lobby" class="menu" hidden>
+  <div class="mscreen">
+    <div class="mbar"><h2 class="mtitle">PVP Lobby</h2><div class="who"><span class="msub" id="lbInfo"></span><b id="lbCnt">1 v 0</b></div></div>
+    <div class="lbody">
+      <div class="lteam a"><h3>BLUE TEAM</h3><div class="slist" id="lbA"></div></div>
+      <div class="lteam b"><h3>RED TEAM</h3><div class="slist" id="lbB"></div></div>
+    </div>
+    <div class="mrow" id="lbFoot"></div>
   </div>
 </div>
 
