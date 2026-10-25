@@ -533,3 +533,64 @@ html body .card:not(.gfxcard),html body #maker .side{filter:drop-shadow(0 6px 0 
 /* ===== INSTALL APP (phones): how-to card ===== */
 #installHelp ol{margin:0 0 6px;padding-left:24px;text-align:left;font:800 17px/1.35 var(--font);max-width:340px}
 #installHelp li{margin:0 0 10px}
+/* ===================================================================================================================
+   CAT MAKER ON PHONES  (added at the very end on purpose: it must beat the skin rules above)
+   The old phone rule only started at max-width:800px and used a fixed 250px panel + tabs + buttons (~410px tall), which is taller than
+   a phone held sideways (iPhone SE = 375px tall), so the card overflowed and covered the whole screen. These rules size the card from the real screen
+   height instead of fixed pixel heights, so it can never be taller than the screen.
+   =================================================================================================================== */
+
+/* ---- phone held sideways (any screen up to 520px tall): panel on the right, full height, cat visible on the left ---- */
+@media (max-height:520px) and (orientation:landscape){
+  html body #maker .side{
+    zoom:1;transform:none;left:auto;
+    top:max(8px,env(safe-area-inset-top,0px));bottom:max(8px,env(safe-area-inset-bottom,0px));right:max(10px,env(safe-area-inset-right,0px));
+    width:min(46vw,400px);height:auto;max-height:none;gap:6px;padding:10px 10px 10px;border-radius:20px}
+  html body #maker .side::after{display:none}                    /* the tape decoration would be cut off at the top edge */
+  html body #maker .tabs{flex:none;padding:0 0 1px;gap:4px}
+  html body #maker .tabs button{font-size:14px;padding:5px 4px}
+  html body #maker .mkbody{flex:1 1 0;min-height:0;gap:8px;align-items:stretch}
+  html body #maker .cats{flex:none;gap:4px;padding:3px 6px 3px 0;min-height:0;overflow-y:auto;scrollbar-width:none}
+  html body #maker .cats::-webkit-scrollbar{display:none;width:0;height:0}
+  html body #maker .cbtn{flex:none;width:34px;height:34px;font-size:17px;border-radius:8px}
+  html body #maker .pnl{display:flex;flex-direction:column;height:auto;min-height:0;min-width:0;padding:8px 6px 0}
+  html body #maker .ptitle{flex:none;height:24px;margin:0 4px 4px}
+  html body #maker .ptitle h3{font-size:17px}
+  html body #maker .ptitle span{display:none}
+  html body #maker .gridw{flex:1 1 0;min-height:0;height:auto;grid-template-columns:repeat(3,1fr);gap:6px;padding:2px 4px 24px}
+  html body #maker .tile{padding:5px;margin:0 0 2px;transform:none}
+  html body #maker .tile em{font-size:9px;bottom:3px}
+  html body #maker .tile.lab img,html body #maker .tile.lab svg{margin-bottom:10px}
+  html body #maker .pfoot{flex:none;gap:8px;margin-top:0}
+  html body #maker .pfoot .btn{min-height:38px;padding:0 6px;font-size:15px;gap:5px;border-radius:14px}
+  html body #maker .pfoot .btn i.bi{font-size:15px}
+  html body #maker .nmpill{top:max(8px,env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));min-width:0;gap:8px;padding:2px 14px 2px 12px}
+  html body #maker .nmpill span{font-size:10px}
+  html body #maker #nm{font-size:19px}
+}
+
+/* ---- phone held upright: bottom sheet that takes at most half the screen, category icons become a row ---- */
+@media (max-width:800px) and (orientation:portrait){
+  html body #maker .side{
+    zoom:1;transform:none;top:auto;
+    left:max(8px,env(safe-area-inset-left,0px));right:max(8px,env(safe-area-inset-right,0px));bottom:max(8px,env(safe-area-inset-bottom,0px));
+    width:auto;height:min(52vh,460px);height:min(52dvh,460px);max-height:none;gap:6px;padding:10px 10px 10px;border-radius:20px}
+  html body #maker .side::after{display:none}
+  html body #maker .tabs{flex:none;padding:0 0 1px;gap:4px}
+  html body #maker .tabs button{font-size:14px;padding:5px 4px}
+  html body #maker .mkbody{flex:1 1 0;min-height:0;flex-direction:column;gap:6px;align-items:stretch}
+  html body #maker .cats{flex:none;flex-direction:row;gap:6px;padding:3px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  html body #maker .cats::-webkit-scrollbar{display:none;width:0;height:0}
+  html body #maker .cbtn{flex:none;width:38px;height:38px;font-size:18px;border-radius:8px}
+  html body #maker .pnl{display:flex;flex-direction:column;flex:1 1 0;height:auto;min-height:0;min-width:0;padding:8px 6px 0}
+  html body #maker .ptitle{flex:none;height:24px;margin:0 4px 4px}
+  html body #maker .ptitle h3{font-size:17px}
+  html body #maker .gridw{flex:1 1 0;min-height:0;height:auto;grid-template-columns:repeat(4,1fr);gap:6px;padding:2px 4px 24px}
+  html body #maker .tile{padding:5px;margin:0 0 2px;transform:none}
+  html body #maker .tile em{font-size:9px;bottom:3px}
+  html body #maker .tile.lab img,html body #maker .tile.lab svg{margin-bottom:10px}
+  html body #maker .pfoot{flex:none;gap:8px;margin-top:0}
+  html body #maker .pfoot .btn{min-height:40px;padding:0 6px;font-size:16px;gap:5px;border-radius:14px}
+  html body #maker .nmpill{top:max(10px,env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));min-width:0;gap:8px;padding:2px 14px 2px 12px}
+  html body #maker #nm{font-size:20px}
+}
