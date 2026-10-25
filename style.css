@@ -594,3 +594,43 @@ html body .card:not(.gfxcard),html body #maker .side{filter:drop-shadow(0 6px 0 
   html body #maker .nmpill{top:max(10px,env(safe-area-inset-top,0px));left:max(10px,env(safe-area-inset-left,0px));min-width:0;gap:8px;padding:2px 14px 2px 12px}
   html body #maker #nm{font-size:20px}
 }
+/* ===== PVP: 4th mode card, Host / Join cards, room-code card and the lobby ===== */
+html body .mode.pvp{--cut:var(--L2)}html body .mode.pvp{--sheet:#ecd2b0}
+html body .mode.hostc{--cut:var(--L1);--sheet:#d3e0b0}
+html body .mode.joinc{--cut:var(--L3);--sheet:#bfd9e4}
+@media (min-width:701px){
+ html body #modes .mlist{grid-template-columns:repeat(4,minmax(0,1fr));gap:22px}
+ html body .mode.pvp{grid-column:4;grid-row:1}
+ html body #modes .mode,html body #modes .mode.wide{padding:28px 14px}
+ html body #modes .mode.wide .mt b{font-size:30px}
+ html body #pvp .mlist{grid-template-columns:repeat(2,minmax(0,1fr));grid-template-rows:minmax(0,1fr);max-width:920px;width:100%;margin:0 auto}
+ html body .mode.hostc{grid-column:1;grid-row:1}
+ html body .mode.joinc{grid-column:2;grid-row:1}
+}
+@media (max-width:700px){html body .mode.pvp,html body .mode.hostc,html body .mode.joinc{grid-column:1;grid-row:auto}.mode.pvp{min-height:120px}}
+#pvp,#lobby{align-items:stretch;justify-content:stretch}
+#search .mcard{width:min(520px,92vw)}
+#search .msub{margin:0 0 12px}
+#search .slist{min-height:90px}
+.lbody{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:28px;padding:0 6px}
+.lteam{min-height:0;display:flex;flex-direction:column}
+.lteam h3{flex:none;margin:0 0 4px;padding:0 6px;font:400 22px/1.1 var(--disp,Impact,sans-serif);letter-spacing:.08em;color:var(--cream);text-shadow:0 3px 0 rgba(0,0,0,.55)}
+.lteam.a h3{color:#8ec9ff}.lteam.b h3{color:#ff9a8a}
+.lbody .slist{flex:1;max-height:none;gap:10px;padding:6px 10px 14px}
+.lbody .cslot{min-height:68px;padding:8px 12px 8px 10px;gap:12px}
+.lbody .cslot .hd{width:50px;height:50px}
+.lbody .cslot .si b{font-size:20px}
+.lbody .cslot.empty{font-size:17px;gap:10px}
+.lbody .cslot.empty .sn{margin-left:auto}
+.lbody .cslot .sb{margin-left:4px}
+html body .cslot.me:nth-child(n){--sheet:#f7e3a0}
+html body .cslot.ai:nth-child(n){--sheet:#d4e2ea}
+#lbFoot{flex:none;margin:0;align-items:center;min-height:64px;flex-wrap:wrap}
+#lbFoot .btn{min-width:190px;font-size:22px;min-height:54px}
+#lbCnt{font:400 26px/1 var(--disp,Impact,sans-serif);color:var(--cream)}
+#lobby .mbar .who{gap:16px}
+@media (max-width:700px){.lbody{grid-template-columns:1fr;overflow-y:auto}.lteam{min-height:auto}.lbody .slist{overflow:visible}#lbFoot .btn{min-width:140px;font-size:18px}}
+@media (max-height:620px){.lbody .cslot{min-height:56px}.lbody .cslot .hd{width:40px;height:40px}.lbody .cslot .si b{font-size:17px}.lbody .slist{gap:6px}.lteam h3{font-size:17px}}
+#search .srcode{display:flex;gap:10px;justify-content:center;align-items:center;margin-top:6px}
+#search .srcode input{width:min(240px,50vw);padding:8px 14px;border:0;border-radius:6px;text-align:center;letter-spacing:.35em;text-transform:uppercase;font:800 28px var(--font);background:var(--cream,#f1e8d2);color:var(--k,#17100e)}
+#search .srcode .btn{min-width:110px}
