@@ -41,8 +41,8 @@ export function botConfig(team,name){
     cloak:pick(['tattered','tattered','tattered','short','long','royal','leaves']),cloakC:pick(CLOAK_COLS),head:pick(['none','none','hood','helmet','beanie']),eyewear:pick(['none','none','glasses','shades']),gearC:pick(GEAR_COLS)};
 }
 let uid=0;
-export function createBot(scene,{team,name,skill:rawSkill=.6,rp=900}){
-  const cfg=botConfig(team,name),cat=createCatAvatar(cfg);patchCat(cat);scene.add(cat);cat.userData.setWeapon('gun');
+export function createBot(scene,{team,name,skill:rawSkill=.6,rp=900,cfg:cfgIn=null}){
+  const cfg=cfgIn||botConfig(team,name),cat=createCatAvatar(cfg);patchCat(cat);scene.add(cat);cat.userData.setWeapon('gun');
   // difficulty curve: the rank's rating (0..1) is bent down so low ranks are genuinely weak and even the top rank is beatable
   const skill=Math.min(.9,Math.pow(Math.max(0,rawSkill),1.6)*.9);
   return{id:'bot'+(uid++),isBot:true,team,name,cfg,cat,skill,rp,rank:rankInfo(rp),
