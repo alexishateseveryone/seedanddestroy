@@ -103,7 +103,11 @@ function think(b,dt,W){
           break}}}
   }
 
-  if(tgt){
+  // a cat that is already ON its spot (planting / defusing) keeps working while the foe is still far away: it just stands still, faces him and keeps the bar filling
+  const og=W.objective(b),ogd=Math.hypot(og.x-b.x,og.z-b.z),commit=!!tgt&&(og.type==='plant'||og.type==='defuse')&&ogd<og.rad+1.2&&td>9&&b.hp>1;
+  if(commit){
+    c.yaw=Math.atan2(tgt.x-b.x,tgt.z-b.z);c.act=true;b.holding=true;b.mode=og.type;
+  }else if(tgt){
     const dx=tgt.x-b.x,dz=tgt.z-b.z,d=td,ux=dx/d,uz=dz/d,px=-uz,pz=ux,lead=Math.min(.4,d/24)*b.skill;
     c.yaw=Math.atan2(tgt.x+tgt.vx*lead-b.x,tgt.z+tgt.vz*lead-b.z)+b.aimOff;
     const aerr=Math.abs(ang(b.yaw,c.yaw));
@@ -137,14 +141,19 @@ function think(b,dt,W){
     let goal=null;
     if(b.last&&now-b.last.t<4)goal={x:b.last.x,z:b.last.z,rad:2.4,type:'look'};          // chase the last known position
     else if(b.hear&&now-b.hear.t<6&&b.skill>.38)goal={x:b.hear.x,z:b.hear.z,rad:3,type:'look'};       // investigate gunfire
-    else goal=W.objective(b);
-    const gd=Math.hypot(goal.x-b.x,goal.z-b.z);
-    if(gd>goal.rad){const s=steer(b,goal.x,goal.z,W);c.dx=s.dx;c.dz=s.dz;c.yaw=Math.atan2(s.dx,s.dz)+Math.sin(now*1.3+b.ph)*.35;b.mode='move'}
+    else goal=og;
+    // hysteresis: once a cat has ARRIVED it only leaves again when it is clearly outside the circle (no more flip-flopping between 'move' and 'hold' on the edge = no glitching)
+    const gd=Math.hypot(goal.x-b.x,goal.z-b.z),lim=goal.rad+(b.holding?(goal.type==='plant'||goal.type==='defuse'?.5:1.1):0);
+    if(gd>lim){b.holding=false;const s=steer(b,goal.x,goal.z,W);c.dx=s.dx;c.dz=s.dz;c.yaw=Math.atan2(s.dx,s.dz)+Math.sin(now*1.3+b.ph)*.35;b.mode='move'}
     else{                                                  // arrived: hold, scan and reposition
-      if(goal.type==='look'){b.last=null;b.hear=null}
+      b.holding=true;if(goal.type==='look'){b.last=null;b.hear=null}
       c.act=goal.type==='plant'||goal.type==='defuse';
-      c.yaw=(goal.face??Math.atan2(-b.x,-b.z))+Math.sin(now*.8+b.ph)*.7;
-      b.posT-=dt;if(b.posT<=0){b.posT=rnd(3,6);const a=rnd(0,6.28),r=rnd(1.2,3);b.spot=goal.type==='plant'||goal.type==='defuse'?null:{x:goal.x+Math.cos(a)*r,z:goal.z+Math.sin(a)*r}}
+      c.yaw=(goal.face??Math.atan2(-b.x,-b.z))+Math.sin(now*.8+b.ph)*(c.act?0:.7);   // planting / defusing: stand still and look at the entrance, no wobbling
+      b.posT-=dt;
+      if(c.act)b.spot=null;
+      else if(b.posT<=0){                                   // nothing to fight, nothing to plant: WANDER around the post (short pauses) instead of freezing
+        const wander=goal.type==='hold'||goal.type==='post',a=rnd(0,6.28),r=wander?rnd(2,7):rnd(1.2,3),sx=goal.x+Math.cos(a)*r,sz=goal.z+Math.sin(a)*r;
+        b.posT=wander?rnd(1.5,4):rnd(3,6);b.spot=W.clear?W.clear(sx,sz):{x:sx,z:sz}}
       if(b.spot&&Math.hypot(b.spot.x-b.x,b.spot.z-b.z)>.7){const s=steer(b,b.spot.x,b.spot.z,W);c.dx=s.dx*.7;c.dz=s.dz*.7}
       b.mode=c.act?goal.type:'hold';
     }
