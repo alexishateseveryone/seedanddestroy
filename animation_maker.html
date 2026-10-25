@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Seed and Destroy - Animation Maker</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<!-- Put this file in the game root (next to index.html). It expects js/catAvatar.js, js/animPlayer.js and js/weapons/*.js.
+     If your game already has an importmap for three.js, copy that one here instead of this CDN line. -->
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js"}}</script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;font:13px/1.35 system-ui,Segoe UI,Arial,sans-serif;background:#16181d;color:#e6e8ee;height:100vh;overflow:hidden}
+#app{display:grid;grid-template-columns:1fr 380px;grid-template-rows:1fr 190px;height:100vh}
+#view{position:relative;grid-row:1;grid-column:1;background:#20242c;min-height:0}
+#cv{width:100%;height:100%;display:block}
+#hud{position:absolute;left:10px;top:8px;font-size:12px;color:#aab;pointer-events:none;text-shadow:0 1px 2px #000}
+#flash{position:absolute;left:50%;top:14px;transform:translateX(-50%);font-weight:700;font-size:20px;color:#ffd54a;opacity:0;transition:opacity .25s;pointer-events:none;text-shadow:0 2px 4px #000}
+#views{position:absolute;right:10px;top:8px;display:flex;gap:4px}
+#side{grid-row:1/3;grid-column:2;overflow:auto;background:#1c1f26;border-left:1px solid #2c313b;padding:10px}
+#bottom{grid-row:2;grid-column:1;background:#1a1d23;border-top:1px solid #2c313b;padding:8px 12px;overflow:hidden}
+button,select,input{font:inherit}
+button{background:#2b313c;color:#e6e8ee;border:1px solid #3a4150;border-radius:5px;padding:4px 9px;cursor:pointer}
+button:hover{background:#363d4b}button.on{background:#3b6fd8;border-color:#5b8ef0}
+button.danger:hover{background:#7a2a2a}
+select,input[type=number],input[type=text]{background:#12141a;color:#e6e8ee;border:1px solid #3a4150;border-radius:5px;padding:3px 6px}
+h4{margin:12px 0 5px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:#8d96aa}
+.row{display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap}
+.row>label{white-space:nowrap}
+.grow{flex:1;min-width:0}
+details{border:1px solid #2c313b;border-radius:6px;margin:6px 0;background:#181b21}
+summary{cursor:pointer;padding:5px 8px;font-weight:600;display:flex;align-items:center;gap:6px}
+.sl{display:grid;grid-template-columns:1fr 58px;gap:2px 6px;padding:2px 8px 6px}
+.sl .lab{grid-column:1/3;font-size:11px;color:#9aa3b6;cursor:pointer}
+.sl input[type=range]{width:100%;margin:0}
+.sl input[type=number]{width:58px}
+.off{opacity:.35;pointer-events:none}
+#tl{position:relative;height:56px;margin:6px 8px 0;border-top:1px solid #2c313b}
+#tl input[type=range]{position:absolute;left:0;right:0;top:0;width:100%;margin:0;height:20px}
+.mk{position:absolute;top:24px;width:12px;height:12px;margin-left:-6px;transform:rotate(45deg);background:#ffb300;border:1px solid #000;cursor:ew-resize}
+.mk.sel{background:#fff}
+.ev{position:absolute;top:40px;margin-left:-1px;padding:0 4px;font-size:10px;background:#2f9e6b;color:#fff;border-radius:0 3px 3px 0;border-left:2px solid #7dffc0;cursor:pointer;white-space:nowrap}
+.tick{position:absolute;top:20px;width:1px;height:4px;background:#47506a}
+#status{font-size:11px;color:#8d96aa;margin-top:4px;min-height:15px}
+pre{background:#12141a;border:1px solid #2c313b;border-radius:6px;padding:8px;overflow:auto;font-size:11px;color:#b8c2d8}
+.small{font-size:11px;color:#8d96aa}
+:root{--bg:#14161b;--p1:#1b1e25;--p2:#232731;--ln:#2e3441;--tx:#e8eaf0;--mu:#8e98ad;--ac:#5b8ef0;--ok:#35c28a}
+body{background:var(--bg);color:var(--tx)}
+#app{grid-template-columns:1fr 420px;grid-template-rows:1fr 210px}
+#side{background:var(--p1);padding:0;display:flex;flex-direction:column;overflow:hidden}
+#side .top{padding:10px 12px;border-bottom:1px solid var(--ln);background:var(--p2)}
+#side .top h4{margin:8px 0 4px}#side .top h4:first-child{margin-top:0}
+#tabs{display:flex;border-bottom:1px solid var(--ln)}
+#tabs button{flex:1;border:0;border-radius:0;background:transparent;padding:9px;color:var(--mu);border-bottom:2px solid transparent}
+#tabs button.on{color:var(--tx);border-bottom-color:var(--ac);background:transparent}
+.pane{display:none;overflow:auto;padding:10px 12px;flex:1}.pane.on{display:block}
+button{background:var(--p2);border-color:var(--ln);transition:background .12s}button:hover{background:#2d3340}
+button.pri{background:var(--ac);border-color:var(--ac);color:#fff}button.pri:hover{background:#4a7be0}
+h4{color:var(--mu);font-weight:600;font-size:11px}
+details{background:var(--p2);border-color:var(--ln)}
+#bottom{background:var(--p1);border-top-color:var(--ln)}
+.evr{display:grid;grid-template-columns:52px 1fr;gap:4px 6px;padding:7px;margin:6px 0;background:var(--p2);border:1px solid var(--ln);border-radius:7px}
+.evr .sf{grid-column:1/3}.evr label{font-size:11px;color:var(--mu);display:flex;gap:4px;align-items:center}.evr .ctl{grid-column:1/3;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.evr input[type=range]{width:70px}.evr .sk{width:56px}.evr .f{width:52px}
+.ev.snd{background:#1f8a63}.small b{color:var(--tx)}#err{display:none
+;position:absolute;inset:0;background:#201416;color:#ffb3b3;padding:24px;z-index:9;overflow:auto;white-space:pre-wrap}
+</style></head>
+<body>
+<div id="app">
+  <div id="view"><canvas id="cv"></canvas><div id="hud"></div><div id="flash"></div>
+    <div id="views"><button data-v="front">Front</button><button data-v="side">Side</button><button data-v="back">Back</button><button data-v="three">3/4</button></div>
+    <div id="err"></div></div>
+  <div id="side"></div>
+  <div id="bottom">
+    <div class="row">
+      <button id="bFirst" title="Home">|&lt;</button><button id="bPrev" title="Left arrow">&lt;</button>
+      <button id="bPlay" title="Space">Play</button>
+      <button id="bNext" title="Right arrow">&gt;</button><button id="bLast" title="End">&gt;|</button>
+      <b id="frameLbl" style="min-width:110px">Frame 0 / 0</b>
+      <button id="bKey" title="K">Set key</button><button id="bDelKey" class="danger" title="Delete">Delete key</button>
+      <label>Blend to next key <select id="keyEase"></select></label>
+      <label><input type="checkbox" id="auto" checked> Auto-key</label>
+      <label><input type="checkbox" id="loop"> Loop</label>
+      <label>Speed <select id="speed"><option value=".25">0.25x</option><option value=".5">0.5x</option><option value="1" selected>1x</option></select></label>
+    </div>
+    <div class="row">
+      <label>Frames <input type="number" id="nFrames" min="2" max="600" style="width:64px"></label>
+      <label>FPS <input type="number" id="nFps" min="1" max="120" style="width:56px"></label>
+      <button id="bCopy">Copy pose</button><button id="bPaste">Paste pose</button><button id="bReset">Reset pose</button>
+      <span style="width:12px"></span>
+      <label>Event <select id="evName"><option>swing</option><option>hit</option><option>step</option><option>custom</option></select></label>
+      <button id="bEv">Add event at frame</button>
+      <label><input type="checkbox" id="beep" checked> Beep on events</label>
+      <span class="small">double-click an event to remove it</span>
+    </div>
+    <div id="tl"></div>
+    <div id="status"></div>
+  </div>
+</div>
+
+<script type="module">
+const $=s=>document.querySelector(s);
+const showErr=e=>{const d=$('#err');d.style.display='block';d.textContent='Could not start the animation maker:\n\n'+(e&&e.stack||e)+'\n\nCheck that this page sits next to the js/ folder (js/catAvatar.js, js/animPlayer.js) and that you open it through a web server (e.g. http://localhost/...), not from file://'};
+let T,cat,AP;
+try{T=await import('three');cat=await import('./js/catAvatar.js');AP=await import('./js/animPlayer.js')}catch(e){showErr(e);throw e}
+const {createCatAvatar,COATS,COAT_NAMES}=cat,{PARAMS,GROUPS,EASE,defaultPose,samplePose,STARTERS}=AP;
+
+// ===== weapons: loaded automatically from js/weapons/index.js (the game's own WEAPONS registry). If that fails, every .js file listed by the server in js/weapons/ is tried.
+// The "extra files" box in the Export tab is only for weapons that are NOT in the registry (each file must `export default` a weapon definition). =====
+const REGISTRY='./js/weapons/index.js',WDIR='./js/weapons/',DEFAULT_PATHS=[];
+const RE_BLK=/\/\/ <WEAPON_ANIMS>[\s\S]*?\/\/ <\/WEAPON_ANIMS>/,ROLES=['attack','idle','run','air','dash'],clone=o=>JSON.parse(JSON.stringify(o));
+let src='',srcWA={};
+async function loadSrc(){try{src=await(await fetch('./js/catAvatar.js',{cache:'no-store'})).text();const m=src.match(RE_BLK);if(m)srcWA=new Function(m[0]+'\n;return WEAPON_ANIMS')()||{}}catch(e){status('Could not read js/catAvatar.js: '+e.message)}}
+function fromWA(w){const o={};for(const n of w.chain||[])o[n]={...clone(w.anims[n]),name:n,role:'attack'};for(const r in w.state||{}){const n=w.state[r];if(w.anims[n])o[n]={...clone(w.anims[n]),name:n,role:r}}return o}
+const LSP='animMaker.paths',LS='animMaker.v1';
+const LSC='animMaker.custom',TYPES=['heavy','dual','normal','longblade','rifle'],TL={heavy:'Heavy',dual:'Dual',normal:'Normal',longblade:'Long blades',rifle:'Rifle'},typeOf=d=>d.kind==='gun'?'rifle':d.handling==='dual'?'dual':d.great==='shoulder'?'heavy':d.great?'longblade':'normal';let custom=JSON.parse(localStorage.getItem(LSC)||'[]');
+let paths=JSON.parse(localStorage.getItem(LSP)||'null')||DEFAULT_PATHS;
+let db=JSON.parse(localStorage.getItem(LS)||'null')||{version:1,weapons:{}};
+
+// ===== three.js scene =====
+const cv=$('#cv'),renderer=new T.WebGLRenderer({canvas:cv,antialias:true});
+renderer.outputColorSpace=T.SRGBColorSpace;renderer.shadowMap.enabled=true;
+const scene=new T.Scene();scene.background=new T.Color('#2a3140');
+scene.add(new T.HemisphereLight('#dfe9ff','#4a5a40',1.1));
+const sun=new T.DirectionalLight('#fff3d8',2.2);sun.position.set(4,7,5);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-4,right:4,top:4,bottom:-4});scene.add(sun);
+const ground=new T.Mesh(new T.CircleGeometry(6,48),new T.MeshStandardMaterial({color:'#4b6a46',roughness:1}));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+const grid=new T.GridHelper(12,24,'#6b8a66','#58765a');grid.position.y=.003;scene.add(grid);
+const camera=new T.PerspectiveCamera(40,1,.05,100);
+let yaw=.65,pitch=.22,dist=4.6;const tgt=new T.Vector3(0,1.05,0);
+const placeCam=()=>{camera.position.set(tgt.x+dist*Math.sin(yaw)*Math.cos(pitch),tgt.y+dist*Math.sin(pitch),tgt.z+dist*Math.cos(yaw)*Math.cos(pitch));camera.lookAt(tgt)};
+let drag=null;
+cv.addEventListener('pointerdown',e=>{drag={x:e.clientX,y:e.clientY};cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(!drag)return;yaw-=(e.clientX-drag.x)*.008;pitch=Math.max(-.2,Math.min(1.3,pitch+(e.clientY-drag.y)*.006));drag={x:e.clientX,y:e.clientY}});
+cv.addEventListener('pointerup',()=>drag=null);
+cv.addEventListener('wheel',e=>{e.preventDefault();dist=Math.max(1.5,Math.min(12,dist*Math.exp(e.deltaY*.001)))},{passive:false});
+document.querySelectorAll('#views button').forEach(b=>b.onclick=()=>{yaw={front:0,side:Math.PI/2,back:Math.PI,three:.65}[b.dataset.v];pitch=.22});
+function resize(){const r=$('#view').getBoundingClientRect();renderer.setSize(r.width,r.height,false);camera.aspect=r.width/r.height;camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+
+// ===== state =====
+let weapons=[],W=null,A=null,avatar=null,U=null,weaponsMsg='',PV=null,PRI={};   // PV = weapon shown while editing the shared set of a type; PRI = the weapon that owns each type's animation set
+let fr=0,playing=false,live=defaultPose(),clip=null,saveT=0;
+const status=t=>{$('#status').textContent=t};
+const save=()=>{try{if(W&&db.weapons[W.id])db.weapons[W.id].touched=1;localStorage.setItem(LS,JSON.stringify(db));status('Saved to this browser (use Export to get the JSON file).')}catch(e){status('Could not save: '+e.message)}codeSoon()};
+const saveSoon=()=>{clearTimeout(saveT);saveT=setTimeout(save,350)};
+const none={id:'unarmed',name:'Unarmed',type:'normal',def:{id:'unarmed',name:'Unarmed',kind:'melee',handling:'sword',stats:{dur:.5},build:()=>({group:new T.Group()})}};
+
+async function listWeaponFiles(){try{const r=await fetch(WDIR,{cache:'no-store'});if(!r.ok)return [];const h=new DOMParser().parseFromString(await r.text(),'text/html');
+  return [...h.querySelectorAll('a')].map(a=>decodeURIComponent((a.getAttribute('href')||'').split(/[?#]/)[0].split('/').filter(Boolean).pop()||'')).filter(n=>/\.js$/i.test(n)&&!/^index\.js$/i.test(n)).map(n=>WDIR+n)}catch(e){return []}}
+async function loadWeapons(){
+  weapons=[none];PRI={};const bad=[],seen=new Set(['unarmed']);
+  const add=d=>{if(d&&d.build&&d.id&&!seen.has(d.id)){seen.add(d.id);weapons.push({id:d.id,name:d.name||d.id,def:d,type:typeOf(d)});return true}return false};
+  let viaReg=false;
+  try{const m=await import(REGISTRY);for(const d of m.WEAPONS||[])add(d);viaReg=weapons.length>1}catch(e){bad.push(REGISTRY+' ('+e.message+')');console.error(e)}
+  if(!viaReg){const files=await listWeaponFiles();for(const p of files){try{add((await import(p)).default)}catch(e){bad.push(p);console.error(p,e)}}
+    if(!files.length)bad.push('no weapon list from the server for '+WDIR)}
+  for(const p of paths){try{add((await import(p)).default)}catch(e){bad.push(p)}}   // extra files
+  // one animation set per weapon TYPE: normal = wooden sword (the spear uses it too), heavy = axe (the scythe uses it too), dual = dual blades, longblade = katana.
+  // the first weapon of a type (the preferred one below) owns the set; the others are aliases that read and write the same animations.
+  {const PREF={normal:/wood/i,heavy:/axe/i,dual:/./,longblade:/./};
+   for(const t of ['normal','heavy','dual','longblade']){
+     const pool=weapons.filter(w=>w.type===t&&w.id!=='unarmed'),cand=pool.filter(w=>w.def.handling!=='spear'),pri=cand.find(w=>PREF[t].test(w.id+' '+w.name))||cand[0]||pool[0];
+     if(pri){PRI[t]=pri;pool.forEach(w=>{if(w!==pri){w.alias=pri;w.realId=w.id;w.id=pri.id}})}}}
+  for(const t of TYPES){const st=PRI[t]||weapons.find(w=>w.type===t&&!w.shared&&w.id!=='unarmed')||(t==='normal'?none:null);if(st)weapons.push({id:PRI[t]?st.id:'type:'+t,name:'All '+TL[t].toLowerCase()+' (shared)',def:st.def,type:t,shared:1})}   // 'All heavy (shared)' edits exactly the set the axe / scythe use
+  for(const c of custom){const st=weapons.find(w=>w.type===c.type&&!w.shared&&!w.custom)||none;weapons.push({id:c.id,name:c.name+' (custom)',def:{...st.def,id:c.id,name:c.name},type:c.type,custom:1})}
+  weaponsMsg=(weapons.filter(w=>!w.shared&&!w.custom&&w.def!==none.def).length)+' weapons loaded'+(viaReg?' from js/weapons/index.js':' from the js/weapons folder')+(bad.length?'. Problems: '+bad.join(' | '):'.')
+}
+const shownW=()=>W.shared&&PV&&PV.type===W.type?PV:W;
+function equipW(){U.equip(shownW().def)}
+function fillPreview(){const row=$('#pvrow');if(!row)return;row.style.display=W&&W.shared?'':'none';if(!W||!W.shared)return;
+  const l=weapons.map((w,i)=>[w,i]).filter(([w])=>w.type===W.type&&!w.shared&&!w.custom&&w.id!=='unarmed'),def=l.find(x=>x[0].id===W.id&&!x[0].alias)||l[0];
+  $('#pvsel').innerHTML=l.map(([w,i])=>`<option value="${i}">${w.name}</option>`).join('');const cur=PV&&l.find(x=>x[0]===PV)||def;PV=cur?cur[0]:null;if(cur)$('#pvsel').value=String(cur[1])}
+function weaponAnims(){return (db.weapons[W.id]=db.weapons[W.id]||{animations:{}}).animations}
+function blankAnim(name){return{name,role:'attack',dir:0,fps:30,frames:36,loop:false,groups:{arms:true,weapon:true,body:true,legs:false,head:false},keys:[{f:0,ease:'smooth',pose:defaultPose()}],events:[]}}
+const isBlank=an=>{const n=Object.keys(an);return !n.length||n.every(k=>an[k].keys.length<2&&!(an[k].events||[]).length)};   // nothing but empty placeholder animations (left behind by an earlier failed read)
+function seed(){const ent=db.weapons[W.id]=db.weapons[W.id]||{animations:{}},an=ent.animations=ent.animations||{};
+  if(!isBlank(an)&&ent.baked)return;   // already read from the game (or edited): keep it
+  for(const k in an)if(isBlank({[k]:an[k]}))delete an[k];   // drop empty placeholders left by an earlier failed read
+  if(W.custom&&PRI[W.type]){const keepW=W;W=PRI[W.type];seed();W=keepW;const from=db.weapons[PRI[W.type].id].animations;for(const k in from)if(!an[k])an[k]=clone(from[k]);ent.baked=1;return}   // a custom weapon starts from its type's animations
+  const w=srcWA[W.id];if(w){const f=fromWA(w);for(const k in f)if(!an[k])an[k]=f[k]}   // already-exported animations of this weapon first (e.g. axe: sweep / smash / spin)
+  const have=new Set(Object.values(an).map(a=>a.role));let b={},ok=false;try{if(W.alias)U.equip(W.alias.def);b=bake();ok=true}catch(e){status('Could not read the built-in motion of '+W.name+': '+e.message);console.error(e)}finally{equipW()}   // then whatever roles are still missing come from the game's built-in motion (idle / run / air / dash, attacks if it has none)
+  for(const k in b)if(!have.has(b[k].role)){an[k]=b[k]}
+  if(ok)ent.baked=1;
+  if(!Object.keys(an).length)an.attack=blankAnim('attack')}
+// read the built-in motion of EVERY weapon type (idle / run / air / dash / attack combo) so nothing is missing from the list or from the export
+function bakeAll(){const keep=W;let n=0;for(const w of weapons){if(w.alias||w.shared||w.id==='unarmed'||w.type==='rifle')continue;W=w;U.equip(w.def);seed();n++}W=keep;equipW();return n}
+function makeCat(){
+  if(avatar)scene.remove(avatar);
+  const ci=+$('#coat').value;
+  avatar=createCatAvatar({fur:COATS[ci][0],pat:COATS[ci][1],name:'Ming',cloak:$('#cloak').value});
+  avatar.traverse(o=>{if(o.isMesh){o.castShadow=true}});
+  scene.add(avatar);U=avatar.userData;U.setAim(0,true);if(W)equipW();
+}
+
+// ===== side panel =====
+const side=$('#side');
+side.innerHTML=`
+<div class="top">
+<h4>Item type &amp; weapon</h4><div class="row"><select id="wtype"><option value="all">All</option><option value="heavy">Heavy</option><option value="dual">Dual</option><option value="normal">Normal</option><option value="longblade">Long blades</option><option value="rifle">Rifle</option><option value="custom">Custom</option></select><select id="wsel" class="grow"></select><button id="wNew" title="make a custom weapon preset">+ Custom</button></div><div class="row" id="pvrow" style="display:none"><label class="grow" style="display:flex;gap:6px;align-items:center">Preview weapon <select id="pvsel" class="grow"></select></label><span class="small">shared set: changes the model only</span></div><div class="row"><select id="coat" class="grow"></select><select id="cloak"><option>tattered</option><option>none</option><option>short</option><option>long</option><option>royal</option><option>leaves</option></select></div>
+<h4>Animation</h4><div class="row"><select id="asel" class="grow"></select><button id="aNew">New</button><button id="aDup">Copy</button><button id="aRen">Rename</button><button id="aDel" class="danger">Delete</button></div>
+<div class="row"><label>Role <select id="role"></select></label><label>Hit dir <select id="dir"><option value="1">1 side</option><option value="0">0 slam</option><option value="-1">-1 side</option></select></label><button id="aUp" title="earlier in the combo">Up</button><button id="aDn" title="later in the combo">Down</button></div>
+<div class="small">attack = combo hits in list order &middot; idle / run (synced to footsteps) / air / dash replace the procedural motion</div>
+</div>
+<div id="tabs"><button data-t="pose" class="on">Pose</button><button data-t="snd">Sound &amp; events</button><button data-t="proj">Export</button></div>
+<div class="pane on" data-p="pose"><div class="small">Drag a slider (auto-key). Double-click a name to reset it.</div><div id="groups"></div></div>
+<div class="pane" data-p="snd">
+<h4>Events on this animation</h4><div class="small">Add events with the bottom bar (frame + name). Give an event a sound and it plays exactly on that frame, in the editor and in the game. Drag the green markers on the timeline to move them.</div><div id="evList"></div>
+<h4>Sound library (assets/sfx)</h4>
+<div class="row"><button id="bScan">Scan assets/sfx</button><button id="bPick">Pick folder...</button><span id="libN" class="small"></span></div>
+<div class="small">Scan reads the server's folder listing; if your server has none, use <b>Pick folder</b> and choose your <b>assets/sfx</b> folder (Chrome / Edge).</div></div>
+<div class="pane" data-p="proj">
+<h4>catAvatar.js</h4><div class="small">The maker reads the game's own motion for each weapon (idle, run, air, dash, attacks) as keyframes. Edit anything, or make new ones and set their <b>Role</b>. This writes your whole <b>js/catAvatar.js</b> with the weapons you changed.</div>
+<div class="row"><button id="bExpJs" class="pri">Export catAvatar.js</button><button id="bLoadJs">Reload from catAvatar.js</button></div>
+<div class="row"><button id="bBakeAll">Read ALL weapons from the game</button></div><div class="small">Normal = wooden sword + spear, Heavy = axe + scythe, Dual = dual blades, Long blade = katana. Weapons of one type share one set of animations. Exporting reads every type first, so nothing is left out.</div>
+<h4>Live code (updates after every edit)</h4>
+<div class="row"><select id="codeMode"><option value="full">Full catAvatar.js</option><option value="block">Only the animation block</option></select><button id="bCopyCode" class="pri">Copy code</button><span id="codeInfo" class="small"></span></div>
+<textarea id="codeOut" readonly spellcheck="false" wrap="off" style="width:100%;height:300px;font:11px/1.35 Consolas,Menlo,monospace;white-space:pre;background:#12141a;color:#b8c2d8;border:1px solid #3a4150;border-radius:6px;margin-top:4px"></textarea>
+<div class="small">Copy it and paste over <b>js/catAvatar.js</b> (or, with "Only the animation block", over the part between <code>// &lt;WEAPON_ANIMS&gt;</code> and <code>// &lt;/WEAPON_ANIMS&gt;</code>).</div>
+<div class="small">In the game, one line plays the mapped sounds: <code>cat.userData.onAnimSfx=(p,o)=>audio.play(p,o)</code></div>
+<h4>Animation JSON</h4>
+<div class="row"><button id="bExp">Export all</button><button id="bExpW">This weapon</button><button id="bExpA">This animation</button></div>
+<div class="row"><button id="bImp">Import JSON...</button><input type="file" id="file" accept=".json,application/json" style="display:none"><button id="bClear" class="danger">Re-read this weapon from the game</button></div>
+<h4>Extra weapon files (optional)</h4><div class="row"><button id="wDel" class="danger">Remove this custom weapon</button></div><div class="small">Weapons are loaded automatically from <code>js/weapons/index.js</code>. Only add paths here (one per line, relative to this page) for weapons that are not in that list; each must <code>export default</code> a weapon.</div>
+<textarea id="wpaths" rows="5" style="width:100%;background:#12141a;color:#e6e8ee;border:1px solid #3a4150;border-radius:5px;margin-top:4px"></textarea>
+<div class="row"><button id="bPaths">Reload weapons</button></div></div>`;
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x===b));document.querySelectorAll('.pane').forEach(p=>p.classList.toggle('on',p.dataset.p===b.dataset.t));refreshCode()});
+$('#coat').innerHTML=COAT_NAMES.map((n,i)=>`<option value="${i}">${n}</option>`).join('');
+$('#keyEase').innerHTML=Object.keys(EASE).map(k=>`<option>${k}</option>`).join('');
+$('#wpaths').value=paths.join('\n');
+
+// pose sliders
+const rows={};
+const gbox=$('#groups');
+for(const [gid,gname] of [...GROUPS,['fx','Effects']]){
+  const d=document.createElement('details');d.open=gid!=='legs'&&gid!=='head'||false;
+  const s=document.createElement('summary');
+  if(gid!=='fx'){const c=document.createElement('input');c.type='checkbox';c.dataset.g=gid;c.title='Include this group in the animation. Off = the game keeps its normal procedural motion for it.';c.onclick=e=>e.stopPropagation();s.append(c)}
+  s.append(gname);d.append(s);const body=document.createElement('div');d.append(body);
+  for(const [k,label,g,mn,mx,df] of PARAMS){if(g!==gid)continue;
+    const w=document.createElement('div');w.className='sl';
+    const lab=document.createElement('div');lab.className='lab';lab.textContent=label;lab.ondblclick=()=>setParam(k,df);
+    const r=document.createElement('input');r.type='range';r.min=mn;r.max=mx;r.step=k==='trail'?1:.01;
+    const n=document.createElement('input');n.type='number';n.min=mn;n.max=mx;n.step=.01;
+    r.oninput=()=>setParam(k,+r.value);n.onchange=()=>setParam(k,+n.value);
+    w.append(lab,r,n);body.append(w);rows[k]={r,n,w,g}}
+  gbox.append(d);rows['_g'+gid]={d,body,s}
+}
+gbox.querySelectorAll('input[data-g]').forEach(c=>c.onchange=()=>{A.groups[c.dataset.g]=c.checked;save();syncGroups()});
+
+function setParam(k,v){
+  const p=PARAMS.find(q=>q[0]===k);v=Math.max(p[3],Math.min(p[4],v));live[k]=v;rows[k].r.value=v;rows[k].n.value=(+v).toFixed(2);
+  if($('#auto').checked)upsertKey(Math.round(fr));saveSoon();codeSoon()
+}
+function syncUI(){for(const k in live)if(rows[k]){rows[k].r.value=live[k];rows[k].n.value=(+live[k]).toFixed(2)}}
+function syncGroups(){gbox.querySelectorAll('input[data-g]').forEach(c=>{const on=A.groups[c.dataset.g]!==false;c.checked=on;rows['_g'+c.dataset.g].body.classList.toggle('off',!on)})}
+
+// ===== animation / keys =====
+function fillWeapons(){const t=$('#wtype').value,l=weapons.map((w,i)=>[w,i]).filter(([w])=>t==='all'||(t==='custom'?w.custom:w.type===t));if(t!=='all')l.sort((a,b)=>(b[0].shared?1:0)-(a[0].shared?1:0));
+  $('#wsel').innerHTML=l.map(([w,i])=>`<option value="${i}">${w.name}</option>`).join('')}
+$('#wtype').onchange=()=>{fillWeapons();$('#wsel').onchange()};
+$('#wNew').onclick=async()=>{const n=(prompt('Custom weapon name (the id is made from it - use the same id as the weapon in your game):')||'').trim();if(!n)return;const t=(prompt('Base type: heavy, dual, normal, longblade or rifle','heavy')||'').trim().toLowerCase();if(!TYPES.includes(t))return status('Type must be heavy, dual, normal, longblade or rifle.');
+  const id=n.toLowerCase().replace(/[^a-z0-9]+/g,'_');custom=custom.filter(c=>c.id!==id);custom.push({id,name:n,type:t});localStorage.setItem(LSC,JSON.stringify(custom));await loadWeapons();$('#wtype').value='custom';fillWeapons();$('#wsel').value=weapons.findIndex(w=>w.id===id);$('#wsel').onchange()};
+$('#wDel').onclick=()=>{if(!W.custom||!confirm('Remove custom weapon '+W.name+' from the list? (its animations stay in the saved data)'))return;custom=custom.filter(c=>c.id!==W.id);localStorage.setItem(LSC,JSON.stringify(custom));$('#bPaths').click()};
+function fillAnims(sel){const an=weaponAnims(),names=Object.keys(an);$('#asel').innerHTML=names.map(n=>`<option value="${n}">${n}  [${an[n].role||'attack'}]</option>`).join('');if(sel&&an[sel])$('#asel').value=sel;pickAnim($('#asel').value)}
+function pickAnim(n){A=weaponAnims()[n];if(!A)return;A.name=n;A.role=A.role||'attack';$('#role').value=A.role;$('#dir').value=A.dir||0;$('#nFrames').value=A.frames;$('#nFps').value=A.fps;$('#loop').checked=!!A.loop;fr=0;playing=false;$('#bPlay').textContent='Play';syncGroups();setFrame(0);drawTL()}
+function keyAt(f){return A.keys.find(k=>k.f===f)}
+function upsertKey(f){let k=keyAt(f);if(k)k.pose={...live};else{A.keys.push({f,ease:'smooth',pose:{...live}});A.keys.sort((a,b)=>a.f-b.f)}drawTL();syncKeyUI()}
+function setFrame(f){fr=Math.max(0,Math.min(A.frames-1,f));live=samplePose(A,fr,true);syncUI();syncKeyUI();updTL()}
+function syncKeyUI(){const k=keyAt(Math.round(fr));$('#keyEase').disabled=!k;if(k)$('#keyEase').value=k.ease;$('#bDelKey').disabled=!k||A.keys.length<2;$('#frameLbl').textContent=`Frame ${Math.round(fr)} / ${A.frames-1}`+(k?'  (key)':'')}
+
+// timeline
+const tl=$('#tl');let range;
+function pct(f){return (f/Math.max(1,A.frames-1)*100)+'%'}
+function drawTL(){
+  tl.innerHTML='';range=document.createElement('input');range.type='range';range.min=0;range.max=A.frames-1;range.step=1;range.value=Math.round(fr);
+  range.oninput=()=>{playing=false;$('#bPlay').textContent='Play';setFrame(+range.value)};tl.append(range);
+  const step=A.frames>120?10:A.frames>60?5:1;for(let f=0;f<A.frames;f+=step){const t=document.createElement('div');t.className='tick';t.style.left=pct(f);tl.append(t)}
+  for(const k of A.keys){const m=document.createElement('div');m.className='mk';m.style.left=pct(k.f);m.title='key @ '+k.f+' (drag to move)';m.onpointerdown=e=>startDrag(e,k);tl.append(m);m._k=k}
+  for(const ev of A.events){const m=document.createElement('div');m.className='ev'+(ev.sfx?' snd':'');m.style.left=pct(ev.f);m.textContent=(ev.sfx?'\u266a ':'')+ev.name+' '+ev.f;m.title='event @ '+ev.f+' (double-click to remove, drag to move)';m.ondblclick=()=>{A.events=A.events.filter(x=>x!==ev);save();drawTL()};m.onpointerdown=e=>startDrag(e,ev,true);tl.append(m)}
+  updTL();drawEv()
+}
+function updTL(){if(range)range.value=Math.round(fr);tl.querySelectorAll('.mk').forEach(m=>m.classList.toggle('sel',m._k&&m._k.f===Math.round(fr)))}
+function startDrag(e,o,isEv){
+  e.preventDefault();e.stopPropagation();const r=tl.getBoundingClientRect();
+  const mv=ev=>{const f=Math.round(Math.max(0,Math.min(1,(ev.clientX-r.left)/r.width))*(A.frames-1));if(!isEv&&A.keys.some(k=>k!==o&&k.f===f))return;o.f=f;if(!isEv)A.keys.sort((a,b)=>a.f-b.f);drawTL()};
+  const up=()=>{removeEventListener('pointermove',mv);removeEventListener('pointerup',up);save();setFrame(o.f)};
+  addEventListener('pointermove',mv);addEventListener('pointerup',up)
+}
+
+// ===== sound library + event editor =====
+let sfxList=[],ac=null;const dirFiles=new Map(),bufs=new Map(),AUD=/\.(wav|mp3|ogg|m4a|flac)$/i;
+const setLib=l=>{sfxList=[...new Set(l)].sort();$('#libN').textContent=sfxList.length+' sounds';drawEv()};
+async function scan(base='assets/sfx/',d=0,out=[]){try{const r=await fetch(base,{cache:'no-store'});if(!r.ok)return out;const h=new DOMParser().parseFromString(await r.text(),'text/html');
+  for(const a of h.querySelectorAll('a')){const hr=a.getAttribute('href')||'';if(!hr||/^[?#]|^\.\.|^[a-z]+:/i.test(hr))continue;const n=decodeURIComponent(hr.split('/').filter(Boolean).pop()||'');
+    if(hr.endsWith('/')){if(d<2)await scan(base+n+'/',d+1,out)}else if(AUD.test(n))out.push(base+n)}}catch(e){}return out}
+$('#bScan').onclick=async()=>{const l=await scan();setLib(l);status(l.length?'Found '+l.length+' sounds.':'No listing from the server - use Pick folder.')};
+$('#bPick').onclick=async()=>{try{const h=await showDirectoryPicker(),out=[],walk=async(dh,pre,d)=>{for await(const [n,x] of dh.entries()){if(x.kind==='directory'){if(d<2)await walk(x,pre+n+'/',d+1)}else if(AUD.test(n)){const p='assets/sfx/'+pre+n;dirFiles.set(p,x);out.push(p)}}};await walk(h,'',0);setLib(out)}catch(e){status('Folder picker needs Chrome / Edge.')}};
+async function getBuf(p){if(bufs.has(p))return bufs.get(p);ac=ac||new AudioContext();const ab=dirFiles.has(p)?await(await dirFiles.get(p).getFile()).arrayBuffer():await(await fetch(p)).arrayBuffer();const b=await ac.decodeAudioData(ab);bufs.set(p,b);return b}
+async function playSfx(e,delay=0){try{const b=bufs.get(e.sfx)||await getBuf(e.sfx);ac.resume();const s=ac.createBufferSource(),g=ac.createGain();s.buffer=b;s.playbackRate.value=1+(Math.random()*2-1)*(e.pitch??.1);g.gain.value=e.vol??1;s.connect(g).connect(ac.destination);s.start(ac.currentTime+delay,e.skip||0)}catch(x){status('Could not play '+e.sfx+' (not found / not decodable)')}}
+function drawEv(){const box=$('#evList');if(!box||!A)return;box.innerHTML='';
+  A.events.forEach(e=>{if(e.sfx)getBuf(e.sfx).catch(()=>{});const r=document.createElement('div');r.className='evr';
+    r.innerHTML=`<input type="number" class="f" min="0" max="${A.frames-1}" title="frame"><input type="text" class="nm" title="event name (swing, hit, step...)"><select class="sf"></select><div class="ctl"><label>vol <input type="range" class="vo" min="0" max="1" step=".05"></label><label>pitch +-<input type="range" class="pi" min="0" max=".3" step=".01"></label><label>skip s <input type="number" class="sk" min="0" step=".01" title="trim leading silence of the file"></label><button class="pl">Play</button><button class="rm danger">Remove</button></div>`;
+    const q=c=>r.querySelector(c);q('.f').value=e.f;q('.nm').value=e.name;q('.vo').value=e.vol??1;q('.pi').value=e.pitch??.1;q('.sk').value=e.skip||0;
+    q('.sf').innerHTML='<option value="">(no sound)</option>'+[...new Set([...sfxList,...(e.sfx?[e.sfx]:[])])].map(p=>`<option${p===e.sfx?' selected':''}>${p}</option>`).join('');
+    const ch=(fn,redraw)=>ev=>{fn(ev.target);save();redraw?drawTL():0};
+    q('.f').onchange=ch(t=>e.f=Math.max(0,Math.min(A.frames-1,+t.value|0)),1);q('.nm').onchange=ch(t=>e.name=t.value.trim()||'event',1);
+    q('.sf').onchange=ch(t=>{if(t.value)e.sfx=t.value;else delete e.sfx;if(e.sfx)getBuf(e.sfx).catch(()=>{})},1);
+    q('.vo').oninput=ch(t=>e.vol=+t.value);q('.pi').oninput=ch(t=>e.pitch=+t.value);q('.sk').onchange=ch(t=>e.skip=+t.value);
+    q('.pl').onclick=()=>e.sfx?playSfx(e):status('Pick a sound first.');q('.rm').onclick=()=>{A.events=A.events.filter(x=>x!==e);save();drawTL()};
+    box.append(r)});
+  if(!A.events.length)box.innerHTML='<div class="small">No events yet.</div>'}
+// ===== read the game's built-in motion as keyframes (idle / run / air / dash / attacks) =====
+function bake(){
+  const TAU=Math.PI*2,keep0=[U.onSwing,U.onSlashHit],G={arms:true,weapon:true,body:true,legs:true,head:true},res={};
+  U.pose=null;U.rawProc=true;U.wantOut=true;U.setAim(0,true);U.onSwing=U.onSlashHit=null;
+  const snap=()=>{const o=U.out||{},p=defaultPose();for(const k in p)if(typeof o[k]==='number')p[k]=Math.round(o[k]*1e3)/1e3;p.trail=o.trail?1:0;return p};
+  const up=(dt,mv)=>U.update(dt,mv),settle=(n=40,mv=false)=>{for(let i=0;i<n;i++)up(1/60,mv)};
+  const reduce=(P,tol=.025)=>{const n=P.length,K=Object.keys(P[0]).filter(k=>k!=='trail'),keep=[0];let a=0;
+    for(let i=2;i<n;i++){let ok=true;for(let j=a+1;j<i&&ok;j++){if(P[j].trail!==P[a].trail){ok=false;break}const t=(j-a)/(i-a);for(const k of K)if(Math.abs(P[j][k]-(P[a][k]+(P[i][k]-P[a][k])*t))>tol){ok=false;break}}if(!ok){keep.push(i-1);a=i-1}}
+    if(keep[keep.length-1]!==n-1)keep.push(n-1);return keep};
+  const mk=(name,role,P,loop,events=[],dir=0)=>({name,role,dir,fps:30,frames:P.length,loop,groups:{...G},keys:reduce(P).map(f=>({f,ease:'linear',pose:P[f]})),events});
+  try{
+    settle();let P=[];for(let i=0;i<84;i++){up(1/30,false);P.push(snap())}P.push({...P[0]});res.idle=mk('idle','idle',P,true);
+    settle(80,true);const p0=U.walkPhase();up(1/60,true);const cyc=TAU/Math.max(1,(U.walkPhase()-p0)*60);
+    for(let i=0;i<2000&&U.walkPhase()%TAU>.04;i++)up(1/240,true);
+    const n=Math.max(4,Math.round(cyc*30));P=[snap()];for(let i=0;i<n;i++){up(cyc/n,true);P.push(snap())}P[n]={...P[0]};res.run=mk('run','run',P,true);
+    settle(60);U.jump();P=[];const g=24,v0=7.8,m=Math.round(2*v0/g*30);for(let i=0;i<=m;i++){const t=i/30;U.setAir(Math.max(0,v0*t-.5*g*t*t)+.06,v0-g*t);up(1/30,false);P.push(snap())}res.air=mk('air','air',P,false);
+    U.setAir(0,0);settle(60);U.airDash(1,0);P=[];for(let i=0;i<11;i++){up(1/30,false);P.push(snap())}res.dash=mk('dash','dash',P,false);settle(60);
+    const cnt=2;   // the swing alternates sides on every press (dual: hands), so two variants
+    let fi=0,ev=[],dir=0;
+    U.onSwing=()=>ev.push({f:fi,name:'swing'});U.onSlashHit=d=>{dir=d;ev.push({f:fi,name:'hit'})};
+    for(let c=0;c<cnt;c++){ev=[];dir=0;fi=0;P=[];if(!U.slash())break;for(;fi<150&&U.isSlashing();fi++){up(1/30,false);P.push(snap())}
+      if(P.length>2)res['attack'+(cnt>1?c+1:'')]=mk('attack'+(cnt>1?c+1:''),'attack',P,false,ev,dir||0);settle(30)}
+  }finally{U.rawProc=false;U.wantOut=false;U.onSwing=keep0[0];U.onSlashHit=keep0[1];U.setAir(0,0);settle(30)}
+  return res}
+// ===== export catAvatar.js =====
+function blockTxt(eol){const J=o=>JSON.stringify(o,(k,v)=>typeof v==='number'?Math.round(v*1e4)/1e4:v),L=['// <WEAPON_ANIMS>','// Animations exported from animation_maker.html (do not edit by hand: re-export from the maker).','// One set per weapon TYPE, stored under the type\'s main weapon:  normal = woodensword (spear too) | heavy = axe (scythe too) | dual = dual blades | longblade = katana.','// chain = attack combo order, state = idle / run / air / dash. Events may carry sfx/vol/pitch/skip.','const WEAPON_ANIMS={'];
+  const live=new Set(weapons.map(w=>w.id)),ids=Object.keys(db.weapons).filter(id=>id!=='unarmed'&&(srcWA[id]||(live.has(id)&&(db.weapons[id].touched||db.weapons[id].baked)))&&Object.keys(db.weapons[id].animations||{}).length);
+  ids.forEach((id,i)=>{const an=db.weapons[id].animations,ns=Object.keys(an),chain=ns.filter(n=>(an[n].role||'attack')==='attack'),state={};ns.forEach(n=>{const r=an[n].role;if(r&&r!=='attack'&&!state[r])state[r]=n});
+    L.push(` ${J(id)}:{chain:${J(chain)},state:${J(state)},anims:{`);
+    ns.filter(n=>chain.includes(n)||Object.values(state).includes(n)).forEach(n=>{const a=an[n];L.push(`  ${J(n)}:{fps:${a.fps},frames:${a.frames},loop:${!!a.loop},role:${J(a.role||'attack')},dir:${a.dir||0},groups:${J(a.groups)},`,'   keys:[',...a.keys.map(x=>'    '+J(x)+','),'   ],','   events:'+J(a.events||[]),'  },')});
+    L.push(' }}'+(i<ids.length-1?',':''))});
+  L.push('};','const ANIM_ALIAS='+J(Object.fromEntries(weapons.filter(w=>w.alias).map(w=>[w.realId,w.alias.id])))+';   // spear etc. use another weapon\'s animations','// </WEAPON_ANIMS>');return L.join(eol)}
+// ===== live code view (Export tab): the full catAvatar.js / only the animation block, rebuilt after every edit =====
+let codeT=0,codeAll=false;
+const eolOf=()=>src.includes('\r\n')?'\r\n':'\n';
+function codeText(mode){if(mode==='block')return blockTxt(eolOf());if(!RE_BLK.test(src))return null;return src.replace(RE_BLK,()=>blockTxt(eolOf()))}
+function refreshCode(){const box=$('#codeOut');if(!box||!document.querySelector('.pane[data-p="proj"]').classList.contains('on'))return;
+  if(!src){loadSrc().then(()=>{if(src)refreshCode();else box.value='Could not read js/catAvatar.js (see the status line below the timeline). Pick "Only the animation block" to still get the code.'});return}
+  if(!codeAll){codeAll=true;$('#codeInfo').textContent='Reading every weapon from the game...';setTimeout(()=>{try{bakeAll();save()}catch(e){status('Could not read all weapons: '+e.message)}refreshCode()},30);return}   // once: so the code contains every weapon type
+  const t=codeText($('#codeMode').value);
+  if(t===null){box.value='js/catAvatar.js has no // <WEAPON_ANIMS> markers - use the catAvatar.js that came with this maker, or pick "Only the animation block".';return}
+  const tv=t.replace(/\r\n/g,'\n');if(box.value!==tv){const st=box.scrollTop,sl=box.scrollLeft;box.value=tv;box.scrollTop=st;box.scrollLeft=sl}
+  $('#codeInfo').textContent=(t.length/1024).toFixed(0)+' KB, '+tv.split('\n').length+' lines, updated '+new Date().toLocaleTimeString()}
+function codeSoon(){clearTimeout(codeT);codeT=setTimeout(refreshCode,250)}
+$('#codeMode').onchange=refreshCode;
+$('#bCopyCode').onclick=async()=>{const box=$('#codeOut');refreshCode();box.focus();box.select();
+  try{await navigator.clipboard.writeText(box.value);status('Copied '+(box.value.length/1024|0)+' KB - paste it over js/catAvatar.js.')}catch(e){try{document.execCommand('copy');status('Copied (if nothing was copied, press Ctrl+C - the text is selected).')}catch(x){status('Press Ctrl+C - the text is selected.')}}};
+$('#bExpJs').onclick=async()=>{bakeAll();save();if(!src)await loadSrc();if(!RE_BLK.test(src))return status('js/catAvatar.js has no WEAPON_ANIMS markers - use the catAvatar.js that came with this maker.');
+  const txt=src.replace(RE_BLK,()=>blockTxt(src.includes('\r\n')?'\r\n':'\n'));src=txt;
+  if(window.showSaveFilePicker){try{const h=await showSaveFilePicker({suggestedName:'catAvatar.js',types:[{accept:{'text/javascript':['.js']}}]}),w=await h.createWritable();await w.write(txt);await w.close();return status('Saved '+h.name+' (pick js/catAvatar.js to overwrite the game file).')}catch(e){if(e.name==='AbortError')return}}
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'text/javascript'}));a.download='catAvatar.js';a.click();status('Downloaded catAvatar.js - replace js/catAvatar.js with it.')};
+const loadSrcKeep=async()=>{if(!src)await loadSrc()};
+$('#bLoadJs').onclick=async()=>{if(!confirm('Replace the editor animations of every weapon in js/catAvatar.js with what the file contains?'))return;src='';await loadSrc();for(const id in srcWA)(db.weapons[id]=db.weapons[id]||{}).animations=fromWA(srcWA[id]);save();fillAnims();status('Reloaded from catAvatar.js.')};
+$('#role').innerHTML=ROLES.map(r=>`<option>${r}</option>`).join('');
+$('#role').onchange=()=>{A.role=$('#role').value;A.loop=A.role==='idle'||A.role==='run';save();fillAnims(A.name)};
+$('#dir').onchange=()=>{A.dir=+$('#dir').value;save()};
+const moveA=d=>{const an=weaponAnims(),e=Object.entries(an),i=e.findIndex(x=>x[1]===A),j=i+d;if(j<0||j>=e.length)return;[e[i],e[j]]=[e[j],e[i]];e.forEach(x=>delete an[x[0]]);e.forEach(x=>an[x[0]]=x[1]);save();fillAnims(A.name)};
+$('#aUp').onclick=()=>moveA(-1);$('#aDn').onclick=()=>moveA(1);
+// ===== buttons =====
+$('#bPlay').onclick=()=>togglePlay();
+function togglePlay(){playing=!playing;$('#bPlay').textContent=playing?'Pause':'Play';if(playing){if(fr>=A.frames-1)fr=0;head=fr/A.fps;fired.clear();A.events.forEach(e=>{if(e.f<fr)fired.add(e)});ac=ac||new AudioContext();ac.resume()}}
+$('#bFirst').onclick=()=>{playing=false;$('#bPlay').textContent='Play';setFrame(0)};
+$('#bLast').onclick=()=>{playing=false;$('#bPlay').textContent='Play';setFrame(A.frames-1)};
+$('#bPrev').onclick=()=>{playing=false;$('#bPlay').textContent='Play';setFrame(Math.round(fr)-1)};
+$('#bNext').onclick=()=>{playing=false;$('#bPlay').textContent='Play';setFrame(Math.round(fr)+1)};
+$('#bKey').onclick=()=>{upsertKey(Math.round(fr));save()};
+$('#bDelKey').onclick=()=>{if(A.keys.length<2)return;A.keys=A.keys.filter(k=>k.f!==Math.round(fr));save();drawTL();setFrame(fr)};
+$('#keyEase').onchange=()=>{const k=keyAt(Math.round(fr));if(k){k.ease=$('#keyEase').value;save()}};
+$('#loop').onchange=()=>{A.loop=$('#loop').checked;save()};
+$('#nFrames').onchange=()=>{A.frames=Math.max(2,Math.min(600,+$('#nFrames').value|0));A.keys.forEach(k=>k.f=Math.min(k.f,A.frames-1));A.events.forEach(e=>e.f=Math.min(e.f,A.frames-1));save();drawTL();setFrame(fr)};
+$('#nFps').onchange=()=>{A.fps=Math.max(1,Math.min(120,+$('#nFps').value|0));save()};
+$('#bCopy').onclick=()=>{clip={...live};status('Pose copied.')};
+$('#bPaste').onclick=()=>{if(!clip)return;live={...clip};syncUI();if($('#auto').checked)upsertKey(Math.round(fr));save()};
+$('#bReset').onclick=()=>{live=defaultPose();syncUI();if($('#auto').checked)upsertKey(Math.round(fr));save()};
+$('#bEv').onclick=()=>{A.events.push({f:Math.round(fr),name:$('#evName').value});save();drawTL()};
+$('#wsel').onchange=()=>{W=weapons[+$('#wsel').value];PV=null;fillPreview();equipW();seed();fillAnims()};
+$('#asel').onchange=()=>pickAnim($('#asel').value);
+$('#pvsel').onchange=()=>{PV=weapons[+$('#pvsel').value];equipW()};
+$('#coat').onchange=$('#cloak').onchange=makeCat;
+$('#aNew').onclick=()=>{const n=(prompt('New animation name (e.g. attack1):')||'').trim();if(!n)return;weaponAnims()[n]=Object.assign(blankAnim(n),ROLES.includes(n)&&n!=='attack'?{role:n,loop:n==='idle'||n==='run'}:{});save();fillAnims(n)};
+$('#aDup').onclick=()=>{const n=(prompt('Name for the copy:',A.name+'_copy')||'').trim();if(!n)return;weaponAnims()[n]=JSON.parse(JSON.stringify({...A,name:n}));save();fillAnims(n)};
+$('#aRen').onclick=()=>{const n=(prompt('Rename to:',A.name)||'').trim();if(!n||n===A.name)return;const an=weaponAnims();an[n]=A;delete an[A.name];A.name=n;save();fillAnims(n)};
+$('#aDel').onclick=()=>{if(!confirm('Delete animation "'+A.name+'"?'))return;const an=weaponAnims();delete an[A.name];if(!Object.keys(an).length)an.attack=blankAnim('attack');save();fillAnims()};
+$('#bClear').onclick=()=>{if(!confirm('Throw away your edits for '+W.name+' and read its animations from the game again?'))return;delete db.weapons[W.id];equipW();seed();save();db.weapons[W.id].touched=0;fillAnims()};
+$('#bBakeAll').onclick=()=>{const n=bakeAll();save();fillAnims(A&&A.name);status('Read the built-in motion of '+n+' weapon type(s).')};
+$('#bPaths').onclick=async()=>{paths=$('#wpaths').value.split('\n').map(s=>s.trim()).filter(Boolean);localStorage.setItem(LSP,JSON.stringify(paths));await loadWeapons();fillWeapons();$('#wsel').onchange();status(weaponsMsg)};
+function download(name,obj){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(obj,null,1)],{type:'application/json'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),2000)}
+$('#bExp').onclick=()=>download('animations.json',db);
+$('#bExpW').onclick=()=>download('animations_'+W.id+'.json',{version:1,weapons:{[W.id]:db.weapons[W.id]}});
+$('#bExpA').onclick=()=>download('anim_'+W.id+'_'+A.name+'.json',{version:1,weapons:{[W.id]:{animations:{[A.name]:A}}}});
+$('#bImp').onclick=()=>$('#file').click();
+$('#file').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const j=JSON.parse(await f.text());let n=0;for(const w in j.weapons||{}){const t=(db.weapons[w]=db.weapons[w]||{animations:{}}).animations;for(const a in j.weapons[w].animations||{}){t[a]=j.weapons[w].animations[a];n++}}save();fillAnims(A.name);status('Imported '+n+' animation(s).')}catch(err){status('Import failed: '+err.message)}e.target.value=''};
+
+addEventListener('keydown',e=>{
+  if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)&&e.target.type!=='range'&&e.target.type!=='checkbox')return;
+  if(e.code==='Space'){e.preventDefault();togglePlay()}
+  else if(e.code==='ArrowLeft'){e.preventDefault();$('#bPrev').click()}
+  else if(e.code==='ArrowRight'){e.preventDefault();$('#bNext').click()}
+  else if(e.key==='k'||e.key==='K'){$('#bKey').click()}
+  else if(e.key==='Delete'){$('#bDelKey').click()}
+  else if(e.key==='Home'){$('#bFirst').click()}else if(e.key==='End'){$('#bLast').click()}
+});
+
+// ===== sound preview for events =====
+function beep(name){
+  if(!$('#beep').checked)return;try{ac=ac||new AudioContext();const o=ac.createOscillator(),g=ac.createGain(),t=ac.currentTime;
+    o.type=name==='hit'?'square':'sine';o.frequency.setValueAtTime(name==='hit'?120:name==='swing'?520:300,t);if(name==='swing')o.frequency.exponentialRampToValueAtTime(140,t+.14);
+    g.gain.setValueAtTime(.18,t);g.gain.exponentialRampToValueAtTime(.001,t+(name==='hit'?.1:.16));o.connect(g).connect(ac.destination);o.start(t);o.stop(t+.18)}catch(e){}
+}
+const flash=$('#flash');let flashT=0;
+function fire(e,delay=0){const name=e.name;flash.textContent=name;flash.style.opacity=1;clearTimeout(flashT);flashT=setTimeout(()=>flash.style.opacity=0,350);if(e.sfx)playSfx(e,delay);else beep(name)}
+
+// ===== main loop =====
+let last=performance.now(),head=0;const fired=new Set();
+function pump(f,dt){const sp=+$('#speed').value,look=(dt+.004)*A.fps*sp;for(const e of A.events)if(!fired.has(e)&&e.f<=f+(e.sfx?look:0)){fired.add(e);fire(e,Math.max(0,(e.f-f)/(A.fps*sp)))}}
+function loop(now){
+  const dt=Math.min(.05,(now-last)/1000);last=now;
+  if(A){
+    if(playing){
+      head+=dt*(+$('#speed').value);let f=head*A.fps;
+      if(f>=A.frames-1){
+        pump(A.frames+9,dt);
+        if(A.loop){head=0;f=0;fired.clear()}else{f=A.frames-1;playing=false;$('#bPlay').textContent='Play'}}
+      else pump(f,dt);
+      setFrame(f);
+    }
+    const pose={};for(const k in live){const g=rows[k]&&rows[k].g;if(g==='fx'||A.groups[g]!==false)pose[k]=live[k]}
+    U.pose=pose;U.poseW=1;
+    $('#hud').textContent=`${W.name}${W.alias?' (shares the '+W.alias.name+' animations)':''}${W.shared?' - preview: '+shownW().name:''} / ${A.name}   ${(fr/A.fps).toFixed(2)}s of ${((A.frames-1)/A.fps).toFixed(2)}s`;
+  }
+  if(U)U.update(dt,false);
+  placeCam();renderer.render(scene,camera);requestAnimationFrame(loop)
+}
+
+// ===== start =====
+try{
+  await loadSrc();await loadWeapons();fillWeapons();W=weapons.find(w=>/wood/i.test(w.id+w.name)&&!w.shared)||weapons[1]||weapons[0];fillWeapons();$('#wsel').value=weapons.indexOf(W);
+  makeCat();fillPreview();seed();fillAnims();requestAnimationFrame(loop);
+  if(weaponsMsg)status(weaponsMsg);else status('Ready. Drag the sliders (auto-key is on), scrub the timeline, add events, then Export.');
+}catch(e){showErr(e)}
+</script>
+</body></html>
