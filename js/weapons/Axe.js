@@ -8,6 +8,7 @@
 import * as T from 'three';
 import {PI,clamp,lerp,sm,C,grid,bands,lathe,ball,cap,h2,vn,goldCol,metalMat,softMat,woodMat,addMesh} from './wlib.js';
 
+const SIZE=1.35,LEN=1.15,ROLL=Math.PI/2;   // SIZE: overall scale. LEN: extra stretch along the length only. ROLL: turns the weapon about its own length so the broad face is seen from the side (same as Wooden Sword / Katana; edge points down, -Math.PI/2 flips it up)
 const WOOD=C('#5a3921'),WOOD_L=C('#8a5b36'),LEATHER=C('#241b1c'),STITCH=C('#3d302d'),GOLD=C('#c9a24a');
 const BEVEL=C('#f3f6fb'),FACE=C('#a3adc0'),DARKF=C('#4f566a'),BACK=C('#3b4152'),STEEL_D=C('#6e788d'),STEEL=C('#aab3c4');
 
@@ -40,7 +41,7 @@ function headCol(t,k,s,c){
 }
 
 export default {
-  id:'axe',name:'Battle Axe',kind:'melee',handling:'sword',
+  id:'axe',name:'Battle Axe',kind:'melee',handling:'sword',great:'shoulder',fore:[-.3,0],
   stats:{range:2.5,arc:-.1,dmg:5.5,dur:.68,dash:.8,move:.92},
   build(){
     const g=new T.Group();
@@ -52,6 +53,7 @@ export default {
       lathe([[1.09,0],[1.09,.0195],[1.10,.024],[1.115,.0225],[1.13,.017],[1.17,.007],[1.225,0]],{col:(u,r,th,c)=>c.copy(STEEL).lerp(BEVEL,clamp((u-1.13)/.09,0,1)),seg:28,ez:.9})];                  // top spike
     for(const sd of[1,-1])trim.push(ball([.075,-.79,sd*.0205],.0075,GOLD,[1,1,.6]));                                                                                                                   // rivets
     addMesh(g,trim,metalMat());
+    g.scale.set(SIZE,SIZE*LEN,SIZE);g.rotation.y=ROLL;
     return {group:g};
   }
 };
