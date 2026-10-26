@@ -743,3 +743,26 @@ body.mobile .hud-tr{margin-right:env(safe-area-inset-right)}
 body.gpad #kbhint .kbi:not(.gpi){display:none}
 body.gpad #kbhint .gpi{display:flex}
 #kbhint[data-back="0"] .kbback{display:none}
+/* ---------- story worlds: a heart instead of the globe badge ---------- */
+html body .cslot .wic{flex:none;display:grid;place-items:center;width:64px;height:64px;border-radius:0;background:none;box-shadow:none;font-size:48px;line-height:1;color:#ff4d6a;
+  filter:drop-shadow(0 4px 0 rgba(23,16,14,.55)) drop-shadow(0 7px 8px rgba(0,0,0,.35));animation:heartbeat 1.7s ease-in-out infinite}
+@keyframes heartbeat{0%,100%{transform:scale(1)}14%{transform:scale(1.13)}28%{transform:scale(1)}42%{transform:scale(1.08)}56%{transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){html body .cslot .wic{animation:none}}
+
+/* ---------- New World card ---------- */
+#wnew .mcard{width:min(520px,calc(100vw - 24px));max-width:100%;box-sizing:border-box}
+#wnew .wf{display:flex;flex-direction:column;gap:14px;text-align:left;margin-top:4px}
+#wnew .wl{display:flex;flex-direction:column;gap:6px;font:800 14px var(--font);letter-spacing:.12em;text-transform:uppercase;color:var(--cream,#f1e8d2);text-shadow:0 2px 0 rgba(0,0,0,.55)}
+#wnew .wrow{display:flex;gap:10px;align-items:stretch}
+#wnew input[type=text]{flex:1;min-width:0;width:100%;box-sizing:border-box;padding:9px 14px;border:0;border-radius:6px;font:800 24px var(--font);background:var(--cream,#f1e8d2);color:var(--k,#17100e);text-transform:none;letter-spacing:.02em}
+#wnew input[type=text]::placeholder{color:rgba(23,16,14,.42)}
+#wnew .wrow .btn{min-width:0;padding:0 16px;font-size:22px}
+#wnew .dopts{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+#wnew .dopt{--dc:#4aa8ff;appearance:none;cursor:pointer;min-width:0;padding:10px 4px;border:3px solid var(--k,#17100e);border-radius:8px;font:800 15px var(--font);letter-spacing:.04em;
+  background:var(--paper,#efe4c8);color:var(--k,#17100e);box-shadow:0 4px 0 var(--k,#17100e);transition:transform .1s,background .1s,color .1s,box-shadow .1s}
+#wnew .dopt.d0{--dc:#46b84a}#wnew .dopt.d1{--dc:#3d95e8}#wnew .dopt.d2{--dc:#f08a24}#wnew .dopt.d3{--dc:#d8222a}
+#wnew .dopt:hover{transform:translateY(-2px)}
+#wnew .dopt:active{transform:translateY(3px);box-shadow:0 1px 0 var(--k,#17100e)}
+#wnew .dopt.on{background:var(--dc);color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.45);box-shadow:0 4px 0 var(--k,#17100e),0 0 0 3px var(--cream,#f1e8d2)}
+@media (max-width:520px){#wnew .dopts{grid-template-columns:repeat(2,1fr)}}
+@media (max-height:480px){#wnew .wf{gap:8px}#wnew input[type=text]{font-size:18px;padding:5px 10px}#wnew .dopt{padding:6px 2px;font-size:13px}#wnew .wl{font-size:12px}}
