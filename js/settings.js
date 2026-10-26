@@ -31,10 +31,12 @@ const ICO={
   reset:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12a8 8 0 1 0 2.6-5.9"/><path d="M3.5 3.5v5h5"/></svg>'};
 const same=(a,b)=>ROWS.every(([,k])=>Math.abs(a[k]-b[k])<1e-6);
 
-export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null,root=document.body}){
-  let st={preset:'medium',q:{...PRESETS.medium},fps:false,auto:true,blur:1,fov:70,cap:0},tab='gfx';   // blur 0..3 (Off/Low/Medium/High) and fov are personal options: presets never change them
-  try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&j.q)st={...st,...j,q:{...PRESETS.medium,...j.q}}}catch(e){}
-  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({preset:st.preset,q:st.q,fps:st.fps,auto:st.auto,blur:st.blur,fov:st.fov,cap:st.cap}))}catch(e){}};
+export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null,getPad=()=>null,root=document.body}){
+  let st={preset:'medium',q:{...PRESETS.medium},fps:false,auto:false,blur:1,fov:70,cap:0,cam:0},tab='gfx';   // blur 0..3 (Off/Low/Medium/High) and fov are personal options: presets never change them
+  try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&j.q){st={...st,...j,q:{...PRESETS.medium,...j.q}};if(!j.av)st.auto=false}}catch(e){}   // auto-lower is OFF by default (av = saved by a version that knows this: older saves had it forced on)
+  st.cam=Math.max(-100,Math.min(100,Math.round(+st.cam||0)));   // camera height preference: -100 (lowest) .. 100 (highest), 0 = default; main.js reads it live every frame
+  const camTxt=v=>v===0?'Default':(v>0?'+':'')+v;
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({preset:st.preset,q:st.q,fps:st.fps,auto:st.auto,av:1,blur:st.blur,fov:st.fov,cap:st.cap,cam:st.cam}))}catch(e){}};
   const presetOf=q=>ORDER.find(n=>same(PRESETS[n],q))||'custom';
   // only treat the touch controls as usable when they really expose the settings API (get/set/edit/reset)
   const mob=()=>{try{const m=getMobile();return m&&m.active&&typeof m.get==='function'&&typeof m.set==='function'&&typeof m.edit==='function'&&typeof m.reset==='function'?m:null}catch(e){return null}};
@@ -112,12 +114,27 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
           <button class="btn green sm" data-act="edit">${ICO.move}Edit layout</button></div>
       </div>
       <div id="ctlK"></div>
+      <div id="ctlG">
+        <p class="khint" id="padStat">No controller detected. Plug one in or press any button on it.</p>
+        <div class="grows">
+          <div class="grow"><span>Controller support<small>Turn off if a pad keeps moving your cat by itself</small></span>${seg('data-g="on"',[[0,'Off'],[1,'On']])}</div>
+          <div class="grow"><span>Look speed<small>How fast the right stick turns the camera</small></span>${seg('data-g="sens"',[[.6,'Slow'],[1,'Normal'],[1.5,'Fast'],[2,'Max']])}</div>
+          <div class="grow"><span>Aim curve<small>Smooth = fine aim with small pushes, fast turns at full push</small></span>${seg('data-g="curve"',[[0,'Linear'],[1,'Smooth']])}</div>
+          <div class="grow"><span>Dead zone<small>Raise it if the camera drifts when you let go of the stick</small></span>${seg('data-g="dz"',[[.1,'Small'],[.18,'Medium'],[.28,'Large']])}</div>
+          <div class="grow"><span>Invert look Y<small>Push up to look down</small></span>${seg('data-g="inv"',[[0,'Off'],[1,'On']])}</div>
+          <div class="grow"><span>Vibration<small>Rumble when you get hurt</small></span>${seg('data-g="vib"',[[0,'Off'],[.5,'Low'],[1,'Normal'],[1.5,'Strong']])}</div>
+          <div class="grow"><span>Sticks<small>Southpaw swaps them: left stick looks, right stick moves</small></span>${seg('data-g="south"',[[0,'Default'],[1,'Southpaw']])}</div>
+        </div>
+        <div class="gkeys kfix">${[['L Stick','Move'],['R Stick','Look'],['RT','Shoot / slash'],['LT','Scope (hold)'],['A','Jump'],['B','Roll / air dash'],['X','Reload'],['Y','Plant / defuse'],['LB / RB','Weapon'],['Start','Pause'],['Back','Settings'],['A / B in menus','Accept / back']].map(([k,t])=>`<div><span>${t}</span><kbd>${k}</kbd></div>`).join('')}</div>
+        <div class="krst"><button class="btn red sm" data-gact="reset">${ICO.reset}Reset controller</button></div>
+      </div>
     </div>
     <div id="pGfx">
       <div class="gpre" id="gPre">${ORDER.map(n=>`<button data-p="${n}">${NAMES[n]}</button>`).join('')}<button data-p="custom" disabled>Custom</button></div>
       <div class="grows">${ROWS.map(([name,k,opts,hint])=>`<div class="grow" title="${hint}"><span>${name}<small>${hint}</small></span>${seg(`data-k="${k}"`,opts)}</div>`).join('')}
         <div class="grow"><span>Motion blur<small>Smears the picture when you turn the camera</small></span>${seg('data-x="blur"',[[0,'Off'],[1,'Low'],[2,'Medium'],[3,'High']])}</div>
         <div class="grow"><span>Field of view<small>Wider sees more around you (default 70)</small></span><div class="fovr"><input type="range" id="fovR" min="50" max="120" step="1"><b id="fovV">70°</b></div></div>
+        <div class="grow"><span>Camera height<small>Move the camera up or down behind your cat (0 = default)</small></span><div class="fovr"><input type="range" id="camR" min="-100" max="100" step="5"><b id="camV" style="min-width:64px">Default</b><button class="kbtn" data-cam0="1" title="Back to default">Reset</button></div></div>
         <div class="grow"><span>FPS limit<small>Caps the frame rate. Lower = cooler and saves battery</small></span>${seg('data-x="cap"',[[30,'30'],[60,'60'],[120,'120'],[0,'Unlimited']])}</div>
         <div class="grow"><span>Show FPS<small>Frame rate counter (in game only)</small></span>${seg('data-x="fps"',[[0,'Off'],[1,'On']])}</div>
         <div class="grow"><span>Auto-lower when slow<small>Steps the preset down if the game lags</small></span>${seg('data-x="auto"',[[0,'Off'],[1,'On']])}</div></div>
@@ -143,19 +160,29 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
   const showTab=t=>{tab=t;el.querySelector('#pCtl').hidden=t!=='ctl';el.querySelector('#pGfx').hidden=t!=='gfx';el.querySelector('#pAud').hidden=t!=='aud';el.querySelector('#pDev').hidden=t!=='dev';
     el.querySelectorAll('.gtabs button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
     const m=mob();el.querySelector('#ctlM').hidden=!m;el.querySelector('#ctlK').hidden=!!m;if(!m)renderKeys()};
-  const sync=()=>{const p=presetOf(st.q);st.preset=p;showTab(tab);const m=mob(),mc=m&&m.get();
+  const pd=()=>{try{return getPad()}catch(e){return null}};
+  const statPad=()=>{const e=el.querySelector('#padStat'),p=pd();if(!e||!p)return;const i=p.info();
+    e.textContent=i.connected?(i.standard?'Connected: '+i.name:'Connected: '+i.name+' (not a standard pad, buttons may not match)'):'No controller detected. Plug one in or press any button on it.'};
+  const syncPad=()=>{const p=pd(),c=p&&p.get();el.querySelector('#ctlG').hidden=!p;if(!c)return;
+    el.querySelectorAll('.seg[data-g]').forEach(g=>{const cur=c[g.dataset.g];g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.v-cur)<1e-6))});statPad()};
+  setInterval(()=>{if(!el.hidden&&tab==='ctl')statPad()},700);
+  const sync=()=>{const p=presetOf(st.q);syncPad();st.preset=p;showTab(tab);const m=mob(),mc=m&&m.get();
     el.querySelectorAll('#gPre button').forEach(b=>b.classList.toggle('on',b.dataset.p===p));
     el.querySelectorAll('.seg').forEach(g=>{const k=g.dataset.k,x=g.dataset.x,c=g.dataset.c;if(!k&&!x&&!c)return;
       const cur=k?st.q[k]:c?(mc?mc[c]:0):x==='fps'?+st.fps:x==='blur'?st.blur:x==='cap'?st.cap:+st.auto;g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.v-cur)<1e-6))});
     el.querySelectorAll('[data-a]').forEach(i=>{const v=Math.round((audio?audio.get()[i.dataset.a]:0)*100);i.value=v;i.nextElementSibling.textContent=v+'%';paint(i)});
-    el.querySelector('#fovR').value=st.fov;paint(el.querySelector('#fovR'));el.querySelector('#fovV').textContent=st.fov+'°'};
+    el.querySelector('#fovR').value=st.fov;paint(el.querySelector('#fovR'));el.querySelector('#fovV').textContent=st.fov+'°';
+    el.querySelector('#camR').value=st.cam;paint(el.querySelector('#camR'));el.querySelector('#camV').textContent=camTxt(st.cam)};
   el.addEventListener('input',e=>{if(e.target.type==='range')paint(e.target);const a=e.target.dataset&&e.target.dataset.a;if(a&&audio){audio.set(a,+e.target.value/100);e.target.nextElementSibling.textContent=e.target.value+'%';return}
+    if(e.target.id==='camR'){st.cam=+e.target.value;el.querySelector('#camV').textContent=camTxt(st.cam);save();return}
     if(e.target.id!=='fovR')return;st.fov=+e.target.value;el.querySelector('#fovV').textContent=st.fov+'°';save()});   // read live every frame by main.js
   el.addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
     if(b.id==='gDone'){api.close();return}
+    if(b.dataset.cam0){st.cam=0;sync();save();return}
     if(b.dataset.open){window.open(b.dataset.open,'_blank','noopener');return}   // dev pages open in a new tab
     if(b.dataset.bind){listening=listening===b.dataset.bind?null:b.dataset.bind;renderKeys();return}
     if(b.dataset.tab){listening=null;showTab(b.dataset.tab);return}
+    if(b.dataset.gact==='reset'){const p=pd();p&&p.reset();syncPad();return}
     if(b.dataset.act==='kreset'){kb&&kb.reset();listening=null;renderKeys();return}
     if(b.dataset.act){const m=mob();if(!m)return;
       // hide the panel, show the draggable buttons (plus a "Reset layout" button on that screen), come back afterwards
@@ -165,6 +192,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
       bar.querySelector('button').addEventListener('click',()=>m.reset());document.body.appendChild(bar);
       m.edit(()=>{bar.remove();api.open(cb,'ctl')});return}
     if(b.dataset.p&&b.dataset.p!=='custom'){st.q={...PRESETS[b.dataset.p]}}
+    else if(b.parentNode.dataset.g){const p=pd();p&&p.set(b.parentNode.dataset.g,+b.dataset.v);syncPad();return}
     else if(b.parentNode.dataset.c){const m=mob();m&&m.set(b.parentNode.dataset.c,+b.dataset.v);sync();return}
     else if(b.parentNode.dataset.k)st.q[b.parentNode.dataset.k]=+b.dataset.v;
     else if(b.parentNode.dataset.x==='fps')st.fps=!!+b.dataset.v;
