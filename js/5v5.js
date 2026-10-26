@@ -215,9 +215,9 @@ const p=new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TE
       for(let j=i+1;j<all.length;j++){const b=all[j],dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz),m=.9;if(d<m&&d>0){const wa=a.puppet?0:a.act?.1:1,wb=b.puppet?0:b.act?.1:1;if(wa+wb===0)continue;const k=(m-d)/d/(wa+wb);a.x-=dx*k*wa;a.z-=dz*k*wa;b.x+=dx*k*wb;b.z+=dz*k*wb}}}}   // a cat that is planting / defusing is (almost) not pushed
   function bullets(dt){
     for(let i=bl.length-1;i>=0;i--){const t=bl[i],p=t.m.position;p.x+=t.vx*dt;p.y+=t.vy*dt;p.z+=t.vz*dt;t.life-=dt;let dead=t.life<=0||p.y<HA(p.x,p.z)+.02||Math.abs(p.x)>hw||Math.abs(p.z)>hh||blocked(curMap.obs,p.x,p.z,0),flesh=false;
-      if(!dead&&t.team!==MY&&!P.dead&&Math.hypot(p.x-P.x,p.z-P.z)<.5&&Math.abs(p.y-(P.gy+.8))<1.2&&P.inv<=0&&P.roll<=0){if(playerHit(1,t.owner)){flesh=true;dead=true;fx.hit(p,'#ff7a3c',6)}}
-      if(!dead)for(const b of bots)if(b.alive&&b.team!==t.team&&Math.hypot(p.x-b.x,p.z-b.z)<.5&&Math.abs(p.y-(HA(b.x,b.z)+.8))<1.2&&b.inv<=0){damage(b,1,t.owner);dead=true;flesh=true;break}
-      if(dead){if(!flesh&&t.life>0){fx.hit(p,'#fff3b0',4);fx.dust(p)}scene.remove(t.m);bl.splice(i,1)}else if((t.tf=(t.tf||0)+1)%2===0&&Math.hypot(p.x-F().x,p.z-F().z)<45)fx.trail(p,t.vx,t.vz,BULLET[t.team])}}
+      if(!dead&&t.team!==MY&&!P.dead&&Math.hypot(p.x-P.x,p.z-P.z)<.5&&Math.abs(p.y-(P.gy+.8))<1.2&&P.inv<=0&&P.roll<=0){if(playerHit(t.after?99:1,t.owner)){flesh=true;dead=true;fx.hit(p,'#ff7a3c',6)}}
+      if(!dead)for(const b of bots)if(b.alive&&b.team!==t.team&&Math.hypot(p.x-b.x,p.z-b.z)<.5&&Math.abs(p.y-(HA(b.x,b.z)+.8))<1.2&&b.inv<=0){damage(b,t.after?99:1,t.owner);dead=true;flesh=true;break}
+      if(dead){if(!flesh&&t.life>0){fx.wall(p,'#fff3b0',t.after);fx.mark(p,t.vx,t.vy||0,t.vz,p.y<HA(p.x,p.z)+.05)}scene.remove(t.m);bl.splice(i,1)}else if((t.tf=(t.tf||0)+1)%2===0&&Math.hypot(p.x-F().x,p.z-F().z)<45)fx.trail(p,t.vx,t.vz,BULLET[t.team])}}
   function playerSpike(dt){let acting=null;const atk=S.atk==='A',hold=keys.KeyF&&!P.dead&&!P.frozen&&!P.mv&&P.roll<=0;let prompt='',prog=0;
     if(!S.spike.planted){const {s,d}=nearestSite(P.x,P.z);if(atk&&!P.dead&&d<s.r){prompt='HOLD F · PLANT SPIKE';if(hold)acting={plant:true,s}}}
     else if(!atk&&!P.dead&&Math.hypot(P.x-S.spike.x,P.z-S.spike.z)<2.2){prompt='HOLD F · DEFUSE';if(hold)acting={defuse:true}}
@@ -298,8 +298,8 @@ const p=new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TE
     if(b.slOn&&!b.slPrev&&cu.slash)cu.slash();b.slPrev=b.slOn;b.slashing=cu.isSlashing();
     if(b.human){if(b.wi>=0&&b.wi!==b.wApp){b.wApp=b.wi;cu.equip(WEAPONS[b.wi])}}
     else if(b.wpn!==b.wApp){b.wApp=b.wpn;cu.setWeapon(b.wpn?'gun':'sword')}
-    cu.setScope(!!b.scope&&!b.rolling);cu.setAir(b.y||0,b.vy||0);
-    b.cat.position.set(b.x,HA(b.x,b.z)+(b.y||0),b.z);b.cat.rotation.y=b.yaw;cu.setAim(b.pit||0,true);cu.holster(false);
+    cu.setScope(!!b.scope&&!b.rolling);{const ty=b.y||0;b.yv=(b.yv==null||Math.abs(ty-b.yv)>3)?ty:b.yv+(ty-b.yv)*Math.min(1,dt*20)}cu.setAir(b.yv,b.vy||0);   // b.y = last received height, b.yv = the smoothed height we draw
+    b.cat.position.set(b.x,HA(b.x,b.z)+b.yv,b.z);b.cat.rotation.y=b.yaw;cu.setAim(b.pit||0,true);cu.holster(false);
     b.acc=(b.acc||0)+dt;const far=world.far(b);   // same avatar LOD as the AI cats
     if(far===0||(((b.lodN=(b.lodN||0)+1)+((b.ph*7)|0))%(far+1))===0){const a=Math.min(b.acc,.06);b.acc=0;cu.update(a,b.mv,b.rel||1)}}
   /** my own state, 20x a second (and at once when I die) */
@@ -318,7 +318,7 @@ const p=new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TE
   /** a bullet somebody else fired: every machine simulates it so the victim (the only one who may take damage) can be hit */
   function remoteShot(from,m){const own=m.k==='b'?botById(m.id):botById('h'+from),spd=Math.hypot(m.vx,m.vy,m.vz)||1,yaw=Math.atan2(m.vx,m.vz),el=Math.asin(Math.max(-1,Math.min(1,m.vy/spd)));
     const mm=fx.bullet(m.col||BULLET[m.team],spd);mm.position.set(m.x,m.y,m.z);mm.rotation.order='YXZ';mm.rotation.set(-el,yaw,0);scene.add(mm);
-    bl.push({m:mm,vx:m.vx,vy:m.vy,vz:m.vz,life:m.life,team:m.team,owner:own||{name:'?',team:m.team}});
+    bl.push({m:mm,vx:m.vx,vy:m.vy,vz:m.vz,life:m.life,team:m.team,after:!!m.af,owner:own||{name:'?',team:m.team}});
     if(Math.hypot(m.x-F().x,m.z-F().z)<45)fx.muzzle(new T.Vector3(m.x,m.y,m.z),yaw,{lite:.3});if(own&&own.cat)own.cat.userData.kick&&own.cat.userData.kick()}
   function onNet(from,m){
     if(m.t==='ready'){pendReady.add(from);return}
@@ -366,7 +366,7 @@ const p=new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TE
     /** a human left the match: their cat disappears and the round is re-checked */
     peerLeft(id){const b=botById('h'+id);if(!b)return;if(b.alive)killVisual(b);scene.remove(b.cat);if(b.plate)scene.remove(b.plate.sp);bots.splice(bots.indexOf(b),1);ctx.toast(`${b.name} · LEFT THE MATCH`);dots();check()},
     /** every bullet I shoot (called by main.js per pellet) is also sent to the others */
-    localShot(o){if(pvp&&net)net.rel({t:'shot',k:'p',x:r2(o.x),y:r2(o.y),z:r2(o.z),vx:r2(o.vx),vy:r2(o.vy),vz:r2(o.vz),life:o.life,team:MY,col:o.col})},
+    localShot(o){if(pvp&&net)net.rel({t:'shot',k:'p',x:r2(o.x),y:r2(o.y),z:r2(o.z),vx:r2(o.vx),vy:r2(o.vy),vz:r2(o.vz),life:o.life,team:MY,col:o.col,af:o.af?1:0})},
     /** o = {pvp:true,net,host,mySlot,name,slots:[10 x {k:'empty'|'ai'|'human',pid,name,cfg}]} starts a custom battle; no argument = the normal spike rush */
     start(o){
       this.stop(true);dress();curMap=ctx.map||curMap;S.theme=curMap.theme||ctx.theme||S.theme;reheight();S.active=true;S.round=0;S.score={A:0,B:0};S.stats={k:0,d:0};S.time=0;prevN=ctx.bullets.length;
@@ -406,7 +406,7 @@ const p=new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TE
       else{S.t-=dt;if(S.phase!=='buy')clearSpikeUI();bots.forEach(b=>b.alive&&idleBot(b,dt,world));bullets(dt);if(S.phase==='end'&&S.t<=0)nextRound()}
       // draw only the cats the camera can see: every cat is ~100 meshes (= draw calls) and half of them are behind you at any moment
       if(cam){vpm.multiplyMatrices(cam.projectionMatrix,cam.matrixWorldInverse);vfr.setFromProjectionMatrix(vpm)}
-      for(const b of bots)if(b.alive){b.cat.position.y=HA(b.x,b.z);vsp.center.set(b.x,b.cat.position.y+.9,b.z);
+      for(const b of bots)if(b.alive){b.cat.position.y=HA(b.x,b.z)+((b.puppet?b.yv:b.y)||0);vsp.center.set(b.x,b.cat.position.y+.9,b.z);
         const inV=!cam||vfr.intersectsSphere(vsp),d=Math.hypot(b.x-F().x,b.z-F().z),ud=b.cat.userData;b.inView=inV;b.cat.visible=!globalThis.__hideBots&&inV;
         const sh=inV&&d<22;if(b.shOn!==sh){b.shOn=sh;ud.setShadow&&ud.setShadow(sh)}      // real shadows only for visible cats near you (the blob shadow stays)
         const hi=d<28;if(b.hiD!==hi){b.hiD=hi;ud.setDetail&&ud.setDetail(hi)}}               // far cats drop their tiny detail meshes   // stand on the terrain whatever the avatar code did this frame
@@ -414,7 +414,7 @@ const p=new T.Vector3(b.x,HA(b.x,b.z)+.8,b.z);fx.hit(p,'#ffe066',8);fx.puff(p,TE
       specTick();
       hudT-=dt;if(hudT<=0){hudT=.2;const t=S.phase==='buy'?S.t:S.phase==='planted'?S.spike.t:S.t,m=Math.max(0,Math.ceil(t));$('#v5t').textContent=Math.floor(m/60)+':'+String(m%60).padStart(2,'0');$('#v5t').style.color=S.phase==='planted'?'#ff5a5a':'#fff';dots()}
     },
-    bulletHit(p,b){for(const e of bots)if(e.alive&&e.team!==MY&&Math.hypot(p.x-e.x,p.z-e.z)<.55&&e.inv<=0&&Math.abs(p.y-(HA(e.x,e.z)+.8))<1.1){damage(e,1,'player');return true}return false},
+    bulletHit(p,b){for(const e of bots)if(e.alive&&e.team!==MY&&Math.hypot(p.x-e.x,p.z-e.z)<.55&&e.inv<=0&&Math.abs(p.y-(HA(e.x,e.z)+.8))<1.1){damage(e,b&&b.after?99:1,'player');return true}return false},
     // returns 0 = no hit, 1 = hit, 2 = killed someone. side = swing side (+1/-1), col = blade colour -> same slash spark as on the wave enemies
     playerMelee(fx_,fz_,side=1,col='#ffe8a8'){let hit=0;const yaw=Math.atan2(fx_,fz_);if(pvp&&net)net.rel({t:'melee',x:r2(P.x),z:r2(P.z),fx:r2(fx_),fz:r2(fz_),team:MY});
       for(const e of bots){if(!e.alive||e.team===MY||e.inv>0)continue;const dx=e.x-P.x,dz=e.z-P.z,d=Math.hypot(dx,dz)||1;if(d<3.2&&(dx*fx_+dz*fz_)/d>-.05){
