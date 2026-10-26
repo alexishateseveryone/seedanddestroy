@@ -30,16 +30,30 @@ export function createPvpLobby({$,net,showMenu,headHTML,profile,begin,themes}){
     const tag=mine?'YOU':s.pid===1?'HOST':'PLAYER';
     return `<div class="cslot${mine?' me':''}" data-i="${i}" style="--i:${i%5}">${head}<div class="si"><b>${esc(s.name)}</b><span>${tag}</span></div>${n}${host&&!mine?'<button class="sb del" data-a="kick" title="Kick"><i class="bi bi-x-lg"></i></button>':''}</div>`;
   }
+  // Only the slots that really changed are replaced (the others keep their DOM node), so adding an AI / a player joining /
+  // switching places no longer rebuilds the whole lobby and replays every slot's entrance animation.
+  const sigs=[];let lastFoot='',lastInfo='',lastCnt='';
+  const sig=(s,mine)=>[s.k,s.pid,s.name,mine?1:0,net.isHost?1:0].join('|');
+  function patch(box,from){
+    const still=box.children.length===5;                       // already painted once: swap quietly, no entrance animation
+    for(let j=0;j<5;j++){
+      const i=from+j,s=slots[i],g=sig(s,s.k==='human'&&s.pid===net.id),cur=box.children[j];
+      if(cur&&sigs[i]===g)continue;
+      sigs[i]=g;const t=document.createElement('template');t.innerHTML=slotHTML(s,i).trim();const el=t.content.firstChild;
+      if(still)el.classList.add('still');
+      cur?box.replaceChild(el,cur):box.appendChild(el);
+    }
+  }
+  function resetView(){sigs.length=0;lastFoot=lastInfo=lastCnt='';$('#lbA').innerHTML='';$('#lbB').innerHTML=''}
+  function setText(id,v,last){if(v!==last)$(id).textContent=v;return v}
   function render(){
     if(mode!=='lobby')return;
-    $('#lbA').innerHTML=slots.slice(0,5).map((s,i)=>slotHTML(s,i)).join('');
-    $('#lbB').innerHTML=slots.slice(5).map((s,i)=>slotHTML(s,i+5)).join('');
+    patch($('#lbA'),0);patch($('#lbB'),5);
     const a=slots.slice(0,5).filter(s=>s.k!=='empty').length,b=slots.slice(5).filter(s=>s.k!=='empty').length;
-    $('#lbCnt').textContent=`${a} v ${b}`;
-    $('#lbInfo').textContent=`Room code · ${net.code}`;
-    const f=$('#lbFoot');
-    if(net.isHost)f.innerHTML=`<button class="btn gold" data-a="copy"><i class="bi bi-clipboard"></i> ${net.code}</button><button class="btn gold" data-a="theme"><i class="bi bi-map"></i> Map: ${esc(theme)}</button><button class="btn green" data-a="start"${a&&b?'':' disabled'}><i class="bi bi-play-fill"></i> Start</button>`;
-    else f.innerHTML=`<span class="msub">Waiting for the host to start…</span>`;
+    lastCnt=setText('#lbCnt',`${a} v ${b}`,lastCnt);
+    lastInfo=setText('#lbInfo',`Room code · ${net.code}`,lastInfo);
+    const f=net.isHost?`<button class="btn gold" data-a="copy"><i class="bi bi-clipboard"></i> ${net.code}</button><button class="btn gold" data-a="theme"><i class="bi bi-map"></i> Map: ${esc(theme)}</button><button class="btn green" data-a="start"${a&&b?'':' disabled'}><i class="bi bi-play-fill"></i> Start</button>`:`<span class="msub">Waiting for the host to start…</span>`;
+    if(f!==lastFoot){lastFoot=f;$('#lbFoot').innerHTML=f}
   }
   const sync=()=>{if(net.isHost){send({t:'Ls',...pub()});render()}};
 
@@ -47,7 +61,7 @@ export function createPvpLobby({$,net,showMenu,headHTML,profile,begin,themes}){
   async function openHost(){
     if(busy)return;busy=true;
     try{
-      mode='lobby';showMenu('lobby');$('#lbInfo').textContent='Creating room…';$('#lbA').innerHTML=$('#lbB').innerHTML='';$('#lbFoot').innerHTML='';
+      mode='lobby';resetView();showMenu('lobby');$('#lbInfo').textContent='Creating room…';
       await net.host();
       const p=profile(),ts=themes();theme=ts[(Math.random()*ts.length)|0]||'';
       slots=Array.from({length:10},empty);slots[0]={k:'human',pid:1,name:clip(p.name),cfg:p.cfg};
@@ -77,7 +91,7 @@ export function createPvpLobby({$,net,showMenu,headHTML,profile,begin,themes}){
     try{
       await net.join(code);
       const p=profile();
-      mode='lobby';slots=Array.from({length:10},empty);theme='';showMenu('lobby');$('#lbInfo').textContent='Joining…';$('#lbFoot').innerHTML='<span class="msub">Waiting for the host…</span>';
+      mode='lobby';slots=Array.from({length:10},empty);theme='';resetView();showMenu('lobby');$('#lbInfo').textContent='Joining…';$('#lbFoot').innerHTML='<span class="msub">Waiting for the host…</span>';
       send({t:'Lhi',name:clip(p.name),cfg:p.cfg});
     }catch(e){status(e.message||'Could not connect')}
     finally{busy=false}
