@@ -1,6 +1,6 @@
 // Service worker: makes the game installable and lets it start offline after the first visit.
 // Network first (you always get the newest files while online), cached copy as the fallback.
-const CACHE = 'sad-v3';
+const CACHE = 'sad-v4';   // bumped: drops cached copies of the old (websocket) files
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./', './index.html', './style.css', './manifest.webmanifest']).catch(() => {})).then(() => self.skipWaiting()));
 });
