@@ -204,6 +204,11 @@ export function createFX(scene){
     // Drawn in the plane facing the camera (which looks along the hit direction): a jagged pale core pops open, fine red / orange / yellow spikes shoot out
     // (denser along the long axis), a few long thin yellow lines streak away, and little glowing sparks fly off.
     splat(p,vx=0,vz=0,pw=1){const at=new T.Vector3(p.x,p.y+.05,p.z);
+      // 3D particles like the tumble: soft dust puffs plus little solid chunks that fly back opposite the hit, fall and bounce
+      {const l=Math.hypot(vx,vz)||1,rx=-vx/l,rz=-vz/l,k=crowd();
+       for(let i=0,n=Math.round(5*pw*k);i<n;i++){const b=rnd(.6,2.6),sd=rnd(-1.2,1.2);puffDust(at.x,at.y,at.z,rx*b-rz*sd,rnd(.2,1),rz*b+rx*sd,rnd(.22,.34)*pw,rnd(1.4,2.1),rnd(.45,.75),.38)}
+       for(let i=0,n=Math.round(8*pw*k);i<n;i++){const m=new T.Mesh(i%3?chip:dropG,GM(['#d9c9a8','#bfae82','#8a7a62','#ffd9a0'][i%4])),b=rnd(1.5,5.5),sd=rnd(-2,2);m.position.copy(at);
+         add(m,{s0:rnd(.03,.08),vx:rx*b-rz*sd,vy:rnd(1.5,4.5),vz:rz*b+rx*sd,g:15,spin:rnd(8,20),life:rnd(.45,.8),bounce:1})}}
       for(let i=0;i<3;i++)sprite(SA(i%2?'#ffd84a':'#ffffff'),at,{life:.06,s0:(.7+.3*i%2)*pw,delay:i*.07});   // quick flicker of flashes
       sparkCone(at,vx,vz,Math.round(22*pw),pw);
       for(let i=0,n=Math.round(4*pw);i<n;i++){const m=new T.Mesh(chip,GM('#ffd9a0'));m.position.copy(at);add(m,{s0:rnd(.02,.04),vx:rnd(-2,2)-vx*.08,vy:rnd(1,3.5),vz:rnd(-2,2)-vz*.08,g:14,spin:rnd(8,20),life:rnd(.3,.5),bounce:1})}},
@@ -233,7 +238,7 @@ export function createFX(scene){
     shock(p,c='#ffe0a0'){ring(p,c,.7,11,.4);ring(p,'#ffffff',.4,7,.25);for(let i=0;i<14;i++){const a=i/14*6.283;sprite(SN('#bfae82',.6),p,{s0:rnd(.2,.32),grow:2.6,vx:Math.cos(a)*rnd(3,5),vy:rnd(.3,1),vz:Math.sin(a)*rnd(3,5),drag:2.4,life:rnd(.5,.8)});
         streak(p,'#e8dcb0',Math.cos(a)*rnd(5,9),rnd(1,4),Math.sin(a)*rnd(5,9),{len:.2,g:12,life:.3})}},
     puff(p,c,n=10){for(let i=0;i<n;i++)dot(p,c,rnd(.1,.2),4,{vy:rnd(1,4),life:rnd(.4,.7),grow:0});for(let i=0;i<5;i++)dot(p,'#ffffff',.06,5);
-      sprite(SA(c),p,{life:.25,s0:1.8});ring(p,c,.4,6,.3)},
+      for(let i=0;i<3;i++)puffDust(p.x,p.y,p.z,rnd(-1,1),rnd(.3,1),rnd(-1,1),rnd(.16,.26),rnd(1.3,1.9),rnd(.4,.6),.3)},   // soft dust only: no ring / glow disc
     // ================================================================= melee impact
     // d = swing side (+1 / -1), col = blade colour, pw = power (kills hit bigger), dual = dual-blade hit (bigger, crossed, more sparks), col2 = the off-hand blade colour,
     // flesh = hit a creature (false = hit a wall / collision: only the bullet-style impact), vert = the finisher (both blades down: vertical crescents + shock ring).
