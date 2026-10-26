@@ -634,3 +634,112 @@ html body .cslot.ai:nth-child(n){--sheet:#d4e2ea}
 #search .srcode{display:flex;gap:10px;justify-content:center;align-items:center;margin-top:6px}
 #search .srcode input{width:min(240px,50vw);padding:8px 14px;border:0;border-radius:6px;text-align:center;letter-spacing:.35em;text-transform:uppercase;font:800 28px var(--font);background:var(--cream,#f1e8d2);color:var(--k,#17100e)}
 #search .srcode .btn{min-width:110px}
+/* ===================================================================================================================
+   RESPONSIVE GAME-MODE SCREENS  (Game Mode Select, PVP Host/Join, Join code, PVP Lobby)
+   Card sizes come from BOTH the width and the height of the screen, so 4 cards always fit side by side (landscape) or
+   stack as a scrolling list (portrait / narrow). Kept at the very end so it beats the skin rules above.
+   =================================================================================================================== */
+/* lobby: a slot that is swapped in place must not replay its entrance animation */
+html body .cslot.still{animation:none!important}
+
+/* ---- landscape / desktop: cards sized from the free space ---- */
+@media (min-width:701px){
+  html body #modes .mlist{--cw:clamp(92px,min(calc((100vw - 120px) / 4 - 16px),calc(100vh - 215px),300px),300px);
+    grid-template-columns:repeat(4,var(--cw));grid-template-rows:var(--cw);gap:clamp(8px,1.6vw,22px);justify-content:center;align-content:center}
+  html body #pvp .mlist{--cw:clamp(110px,min(calc((100vw - 120px) / 2 - 12px),calc(100vh - 215px),320px),320px);
+    grid-template-columns:repeat(2,var(--cw));grid-template-rows:var(--cw);gap:clamp(12px,3vw,32px);justify-content:center;align-content:center;max-width:none;width:auto}
+  html body #modes .mode,html body #modes .mode.wide,html body #pvp .mode,html body #pvp .mode.wide{
+    width:var(--cw);height:var(--cw);min-width:0;aspect-ratio:auto;padding:calc(var(--cw)*.07) calc(var(--cw)*.06);gap:calc(var(--cw)*.04)}
+  html body #modes .mode .mt .sub,html body #pvp .mode .mt .sub{font-size:max(10px,calc(var(--cw)*.05))}
+  html body #modes .mode .mt small,html body #pvp .mode .mt small{font-size:max(10px,calc(var(--cw)*.045));line-height:1.2}
+  html body #modes .mode .mt b,html body #pvp .mode .mt b,html body #modes .mode.wide .mt b{font-size:max(15px,calc(var(--cw)*.1))}
+}
+@supports (height:100dvh){
+  @media (min-width:701px){
+    html body #modes .mlist{--cw:clamp(92px,min(calc((100vw - 120px) / 4 - 16px),calc(100dvh - 215px),300px),300px)}
+    html body #pvp .mlist{--cw:clamp(110px,min(calc((100vw - 120px) / 2 - 12px),calc(100dvh - 215px),320px),320px)}
+  }
+}
+/* ---- phone held sideways (short screen): less chrome, no long descriptions ---- */
+@media (min-width:701px) and (max-height:520px){
+  html body #modes .mlist{--cw:clamp(92px,min(calc((100vw - 96px) / 4 - 10px),calc(100vh - 120px),240px),240px)}
+  html body #pvp .mlist{--cw:clamp(100px,min(calc((100vw - 96px) / 2 - 10px),calc(100vh - 120px),260px),260px)}
+  html body #modes .mode .mt small,html body #pvp .mode .mt small,html body #modes .rkx{display:none}
+  html body #modes .mode .mi,html body #pvp .mode .mi{font-size:calc(var(--cw)*.3)}
+  html body .menu .mbar{padding-top:max(4px,env(safe-area-inset-top));margin-bottom:2px}
+  html body .menu .mtitle{font-size:clamp(22px,7vh,34px)}
+}
+@supports (height:100dvh){
+  @media (min-width:701px) and (max-height:520px){
+    html body #modes .mlist{--cw:clamp(92px,min(calc((100vw - 96px) / 4 - 10px),calc(100dvh - 120px),240px),240px)}
+    html body #pvp .mlist{--cw:clamp(100px,min(calc((100vw - 96px) / 2 - 10px),calc(100dvh - 120px),260px),260px)}
+  }
+}
+
+/* ---- portrait / narrow: one column, scrolls, wide horizontal cards ---- */
+@media (max-width:700px){
+  html body #modes .mlist,html body #pvp .mlist{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:auto;gap:12px;
+    padding:6px max(12px,env(safe-area-inset-left)) max(24px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-right));
+    overflow-y:auto;overflow-x:hidden;align-content:start;justify-content:stretch;max-width:none;width:100%;-webkit-overflow-scrolling:touch}
+  html body #modes .mode,html body #modes .mode.wide,html body #pvp .mode,html body #pvp .mode.wide{
+    width:100%;height:auto;min-height:104px;aspect-ratio:auto;flex-direction:row;align-items:center;justify-content:flex-start;text-align:left;gap:16px;padding:16px 18px;--fall:0px;--rise:0px}
+  html body #modes .mode .mi,html body #modes .mode.wide .mi,html body #pvp .mode .mi{flex:none;font-size:46px}
+  html body #modes .mode .mt,html body #modes .mode.wide .mt,html body #pvp .mode .mt{flex:1;min-width:0}
+  html body #modes .mode .mt b,html body #modes .mode.wide .mt b,html body #pvp .mode .mt b{font-size:26px}
+  html body #modes .mode .mt .sub,html body #pvp .mode .mt .sub{font-size:14px}
+  html body #modes .mode .mt small,html body #pvp .mode .mt small{display:block;font-size:13px;line-height:1.25}
+  html body #modes .mode.wide .rkx{width:auto;flex:none;max-width:38%}
+  html body .menu .mbar{padding-top:max(8px,env(safe-area-inset-top))}
+  html body .menu .mtitle{font-size:clamp(26px,9vw,38px)}
+}
+
+/* ---- join code card ---- */
+#search .mcard{width:min(520px,calc(100vw - 24px));max-width:100%;box-sizing:border-box}
+@media (max-height:480px){#search .mcard{padding:14px 18px}#search .msub{margin:0 0 6px}#search .srcode input{font-size:22px;padding:6px 10px}}
+
+/* ---- lobby: 2 teams side by side when there is room, lists scroll inside themselves, compact on short screens ---- */
+html body #lobby .mscreen{height:100%;max-height:100%;box-sizing:border-box;padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));padding-bottom:max(6px,env(safe-area-inset-bottom))}
+.lbody{overflow:hidden}
+.lteam{overflow:hidden}
+.lbody .slist{overflow-y:auto;overflow-x:hidden;min-height:0;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.lbody .cslot .si{min-width:0}
+.lbody .cslot .si b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@media (max-height:520px){
+  .lbody{gap:14px}
+  .lbody .cslot{min-height:42px;padding:4px 8px}
+  .lbody .cslot .hd{width:32px;height:32px}
+  .lbody .cslot .si b{font-size:15px}.lbody .cslot .si span{font-size:10px}
+  .lbody .cslot.empty{font-size:14px}
+  .lbody .slist{gap:4px;padding:4px 6px 8px}
+  .lteam h3{font-size:15px;margin:0}
+  #lbFoot{min-height:44px;gap:8px}#lbFoot .btn{min-height:38px;min-width:110px;font-size:15px;padding:0 10px}
+  #lbCnt{font-size:20px}#lobby .mbar .who{gap:10px}
+}
+@media (max-width:700px){
+  .lbody{grid-template-columns:1fr;overflow-y:auto;overflow-x:hidden;gap:10px}
+  .lteam{overflow:visible}.lbody .slist{overflow:visible}
+  .lbody .cslot{min-height:52px}
+  #lbFoot{padding-bottom:6px}#lbFoot .btn{min-width:0;flex:1 1 130px;font-size:17px;min-height:46px}
+  #lobby .mbar{flex-wrap:wrap;gap:4px 12px}#lobby .mbar .who{margin-left:auto}
+}
+
+/* ===== iPhone / notch phones: true full screen (viewport-fit=cover is set in index.html) ===== */
+html,body{background-color:#000}
+@supports (height:100dvh){html,body{height:100dvh}}
+html{-webkit-text-size-adjust:100%;overscroll-behavior:none}
+body{position:fixed;inset:0;width:100%}
+#c{width:100vw;height:100vh}@supports (height:100dvh){#c{width:100vw;height:100dvh}}
+html body .menu{padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+body.mobile .hud-tl,body.mobile .hud-tc{margin-left:env(safe-area-inset-left)}
+body.mobile .hud-tr{margin-right:env(safe-area-inset-right)}
+#mrot{padding-left:max(30px,env(safe-area-inset-left));padding-right:max(30px,env(safe-area-inset-right))}
+
+/* ===== title screen trademark (bottom right; it lives inside #title, so it only shows there) ===== */
+#title .tmark{position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));z-index:3;pointer-events:none;font:800 14px var(--font);letter-spacing:.06em;color:var(--cream);opacity:.85;text-shadow:0 2px 0 rgba(23,16,14,.85),0 3px 7px rgba(0,0,0,.55);white-space:nowrap}
+@media (max-height:480px),(max-width:600px){#title .tmark{font-size:11px;right:max(12px,env(safe-area-inset-right));bottom:max(8px,env(safe-area-inset-bottom))}}
+
+/* ===== controller: the menu key guide shows A / B instead of Enter / Esc while a pad is being used ===== */
+#kbhint .gpi{display:none}
+body.gpad #kbhint .kbi:not(.gpi){display:none}
+body.gpad #kbhint .gpi{display:flex}
+#kbhint[data-back="0"] .kbback{display:none}
