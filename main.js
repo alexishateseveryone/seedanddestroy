@@ -33,7 +33,7 @@ const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
 const scene=new T.Scene();
 const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3(),fp=new T.Vector3();
-const atm=createAtmosphere(renderer,scene,cam);let curMode='';
+const atm=createAtmosphere(renderer,scene,cam);let curMode='',cycOn=false;   // cycOn: story day/night clock running
 const hud=createHUD();
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
 [[1.9,.1],[1.35,.17],[.85,.12]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
@@ -70,7 +70,7 @@ const SLOTN=5;let curSlot=-1;
 function loadSlots(){let s=null;try{s=JSON.parse(localStorage.getItem('sad.slots'))}catch(e){}
   if(!Array.isArray(s)){s=[];try{const c=JSON.parse(localStorage.getItem('sad.cat')||'null');if(c&&Object.keys(c).length)s[0]={cfg:c,best:+localStorage.getItem('sad.best')||0}}catch(e){}}
   s=s.slice(0,SLOTN).map(x=>x&&x.cfg?x:null);while(s.length<SLOTN)s.push(null);return s}
-const MENUS=['title','slots','modes','worlds','pvp','search','lobby'];let lobby=null;   // lobby = the PVP LOCAL screens (created further down); declared here because enterTitle() runs during start-up   // declared up here: enterTitle() runs during start-up, before the menu code further down
+const MENUS=['title','slots','modes','worlds','wnew','pvp','search','lobby'];let lobby=null;   // lobby = the PVP LOCAL screens (created further down); declared here because enterTitle() runs during start-up   // declared up here: enterTitle() runs during start-up, before the menu code further down
 let slots=loadSlots();const saveSlots=()=>localStorage.setItem('sad.slots',JSON.stringify(slots));
 let gm='wave',elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
 const P={x:0,z:0,hp:5,max:5,inv:0,cd:0,mv:false,aim:0,shake:0,hx:0,hz:0,rel:1,camDist:2.8,camYaw:0,camPitch:0,roll:0,rcd:0,rdx:0,rdz:1,kick:0,wpn:0,blink:0,scope:false,hs:0,dash:0,dx:0,dz:1,fwd:0,side:0,viewYaw:0,chain:0,chainT:0,dead:false,frozen:false,gy:0,y:0,vy:0,jy:0,ey:0,air:false,canDash:true,ad:0,fk:0},bullets=[],ebul=[],enemies=[],pickups=[],keys={},mouse={l:false};
@@ -107,7 +107,7 @@ function airDash(){if(!P.canDash||P.ad>0)return;P.canDash=false;let f=P.fwd,s=P.
   cat.userData.airDash&&cat.userData.airDash(f,s);fx.airDash(fp.set(P.x,P.y+.7,P.z),P.rdx,P.rdz);audio.play('slash',{vol:.35,pitch:1.9})}
 function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>0||P.dead||P.frozen)return;if(P.air){airDash();return}let f=P.fwd,s=P.side;if(!f&&!s)f=1;
   const fxv=Math.sin(P.camYaw),fzv=Math.cos(P.camYaw),rx=-Math.cos(P.camYaw),rz=Math.sin(P.camYaw);let dx=fxv*f+rx*s,dz=fzv*f+rz*s;const l=Math.hypot(dx,dz)||1;
-  if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;map.ripple(P.x,P.z,1.8);P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.puff(new T.Vector3(P.x,P.gy+.2,P.z),'#ffffff',5);fx.dash(fp.set(P.x,P.gy+.12,P.z),P.rdx,P.rdz)}}
+  if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;map.ripple(P.x,P.z,1.8);P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.dash(fp.set(P.x,P.gy+.12,P.z),P.rdx,P.rdz)}}
 function hudAll(){hud.hp(P.hp,P.max);hud.wave(wave);hud.foes(WV.left+enemies.length,WV.total);hud.score(score,kills,best)}
 function beginWave(w){wave=w;WV.total=WV.left=quota(w);WV.phase='intro';WV.t=2.6;WV.spawnT=.4;P.chain=0;hud.banner(`WAVE ${w}`,`${WV.total} enemies`);hudAll()}
 const TOUCH=isMobile();   // phones / tablets / installed Android app: touch controls, no mouse capture
@@ -423,7 +423,11 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
   // 5v5: when you are dead the camera follows the ally you picked (the spectate buttons live in 5v5.js); the map and the sun's shadows follow it too
   const SV=(gm==='v5'&&state==='play'&&P.dead&&mode5&&mode5.spectateView)?mode5.spectateView():null,FOC=SV?SVO:P;
   if(SV){SVO.x=SV.x;SVO.z=SV.z;SVO.gy=SV.gy;SVO.ey=SV.ey;SVO.camYaw=SV.yaw;if(document.pointerLockElement&&!paused)document.exitPointerLock()}   // free the cursor so the buttons can be clicked
-  if(state!=='maker')map.update(clock,FOC,{sun:atm.sunDir,sky:atm.fogColor});atm.update(dt,clock,FOC);
+  {const want=gm==='story'&&state==='play';   // day/night: only while you play a story world; every other mode keeps the fixed sun
+    if(want!==cycOn){if(!want&&worlds[curWorld]){worlds[curWorld].time=+atm.hour.toFixed(3);saveWorlds()}
+      cycOn=want;const w=worlds[curWorld];atm.setCycle(want,want?(w&&w.time!==undefined?w.time:8):undefined)}
+    atm.hold=paused}
+  if(state!=='maker')map.update(clock,FOC,{sun:atm.lightDir,sky:atm.fogColor});atm.update(dt,clock,FOC);
   if(state!=='play')hud.scope(0);
   if(state==='play'||state==='over'||state==='title'){
     cat.position.set(P.x,P.air?P.y:P.gy,P.z);
@@ -437,7 +441,7 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     const vy=state==='title'?P.viewYaw+camAz-spin:FOC.camYaw,pit=(state==='title'?-.25:SV?-1.18:P.camPitch)+kk*.02;   // spectating = TOP VIEW: high above the ally, looking steeply down
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
     const px=FOC.x+rx*rightOffset,pz=FOC.z+rz*rightOffset;
-    const camX=px-dX*dist+rx*rnd(-sh,sh)*.7,camZ=pz-dZ*dist+rz*rnd(-sh,sh)*.7;let camY=FOC.ey+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0);camY=Math.max(.35+map.heightAt(camX,camZ),camY);
+    const camX=px-dX*dist+rx*rnd(-sh,sh)*.7,camZ=pz-dZ*dist+rz*rnd(-sh,sh)*.7;let camY=FOC.ey+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0)+(state==='play'&&!SV?(gfx.get().cam||0)*.015*(1-aw):0);   // Settings > Camera height: raises / lowers the camera only (the aim point stays put); fades out while scopedcamY=Math.max(.35+map.heightAt(camX,camZ),camY);
     cam.position.set(camX,camY,camZ);if(!SV)for(const o of near(map.obs,cam.position.x,cam.position.z)){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
     cam.lookAt(FOC.x+dX*11,1+FOC.ey+dY*11,FOC.z+dZ*11);   // looks at the point the bullets converge on
     cam.rotation.z+=rnd(-sh,sh)*.02+(P.roll>0?Math.sin(P.roll*14)*.02:0);
@@ -474,7 +478,7 @@ addEventListener('contextmenu',e=>e.preventDefault());
 addEventListener('pointermove',e=>{if(mkOn&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
 // ---- menu flow: Title (Play / Settings / Exit) -> Character slots -> [Character maker if new] -> Mode select -> game
 function hideMenus(){MENUS.forEach(m=>$('#'+m).hidden=true);$('#menuBack').hidden=true}
-function showMenu(w){MENUS.forEach(m=>$('#'+m).hidden=m!==w);$('#menuBack').hidden=!(w==='slots'||w==='modes'||w==='worlds'||w==='pvp'||w==='search'||w==='lobby')}   // one shared Back button: switching slots <-> modes never re-animates it
+function showMenu(w){MENUS.forEach(m=>$('#'+m).hidden=m!==w);$('#menuBack').hidden=!(w==='slots'||w==='modes'||w==='worlds'||w==='wnew'||w==='pvp'||w==='search'||w==='lobby')}   // one shared Back button: switching slots <-> modes never re-animates it
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const headHTML=c=>{const u=headIconURL(c);return u?`<img src="${u}" alt="" draggable="false">`:''};   // 3D head of the cat (falls back to a coat-coloured dot)
 const dotBg=c=>`background:radial-gradient(circle at 35% 30%,${c.pat||'#ee9a48'} 0 28%,${c.fur||'#f6dfbd'} 30%)`;
@@ -488,22 +492,38 @@ function renderSlots(){
 // the first time behind the loading screen. Same seed = same world, so nothing big has to be stored. Leaving and re-entering the same slot is instant.
 const WORLDN=3,WKEY='sad.worlds';
 function loadWorlds(){let s=null;try{s=JSON.parse(localStorage.getItem(WKEY))}catch(e){}if(!Array.isArray(s))s=[];s=s.slice(0,WORLDN).map(x=>x&&typeof x.seed==='number'?x:null);while(s.length<WORLDN)s.push(null);return s}
-let worlds=loadWorlds(),busyStory=false,storyT=0,lastBiome='',pendBiome='',biomeT=0;const saveWorlds=()=>{try{localStorage.setItem(WKEY,JSON.stringify(worlds))}catch(e){}};
+let worlds=loadWorlds(),busyStory=false,storyT=0,lastBiome='',pendBiome='',biomeT=0,lastPhase='';const saveWorlds=()=>{try{localStorage.setItem(WKEY,JSON.stringify(worlds))}catch(e){}};
 const ago=t=>{const m=Math.max(1,Math.round((Date.now()-t)/6e4));return m<60?m+' MIN AGO':m<1440?Math.round(m/60)+' H AGO':Math.round(m/1440)+' D AGO'};
 function renderWorlds(){
   $('#worldList').innerHTML=worlds.map((w,i)=>w
-    ?`<div class="cslot" data-i="${i}" style="--i:${i}"><span class="wic"><i class="bi bi-globe-europe-africa"></i></span>
-       <div class="si"><b>${esc(w.name)}</b><span>SEED ${w.seed.toString(36).toUpperCase()} · ${w.played?'PLAYED '+ago(w.played):'NOT VISITED YET'}</span></div><span class="sn">#${i+1}</span>
+    ?`<div class="cslot" data-i="${i}" style="--i:${i}"><span class="wic"><i class="bi bi-heart-fill"></i></span>
+       <div class="si"><b>${esc(w.name)}</b><span>${esc(w.diff||'NORMS')} · SEED ${esc(w.seedText||w.seed.toString(36).toUpperCase())} · ${w.played?'PLAYED '+ago(w.played):'NOT VISITED YET'}</span></div><span class="sn">#${i+1}</span>
        <button class="sb" data-a="ren" title="Rename"><i class="bi bi-pencil-fill"></i></button><button class="sb del" data-a="del" title="Delete world"><i class="bi bi-trash-fill"></i></button></div>`
     :`<div class="cslot empty" data-i="${i}" style="--i:${i}"><i class="bi bi-plus-circle-fill" style="font-size:26px"></i>Generate New World<span class="sn">#${i+1}</span></div>`).join('')}
 $('#worldList').onclick=e=>{const el=e.target.closest('.cslot');if(!el||busyStory)return;const i=+el.dataset.i,a=e.target.closest('button')?.dataset.a;
   if(a==='del'){if(confirm('Delete '+worlds[i].name+'? The world will be gone for good.')){worlds[i]=null;saveWorlds();if(storySlot===i&&storyMap){storyMap.dispose();storyMap=null;storySlot=-1}renderWorlds()}return}
   if(a==='ren'){const n=prompt('World name',worlds[i].name);if(n&&n.trim()){worlds[i].name=n.trim().slice(0,24);saveWorlds();renderWorlds()}return}
-  if(!worlds[i]){worlds[i]={seed:(Math.random()*4294967295)>>>0,name:'World '+(i+1),created:Date.now(),played:0};saveWorlds()}
+  if(!worlds[i]){openNewWorld(i);return}
   enterStory(i)};
-function saveWorldPos(){if(gm!=='story'||curWorld<0||!worlds[curWorld])return;const w=worlds[curWorld];w.x=+P.x.toFixed(2);w.z=+P.z.toFixed(2);w.yaw=+P.camYaw.toFixed(3);saveWorlds()}
+// ---- New World screen: name, seed (empty = random; a number is used as is, any other text is hashed to a number), difficulty (UI only for now)
+const DIFFS=['GGEZ','NORMS','HARD','MERCILESS'];let newSlot=-1,newDiff='NORMS';
+const hashStr=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0};
+const parseSeed=s=>{s=String(s||'').trim();if(!s)return{seed:(Math.random()*4294967295)>>>0,text:''};
+  return /^\d{1,15}$/.test(s)?{seed:(Number(s)%4294967296)>>>0,text:s}:{seed:hashStr(s),text:s}};
+function setDiff(d){if(!DIFFS.includes(d))d='NORMS';newDiff=d;document.querySelectorAll('#wnDiff .dopt').forEach(b=>b.classList.toggle('on',b.dataset.v===d))}
+function openNewWorld(i){newSlot=i;$('#wnName').value='World '+(i+1);$('#wnSeed').value='';setDiff('NORMS');showMenu('wnew')}
+function createWorld(){const i=newSlot;if(i<0||worlds[i]||busyStory)return;
+  const sd=parseSeed($('#wnSeed').value),name=($('#wnName').value.trim()||'World '+(i+1)).slice(0,24);
+  worlds[i]={seed:sd.seed,seedText:sd.text,name,diff:newDiff,created:Date.now(),played:0,time:8};saveWorlds();newSlot=-1;enterStory(i)}
+$('#wnDiff').onclick=e=>{const b=e.target.closest('.dopt');if(b)setDiff(b.dataset.v)};
+$('#wnDice').onclick=()=>{$('#wnSeed').value=String((Math.random()*1e9)|0)};
+$('#wnGo').onclick=createWorld;
+['#wnName','#wnSeed'].forEach(s=>$(s).addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')createWorld()}));
+function saveWorldPos(){if(gm!=='story'||curWorld<0||!worlds[curWorld])return;const w=worlds[curWorld];w.x=+P.x.toFixed(2);w.z=+P.z.toFixed(2);w.yaw=+P.camYaw.toFixed(3);if(cycOn)w.time=+atm.hour.toFixed(3);saveWorlds()}
 addEventListener('beforeunload',saveWorldPos);
-function storyTick(dt){storyT+=dt;const n=map.biomeName(P.x,P.z);                                  // banner when you walk into a new biome (after standing in it a moment)
+function storyTick(dt){storyT+=dt;
+  if(cycOn){const ph=atm.night>.55?'night':'day';if(ph!==lastPhase){if(lastPhase)hud.banner(ph==='night'?'Night falls':'A new day begins','');lastPhase=ph}}
+  const n=map.biomeName(P.x,P.z);                                  // banner when you walk into a new biome (after standing in it a moment)
   if(n!==pendBiome){pendBiome=n;biomeT=0}else{biomeT+=dt;if(biomeT>1.2&&n!==lastBiome){lastBiome=n;hud.banner(n,'')}}
   if(storyT>6){storyT=0;saveWorldPos()}}
 function startStory(i,sx,sz){
@@ -511,7 +531,7 @@ function startStory(i,sx,sz){
   forest.group.visible=false;arena&&(arena.group.visible=false);storyMap.group.visible=true;map=storyMap;if(scene.fog){scene.fog.near=50;scene.fog.far=230}
   const w=worlds[i];P.x=sx;P.z=sz;P.camYaw=w.yaw||0;P.viewYaw=P.camYaw;P.camPitch=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;paused=false;state='play';
   ['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
-  document.body.classList.add('story');equipIdx(0);hud.name(cfg.name);P.gy=map.heightAt(P.x,P.z);storyT=0;lastBiome='';pendBiome='';biomeT=0;lockPtr()}
+  document.body.classList.add('story');equipIdx(0);hud.name(cfg.name);P.gy=map.heightAt(P.x,P.z);storyT=0;lastBiome='';pendBiome='';biomeT=0;lastPhase='';lockPtr()}
 async function enterStory(i){
   const w=worlds[i];if(!w||busyStory)return;busyStory=true;hideMenus();
   loading.tips(['Rivers always flow downhill and end in lakes.','Every biome grows its own trees, flowers and mushrooms.','Savanna grass is golden, rainforest grass is deep green.','Your world is saved in its slot: come back any time.','Mountains ring the world, rivers start high up in them.']);
@@ -534,7 +554,7 @@ function selectSlot(i){curSlot=i;cfg=JSON.parse(JSON.stringify(slots[i].cfg));be
   const h=headHTML(cfg),hd=$('#modeHd');hd.innerHTML=h;hd.style.cssText=h?'':dotBg(cfg);renderPill($('#rkpill'));showMenu('modes')}
 $('#play').onclick=()=>{renderSlots();showMenu('slots');const b=$('#menuBack');b.classList.remove('in');void b.offsetWidth;b.classList.add('in')};   // Play is the only time Back swipes in
 $('#menuBack').addEventListener('animationend',e=>e.currentTarget.classList.remove('in'));
-$('#menuBack').onclick=()=>{if(lobby.active()){lobby.back();return}if(!$('#worlds').hidden){showMenu('modes');return}if(!$('#modes').hidden){renderSlots();showMenu('slots')}else showMenu('title')};
+$('#menuBack').onclick=()=>{if(lobby.active()){lobby.back();return}if(!$('#wnew').hidden){renderWorlds();showMenu('worlds');return}if(!$('#worlds').hidden){showMenu('modes');return}if(!$('#modes').hidden){renderSlots();showMenu('slots')}else showMenu('title')};
 $('#mRogue').onclick=()=>{hideMenus();start()};          // roguelike endless = the forest map
 $('#mV5').onclick=()=>{hideMenus();start5v5()};
 // ---- PVP (custom battle): WebRTC room (host's browser = the room) + the Host / Join / lobby screens
@@ -569,9 +589,9 @@ function openCreator(slotIdx){
   const vis=e=>{if(!e||e.hidden)return false;const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity)>.05};
   const touchy=()=>document.body.classList.contains('mobile')||matchMedia('(hover:none)').matches||matchMedia('(pointer:coarse)').matches||matchMedia('(max-width:900px) and (max-height:520px)').matches;   // phones / tablets: no key guide
   const UP=['KeyW','ArrowUp'],DN=['KeyS','ArrowDown'],LT=['KeyA','ArrowLeft'],RT=['KeyD','ArrowRight'],OK=['Enter','NumpadEnter','KeyE'],BACK=['Escape','Backspace'];
-  const SEL={title:'#title button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',modes:'#modes .mode',pvp:'#pvp .mode',search:'#search input[type=text],#search .btn',lobby:'#lobby .cslot,#lobby .cslot button,#lobby .btn',over:'#over button',pause:'#pause button',bye:'#bye button',
+  const SEL={title:'#title button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',wnew:'#wnew input[type=text],#wnew .dopt,#wnew .btn',modes:'#modes .mode',pvp:'#pvp .mode',search:'#search input[type=text],#search .btn',lobby:'#lobby .cslot,#lobby .cslot button,#lobby .btn',over:'#over button',pause:'#pause button',bye:'#bye button',
     settings:'#gfx button,#gfx input[type=range]',maker:'#maker button,#maker input'};
-  const BACKS=new Set(['slots','worlds','modes','pvp','search','lobby','bye','settings','maker']);
+  const BACKS=new Set(['slots','worlds','wnew','modes','pvp','search','lobby','bye','settings','maker']);
   function screen(){
     const L=$('#loading');if(L&&!L.classList.contains('out'))return null;
     if(document.pointerLockElement)return null;                          // mouse captured = you are playing, never a menu
@@ -581,7 +601,7 @@ function openCreator(slotIdx){
     if(mkOn||vis($('#maker')))return 'maker';
     if(vis($('#pause')))return 'pause';
     if(vis($('#over')))return 'over';
-    for(const s of ['pvp','search','lobby','slots','worlds','modes','title'])if(vis($('#'+s)))return s;
+    for(const s of ['wnew','pvp','search','lobby','slots','worlds','modes','title'])if(vis($('#'+s)))return s;
     return null}
   const items=sc=>sc?q(SEL[sc]).filter(e=>e.getClientRects().length>0&&!e.disabled):[];
   const isText=e=>!!e&&((e.tagName==='INPUT'&&e.type==='text')||e.tagName==='TEXTAREA'||e.tagName==='SELECT');
