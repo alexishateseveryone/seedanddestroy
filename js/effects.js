@@ -16,6 +16,12 @@ const tailTex=cv(16,64,(g,w,h)=>{const r=g.createLinearGradient(0,0,0,h);r.addCo
 const lineTex=cv(256,16,(g,w,h)=>{const r=g.createLinearGradient(0,0,w,0);r.addColorStop(0,'rgba(255,255,255,0)');r.addColorStop(.35,'rgba(255,255,255,.7)');r.addColorStop(.5,'rgba(255,255,255,1)');r.addColorStop(.65,'rgba(255,255,255,.7)');r.addColorStop(1,'rgba(255,255,255,0)');
   g.fillStyle=r;g.beginPath();g.moveTo(0,h/2);g.quadraticCurveTo(w/2,0,w,h/2);g.quadraticCurveTo(w/2,h,0,h/2);g.fill()});
 
+// bullet mark: soft scorch halo, a dark chipped hole in the middle and a few short cracks (white-less, so it reads as damage on any surface)
+const markTex=cv(128,128,(g)=>{g.translate(64,64);
+  const h=g.createRadialGradient(0,0,2,0,0,60);h.addColorStop(0,'rgba(18,12,8,.78)');h.addColorStop(.35,'rgba(30,22,14,.5)');h.addColorStop(1,'rgba(30,22,14,0)');g.fillStyle=h;g.beginPath();g.arc(0,0,60,0,6.283);g.fill();
+  g.fillStyle='rgba(8,5,3,.92)';g.beginPath();for(let i=0;i<14;i++){const a=i/14*6.283,r=(i%2?9:14)+Math.random()*4;i?g.lineTo(Math.cos(a)*r,Math.sin(a)*r):g.moveTo(Math.cos(a)*r,Math.sin(a)*r)}g.closePath();g.fill();
+  g.strokeStyle='rgba(10,6,4,.7)';g.lineWidth=1.6;for(let i=0;i<7;i++){const a=Math.random()*6.283,l=22+Math.random()*26;g.beginPath();g.moveTo(Math.cos(a)*12,Math.sin(a)*12);g.lineTo(Math.cos(a+.15)*l*.6,Math.sin(a+.15)*l*.6);g.lineTo(Math.cos(a-.1)*l,Math.sin(a-.1)*l);g.stroke()}});
+
 // HD impact textures: burst of radial light rays, and an anamorphic horizontal streak with a 4-point star core
 const rayTex=cv(256,256,(g)=>{g.translate(128,128);g.globalCompositeOperation='lighter';
   for(let i=0;i<36;i++){const a=i/36*6.283+Math.random()*.15,L=70+Math.random()*58,wd=.025+Math.random()*.05,gr=g.createLinearGradient(0,0,Math.cos(a)*L,Math.sin(a)*L);gr.addColorStop(0,'rgba(255,255,255,.9)');gr.addColorStop(1,'rgba(255,255,255,0)');
@@ -66,6 +72,7 @@ const prof=st=>{const sp=(st&&st.speed)||20,after=!!(st&&st.after),fast=sp>=30,p
 
 export function createFX(scene){
   let ground=null;
+  const marks=[],MARKMAX=110,markGeo=new T.PlaneGeometry(1,1),markMat=new T.MeshBasicMaterial({map:markTex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,side:T.DoubleSide});
   const list=[],light=new T.PointLight('#ffb040',0,9,2);scene.add(light);let lt=0,ltMax=.09,ltI=4.5,sonicT=0;
   const add=(m,o)=>{scene.add(m);const q=Object.assign({m,vx:0,vy:0,vz:0,g:0,life:.4,s0:1,grow:0,spin:0,drag:0,delay:0,st:0,w:1,fade:0},o);q.max=q.life;if(q.delay>0)m.visible=false;if(q.fade){m.material=m.material.clone();m.material.opacity=q.fade}list.push(q);return q};
   const sprite=(mat,p,o)=>{const s=new T.Sprite(mat);s.position.copy(p);return add(s,o)};
@@ -95,7 +102,7 @@ export function createFX(scene){
   const mkRibbon=big=>{const g=new T.BufferGeometry(),V=RMAX*4,pos=new Float32Array(V*3),clr=new Float32Array(V*4),idx=new Uint16Array(RMAX*12);
     g.setAttribute('position',new T.BufferAttribute(pos,3).setUsage(T.DynamicDrawUsage));g.setAttribute('color',new T.BufferAttribute(clr,4).setUsage(T.DynamicDrawUsage));g.setIndex(new T.BufferAttribute(idx,1).setUsage(T.DynamicDrawUsage));g.setDrawRange(0,0);
     const m=new T.Mesh(g,ribMat);m.frustumCulled=false;scene.add(m);const c=new T.Color(big?'#dfe7f0':'#e6e2da');
-    return{m,g,pos,clr,idx,pts:[],lx:0,ly:0,lz:0,has:false,d:0,cr:c.r,cg:c.g,cb:c.b,life:big?1.5:.85,w0:big?.07:.04,w1:big?.62:.34,amp:big?.4:.24,ph:Math.random()*6.283,touched:clk}};
+    return{m,g,pos,clr,idx,pts:[],lx:0,ly:0,lz:0,has:false,d:0,cr:c.r,cg:c.g,cb:c.b,life:big?.7:.4,w0:big?.03:.02,w1:big?.14:.07,amp:big?.05:.03,ph:Math.random()*6.283,touched:clk}};
   const feedRibbon=(r,p,dx,dy,dz,dt)=>{
     const push=(x,y,z,t)=>{r.pts.push({x,y,z,dx,dy,dz,t,d:r.d});if(r.pts.length>RMAX)r.pts.shift()};
     if(!r.has){r.has=true;r.lx=p.x;r.ly=p.y;r.lz=p.z;push(p.x,p.y,p.z,clk);return}
@@ -111,7 +118,7 @@ export function createFX(scene){
       const pos=r.pos,clr=r.clr,idx=r.idx;
       for(let i=0;i<n;i++){const q=pts[i],a=Math.min(1,(clk-q.t)/r.life),e=1-(1-a)*(1-a),w=r.w0+(r.w1-r.w0)*e,
           al=.5*Math.pow(1-a,1.5)*Math.min(1,.3+a*40),
-          ph=q.d*1.9+clk*3.3+r.ph,ox=(Math.sin(ph)+.5*Math.sin(ph*2.3+1.7))*r.amp*e,oy=(Math.sin(ph*1.3+2.1)+.5*Math.sin(ph*2.9))*r.amp*.6*e+a*.3,
+          ph=q.d*1.9+clk*3.3+r.ph,ox=(Math.sin(ph)+.5*Math.sin(ph*2.3+1.7))*r.amp*e,oy=(Math.sin(ph*1.3+2.1)+.5*Math.sin(ph*2.9))*r.amp*.6*e+a*.04,
           hl=Math.hypot(q.dx,q.dz)||1,hx=-q.dz/hl,hz=q.dx/hl,cx=q.x+hx*ox,cy=q.y+oy,cz=q.z+hz*ox;
         let o=2*i*3;pos[o]=cx-hx*w;pos[o+1]=cy;pos[o+2]=cz-hz*w;pos[o+3]=cx+hx*w;pos[o+4]=cy;pos[o+5]=cz+hz*w;   // flat strip
         o=(2*RMAX+2*i)*3;pos[o]=cx;pos[o+1]=cy-w*.8;pos[o+2]=cz;pos[o+3]=cx;pos[o+4]=cy+w*.8;pos[o+5]=cz;            // upright strip
@@ -135,85 +142,94 @@ export function createFX(scene){
     if(ctr)m.position.set(p.x,p.y+.05,p.z);else m.position.set(p.x-fx*r*.92,p.y+.05,p.z-fz*r*.92);m.quaternion.copy(qb);m.scale.setScalar(.001);
     add(m,{life,delay,s0:1,fade:1,anim:(q,a)=>{const e=e3(Math.min(1,a/.4)),s=r*(.85+.3*e+.1*a);m.scale.set(sd*s,1,s);
       m.quaternion.copy(qb).multiply(_qa.setFromAxisAngle(_Y,sd*th*.45*(e-.6)));m.material.opacity=(1-sm((a-.3)/.7))*Math.min(1,a*25+.25)}})};
+  // realistic hit sparks: thin hot streaks, glowing flecks and embers thrown back OPPOSITE to the bullet / blade direction (dx,dz = the way it was travelling), in a cone, falling and bouncing
+  const sparkCone=(p,dx,dz,n,pw=1,cols=['#fff7d6','#ffd84a','#ff9a30'])=>{const l=Math.hypot(dx,dz)||1,base=Math.atan2(-dx/l,-dz/l),k=crowd();
+    for(let i=0,m=Math.round(n*k);i<m;i++){const g=base+rnd(-.55,.55),sp=rnd(7,22)*pw,h=Math.random(),c=h<.35?cols[0]:h<.75?cols[1]:cols[2];
+      streak(p,c,Math.sin(g)*sp,rnd(-.5,4.5),Math.cos(g)*sp,{len:rnd(.3,.8)*pw,w:1.1,g:14,life:rnd(.2,.5),drag:1.8,bounce:1})}
+    for(let i=0,m=Math.round(n*.8*k);i<m;i++){const g=base+rnd(-.8,.8),sp=rnd(2,9)*pw;dot(p,i%2?'#ffd070':'#ff8a24',rnd(.014,.03),0,{vx:Math.sin(g)*sp,vy:rnd(.5,4.5),vz:Math.cos(g)*sp,g:14,drag:.9,life:rnd(.35,.8),bounce:1})}
+    for(let i=0,m=Math.round(n*.25*k);i<m;i++){const g=base+rnd(-.9,.9),sp=rnd(1.5,5);sprite(SA(i%3?'#ff9a40':'#ffd070'),p,{s0:rnd(.04,.08)*pw,vx:Math.sin(g)*sp,vy:rnd(.8,3.5),vz:Math.cos(g)*sp,g:9,drag:1.3,life:rnd(.5,1),bounce:1,keep:1})}};
   return{
     setGround(fn){ground=fn},
+    // ---- bullet marks: a scorched, cracked hole left where a bullet hits the ground (lies flat) or a tree / rock / wall (faces back at the shooter). Oldest marks vanish past the cap.
+    mark(p,vx=0,vy=0,vz=0,onGround=false){
+      const m=new T.Mesh(markGeo,markMat),sz=rnd(.22,.36);
+      if(onGround){const gy=(ground?ground(p.x,p.z):p.y)+.035;m.position.set(p.x,gy,p.z);m.rotation.set(-Math.PI/2,0,rnd(0,6.283))}
+      else{const l=Math.hypot(vx,vy,vz)||1,nx=-vx/l,ny=-vy/l,nz=-vz/l;m.position.set(p.x+nx*.1,p.y+ny*.1,p.z+nz*.1);m.quaternion.setFromUnitVectors(Z,new T.Vector3(nx,ny,nz));m.rotateZ(rnd(0,6.283))}
+      m.scale.setScalar(sz);m.renderOrder=2;scene.add(m);marks.push(m);
+      while(marks.length>MARKMAX){const o=marks.shift();scene.remove(o)}},
+    clearMarks(){while(marks.length)scene.remove(marks.pop())},
+    // additive white glow sprite parented to a hit creature; the caller flickers its visibility / opacity while it is hurt
+    flashGlow(){const sp=new T.Sprite(new T.SpriteMaterial({map:glowTex,color:'#fff4c8',blending:T.AdditiveBlending,depthWrite:false,depthTest:false,transparent:true,opacity:0}));sp.renderOrder=10;sp.visible=false;return sp},
     // ================================================================= shot
     // st = the weapon's stats (speed / after / pellets / kick ...), gy = ground height; enemies call it with neither
-    muzzle(p,a,st,gy){const P=prof(st),S=P.size,k=crowd()*((st&&st.lite)||1),sq=Math.sqrt(S),dx=Math.sin(a),dz=Math.cos(a),f=new T.Vector3(p.x+dx*.1,p.y,p.z+dz*.1),ground=(gy??p.y-1)+.12,
-        dir=sp=>{const g=a+rnd(-sp,sp);return[Math.sin(g),Math.cos(g)]};
-      // 1) fireball: a white-hot flash, then billowing lumpy flame puffs (hot ones start white, outer ones orange) that cool to brown as they fade
-      fireP(f.x+dx*.15*S,f.y,f.z+dz*.15*S,dx*.6,.1,dz*.6,1.05*S,.9,.075,.95,HOT);
-      for(let i=0,n=Math.round(12*P.fire*k);i<n;i++){const[vx,vz]=dir(P.cone*1.4),v=rnd(1.5,6.5)*sq,o=rnd(0,.55)*S;
-        fireP(f.x+dx*o,f.y+rnd(-.06,.14),f.z+dz*o,vx*v,rnd(-.2,1.2),vz*v,rnd(.3,.5)*S,rnd(1.1,1.9),rnd(.15,.27),.85,i%5<2?HOT:ORANGE)}
-      // 2) fine speckle spray (orange + dark flecks) and a few glinting sparks
-      for(let i=0,n=Math.round(30*P.sparks*k);i<n;i++){const[vx,vz]=dir(P.cone*2.6),v=rnd(5,20)*sq;
-        dot(f,i%3?'#ff9a40':'#34261a',rnd(.012,.026)*sq,0,{vx:vx*v,vy:rnd(-.6,3),vz:vz*v,g:9,drag:1.6,life:rnd(.18,.42)})}
-      for(let i=0,n=Math.round(7*P.sparks*k);i<n;i++){const[vx,vz]=dir(P.cone*1.8),v=rnd(8,24);
-        streak(f,i%2?'#ffb040':'#fff0c0',vx*v,rnd(-.4,2),vz*v,{len:rnd(.2,.5)*S,g:7,life:rnd(.1,.22),drag:2.4})}
-      // 3) embers that fall and bounce
-      for(let i=0,n=Math.round(5*P.sparks*k);i<n;i++){const[vx,vz]=dir(.8),v=rnd(1.5,6);sprite(SA(i%3?'#ff9a40':'#ffd070'),f,{s0:rnd(.05,.09),vx:vx*v,vy:rnd(.5,3),vz:vz*v,g:9,drag:1.4,life:rnd(.4,.9),bounce:1,keep:1})}
-      // 4) smoke: dark brown billow right behind the flame, then paler wisps that rise and linger
-      for(let i=0,n=Math.round(5*P.smoke*k);i<n;i++){const[vx,vz]=dir(P.cone*1.3),v=rnd(1,3.5),o=rnd(.1,.6)*S;
-        smokeP(f.x+dx*o,f.y+rnd(0,.1),f.z+dz*o,vx*v,rnd(.3,1),vz*v,rnd(.28,.42)*S,rnd(2,3),rnd(.6,1),.42,SMOKE,.03+i*.012)}
-      for(let i=0,n=Math.round(3*P.smoke*k);i<n;i++)smokeP(f.x,f.y,f.z,dx*.3+rnd(-.2,.2),rnd(.7,1.4),dz*.3+rnd(-.2,.2),.2*S,3.5,rnd(1.1,1.7),.26,SMOKE2,.1+i*.07);
+    muzzle(p,a,st,gy){const P=prof(st),S=P.size,k=crowd()*((st&&st.lite)||1),sq=Math.sqrt(S),dx=Math.sin(a),dz=Math.cos(a),f=new T.Vector3(p.x+dx*.1,p.y,p.z+dz*.1),
+        dir=sp=>{const g=a+rnd(-sp,sp);return[Math.sin(g),Math.cos(g)]},clean=!!P.after;
+      // 1) larger glow: a big warm halo + a white-hot core pop right at the muzzle, plus a few flame puffs
+      sprite(SA('#ffa030'),f,{life:.11,s0:1.9*S,grow:.5});sprite(SA('#fff4c8'),f,{life:.07,s0:1.1*S,grow:.3});
+      fireP(f.x+dx*.12*S,f.y,f.z+dz*.12*S,dx*.4,.05,dz*.4,.55*S,.65,.07,.9,HOT);
+      for(let i=0,n=Math.round(4*P.fire*k);i<n;i++){const[vx,vz]=dir(P.cone),v=rnd(1.5,4.5)*sq,o=rnd(0,.35)*S;
+        fireP(f.x+dx*o,f.y+rnd(-.03,.07),f.z+dz*o,vx*v,rnd(0,.5),vz*v,rnd(.18,.3)*S,rnd(.8,1.2),rnd(.08,.15),.75,i%2?HOT:ORANGE)}
+      // 2) sparks: thin hot streaks, glowing flecks and a few big bright glowing sparks that spit out of the barrel
+      for(let i=0,n=Math.round(8*P.sparks*k);i<n;i++){const[vx,vz]=dir(P.cone*1.5),v=rnd(8,22);
+        streak(f,i%2?'#ffb040':'#fff0c0',vx*v,rnd(-.3,1.5),vz*v,{len:rnd(.2,.5)*S,g:7,life:rnd(.08,.18),drag:2.4})}
+      for(let i=0,n=Math.round(14*P.sparks*k);i<n;i++){const[vx,vz]=dir(P.cone*2),v=rnd(3,13)*sq;
+        dot(f,i%3?'#ffb040':'#fff0c0',rnd(.014,.03)*sq,0,{vx:vx*v,vy:rnd(-.2,2.5),vz:vz*v,g:10,drag:1.4,life:rnd(.2,.45),bounce:1})}
+      for(let i=0,n=Math.round(5*P.sparks*k);i<n;i++){const[vx,vz]=dir(P.cone*2.2),v=rnd(2,9);
+        sprite(SA(i%2?'#ffc060':'#ffe9a0'),f,{s0:rnd(.16,.3)*S,vx:vx*v,vy:rnd(.2,2.2),vz:vz*v,g:7,drag:2,life:rnd(.14,.3),keep:1})}   // larger glowing sparks
+      // 3) embers that drift down and bounce, plus fine powder flecks
+      for(let i=0,n=Math.round(4*P.sparks*k);i<n;i++){const[vx,vz]=dir(.7),v=rnd(1.5,5);sprite(SA(i%3?'#ff9a40':'#ffd070'),f,{s0:rnd(.06,.11),vx:vx*v,vy:rnd(.5,3),vz:vz*v,g:9,drag:1.4,life:rnd(.4,.8),bounce:1,keep:1})}
+      for(let i=0,n=Math.round(8*k);i<n;i++){const[vx,vz]=dir(P.cone*2),v=rnd(2,8);dot(f,'#3a2c20',rnd(.012,.022),0,{vx:vx*v,vy:rnd(0,2),vz:vz*v,g:9,drag:1.6,life:rnd(.2,.4)})}
+      // 4) thin smoke (none for the sniper, which stays clean)
+      if(!clean){for(let i=0,n=Math.round(2*P.smoke*k);i<n;i++){const[vx,vz]=dir(P.cone),v=rnd(.8,2.2);smokeP(f.x+dx*.1,f.y,f.z+dz*.1,vx*v,rnd(.2,.6),vz*v,.12*S,1.6,rnd(.35,.55),.18,SMOKE2,.03*i)}}
       // 5) ejected brass
       const c=new T.Mesh(shell,GM('#e6c25a'));c.position.copy(p);add(c,{s0:1,vx:dz*rnd(2,3.2)+rnd(-.3,.3),vy:rnd(2.8,4),vz:-dx*rnd(2,3.2)+rnd(-.3,.3),g:16,spin:20,life:1.1,bounce:1,keep:1});
-      if(P.after)for(let i=0;i<14;i++){const ang=i/14*6.283+rnd(-.2,.2),sp=rnd(3,6);puffDust(p.x,ground+.1,p.z,Math.cos(ang)*sp,rnd(.1,.5),Math.sin(ang)*sp,rnd(.3,.45),rnd(1.8,2.6),rnd(.6,1),.38)}   // low rolling dust cloud
-      light.position.copy(f);ltMax=.09+S*.02;ltI=3+S*1.6;lt=ltMax},
+      light.position.copy(f);ltMax=.08+S*.02;ltI=2.6+S*1.2;lt=ltMax},
     // ================================================================= bullet in flight (sp = its speed: >= 30 gives the slim needle round)
     bullet(col='#ffe066',sp=20){const g=new T.Group(),fast=typeof sp==='number'&&sp>=30;
       if(!fast){
         const core=new T.Mesh(CG(.05,.34,3,8),GM('#ffffff'));core.rotation.x=Math.PI/2;g.add(core);
         const t1=new T.Mesh(tailG(1.9,.16),TM(col,1)),t2=t1.clone();t2.rotation.z=Math.PI/2;g.add(t1,t2);
         const glow=new T.Sprite(SA(col));glow.scale.set(.75,.75,1);g.add(glow);return g}
-      const big=sp>=60,tail=Math.min(8,1.6+sp*.05),lw=.03+(big?.012:0),core=new T.Mesh(CG(.022+(big?.006:0),.2+(big?.3:0),3,6),GM('#ffffff'));core.rotation.x=Math.PI/2;g.add(core);
+      const big=sp>=60,tail=Math.min(9,2.2+sp*.06),lw=.03+(big?.012:0),core=new T.Mesh(CG(.022+(big?.006:0),.2+(big?.3:0),3,6),GM('#ffffff'));core.rotation.x=Math.PI/2;g.add(core);
       const mk=(w,op,c)=>{const m=new T.Mesh(tailG(tail,w),TM(c,op)),m2=m.clone();m2.rotation.z=Math.PI/2;g.add(m,m2)};
       mk(lw,1,'#ffffff');mk(lw*3.2,.4,col);
       const glow=new T.Sprite(SA(col));glow.scale.setScalar(big?.42:.3);g.add(glow);return g},
     // called every frame per bullet. Slow rounds: glow + a little smoke. Fast rounds (o.fast): a flat-colour smoke ribbon that wobbles, widens and fades out
     trail(p,vx=0,vz=0,col='#ffd54a',o){
-      if(!o||!o.fast){const tk=list.length>300?.35:1;if(Math.random()<.7*tk)sprite(SA(col),p,{life:.13,s0:.28});if(Math.random()<.35*tk)smoke(p,rnd(-.3,.3),rnd(.1,.5),rnd(-.3,.3),{s0:.1,grow:3,life:rnd(.35,.6)});return}
+      if(!o||!o.fast){const tk=list.length>300?.35:1;if(Math.random()<.7*tk)sprite(SA(col),p,{life:.13,s0:.28});if(Math.random()<.1*tk)smoke(p,rnd(-.3,.3),rnd(.1,.5),rnd(-.3,.3),{s0:.1,grow:3,life:rnd(.35,.6)});return}
       let r=rbOf.get(p);if(!r){r=mkRibbon(!!o.after);rbOf.set(p,r);ribbons.push(r)}
       const vy=o.vy||0,l3=Math.hypot(vx,vy,vz)||1;r.touched=clk;feedRibbon(r,p,vx/l3,vy/l3,vz/l3,o.dt||.016)},
     // ================================================================= hit spark (bullet or melee hits an enemy)
     // vx,vz = the hit direction, pw = power (bigger for kills / heavy hits), ang0 = screen angle of the burst's long axis (random if left out).
     // Drawn in the plane facing the camera (which looks along the hit direction): a jagged pale core pops open, fine red / orange / yellow spikes shoot out
     // (denser along the long axis), a few long thin yellow lines streak away, and little glowing sparks fly off.
-    splat(p,vx=0,vz=0,pw=1,ang0){const l=Math.hypot(vx,vz),dx=l?vx/l:0,dz=l?vz/l:1,c=crowd(),bx=p.x-dx*.35,by=p.y+.1,bz=p.z-dz*.35,at=new T.Vector3(bx,by,bz),Rx=-dz,Rz=dx,floor=p.y-.85,axis=ang0??rnd(0,3.1416);
-      const drop=(x,y,z,ang,sp,col,r,life)=>{const m=new T.Mesh(dropG,GM(col)),f=rnd(.2,1.1),ca=Math.cos(ang),sa=Math.sin(ang);m.position.set(x,y,z);
-        const q=add(m,{s0:r,vx:Rx*ca*sp+dx*sp*f*.5,vy:sa*sp+rnd(0,2),vz:Rz*ca*sp+dz*sp*f*.5,g:13,drag:.5,life,drop:1,floor}),gl=new T.Sprite(SA(col));gl.scale.setScalar(4);m.add(gl);return q};
-      const mkS=(tx,col,ti,order,o)=>{const m=new T.Sprite(tx(col,ti));m.position.set(bx,by,bz);m.scale.setScalar(.001);const q=add(m,Object.assign({vx:0,vy:0,vz:0,g:0,drag:0,s0:1,fade:1},o));m.material.depthTest=false;m.renderOrder=order;return q};
-      // core: springy pop, then it shrinks and fades
-      const core=(S,col,order,life)=>{const q=mkS(STM,col,(Math.random()*3)|0,order,{life,
-          anim:(q,a)=>{const s=1-Math.exp(-a*14)*Math.cos(a*28),sz=Math.max(S*s*(1-.45*sm((a-.25)/.75)),.001);q.m.scale.set(sz,sz,1);q.m.material.opacity=1-sm((a-.35)/.65)}});q.m.material.rotation=axis;return q};
-      // short spike: shoots out fast, then thins and fades
-      const spike=(ang,L,W,col,order)=>{const q=mkS(SKM,col,(Math.random()*2)|0,order,{L,W,life:.42,
-          anim:(q,a)=>{const e=1-Math.pow(1-Math.min(1,a/.2),3);q.m.scale.set(Math.max(q.L*e*(1-.4*sm((a-.4)/.6)),.001),Math.max(q.W*(1-.8*sm((a-.3)/.7)),.001),1);q.m.material.opacity=1-sm((a-.5)/.5)}});
-        q.m.center.set(0,.5);q.m.material.rotation=ang;return q};
-      // long thin line: the head races out, the tail follows, so it reads as a streak flying away from the hit
-      const line=(ang,Lm,W,col,order)=>{const ca=Math.cos(ang),sa=Math.sin(ang),q=mkS(SKM,col,1,order,{life:.36,
-          anim:(q,a)=>{const head=Lm*(1-Math.pow(1-Math.min(1,a/.3),3)),tail=Lm*.85*(1-Math.pow(1-Math.max(0,Math.min(1,(a-.08)/.6)),2));
-            q.m.position.set(bx+Rx*ca*tail,by+sa*tail,bz+Rz*ca*tail);q.m.scale.set(Math.max(head-tail,.001),W,1);q.m.material.opacity=1-sm((a-.7)/.3)}});
-        q.m.center.set(0,.5);q.m.material.rotation=ang;return q};
-      const along=()=>axis+(Math.random()<.5?0:Math.PI)+rnd(-.6,.6);   // an angle near the long axis (either end)
-      // glow (additive) + a white pop
-      sprite(SA('#ff9a30'),at,{life:.24,s0:1.9*pw,grow:.5});sprite(SA('#ffffff'),at,{life:.08,s0:.9*pw});
-      for(let i=0,n=Math.round(6*c);i<n;i++)line(Math.random()<.7?along():rnd(0,6.283),rnd(1.4,2.6)*pw,rnd(.04,.07),i%3?'#ffd84a':'#ffffff',1);
-      for(let i=0,n=Math.round(38*c);i<n;i++){const on=Math.random()<.65,r=Math.random(),k=r<.35?0:r<.75?1:2;
-        spike(on?along():rnd(0,6.283),(.28+Math.random()*.42)*(on?1.35:1)*pw,rnd(.05,.09),['#e5392b','#ff7a2a','#ffb52e'][k],2+k)}
-      core(.62*pw,'#f1f1f1',5,.4);core(.34*pw,'#ffffff',6,.28);
-      for(let i=0,n=Math.round(9*c);i<n;i++)drop(bx,by,bz,rnd(0,6.283),rnd(4,10),['#ffd84a','#ff8a24','#ffffff'][i%3],rnd(.025,.05),rnd(.3,.5))},
+    splat(p,vx=0,vz=0,pw=1){const at=new T.Vector3(p.x,p.y+.05,p.z);
+      for(let i=0;i<3;i++)sprite(SA(i%2?'#ffd84a':'#ffffff'),at,{life:.06,s0:(.7+.3*i%2)*pw,delay:i*.07});   // quick flicker of flashes
+      sparkCone(at,vx,vz,Math.round(22*pw),pw);
+      for(let i=0,n=Math.round(4*pw);i<n;i++){const m=new T.Mesh(chip,GM('#ffd9a0'));m.position.copy(at);add(m,{s0:rnd(.02,.04),vx:rnd(-2,2)-vx*.08,vy:rnd(1,3.5),vz:rnd(-2,2)-vz*.08,g:14,spin:rnd(8,20),life:rnd(.3,.5),bounce:1})}},
     // ================================================================= impacts
     hit(p,c='#ffe066',n=6){
       for(let i=0;i<n*2;i++){const a=rnd(0,6.283),sp=rnd(3,9);streak(p,i%2?c:'#fff3c0',Math.cos(a)*sp,rnd(1,6),Math.sin(a)*sp,{len:rnd(.14,.32),g:12,life:rnd(.15,.32)})}
       for(let i=0;i<Math.ceil(n/2);i++){const m=new T.Mesh(chip,GM(c));m.position.copy(p);add(m,{s0:rnd(.03,.06),vx:rnd(-3,3),vy:rnd(1,4),vz:rnd(-3,3),g:14,spin:rnd(8,20),life:rnd(.3,.5),bounce:1})}
-      sprite(SA('#fff3b0'),p,{life:.1,s0:.9});ring(p,c,.25,5,.16);smoke(p,0,.4,0,{s0:.15,life:.45})},
+      for(let i=0;i<2;i++)puffDust(p.x,p.y,p.z,rnd(-.8,.8),rnd(.3,.9),rnd(-.8,.8),rnd(.12,.18),rnd(1.2,1.8),rnd(.3,.5),.25)},
+    // bullet / blade hits a wall, tree or the ground: small cloudy dust + a few chips of debris + a couple of sparks. heavy = sniper round (a bit more, still no rings)
+    wall(p,c='#ffe066',heavy=false){const k=crowd(),n=Math.round((heavy?9:5)*k);
+      for(let i=0;i<n;i++){const a=rnd(0,6.283),sp=rnd(.8,2.4);puffDust(p.x,p.y,p.z,Math.cos(a)*sp,rnd(.4,1.4),Math.sin(a)*sp,rnd(.14,.24)*(heavy?1.3:1),rnd(1.4,2.2),rnd(.4,.7),.4)}
+      for(let i=0,m=Math.round((heavy?9:5)*k);i<m;i++){const ch=new T.Mesh(chip,GM(i%2?'#8a7a62':'#5d5144'));ch.position.copy(p);add(ch,{s0:rnd(.025,.055),vx:rnd(-3.5,3.5),vy:rnd(1.5,5),vz:rnd(-3.5,3.5),g:15,spin:rnd(8,20),life:rnd(.4,.7),bounce:1})}
+      for(let i=0,m=heavy?5:3;i<m;i++){const a=rnd(0,6.283),sp=rnd(4,9);streak(p,i%2?c:'#fff3c0',Math.cos(a)*sp,rnd(1,5),Math.sin(a)*sp,{len:rnd(.12,.26),g:12,life:rnd(.12,.22)})}},
+    // soldier ground smash: a burst of rock / dirt debris that flies out, falls and bounces, with soft dust clouds rolling outward (no rings)
+    smash(p,pw=1){const k=crowd(),gy=(ground?ground(p.x,p.z):p.y)+.08;
+      for(let i=0,n=Math.round(18*pw*k);i<n;i++){const a=rnd(0,6.283),sp=rnd(2,6.5)*pw,ch=new T.Mesh(chip,GM(['#7a6a52','#5d5144','#8f8068','#4a4036'][i%4]));ch.position.set(p.x+Math.cos(a)*.3,gy,p.z+Math.sin(a)*.3);
+        add(ch,{s0:rnd(.05,.14),vx:Math.cos(a)*sp,vy:rnd(3,8)*pw,vz:Math.sin(a)*sp,g:20,spin:rnd(6,16),life:rnd(.6,1.1),bounce:1})}
+      for(let i=0,n=Math.round(14*k);i<n;i++){const a=rnd(0,6.283),sp=rnd(.5,2);ch2(p.x,gy,p.z,a,sp)}
+      for(let i=0,n=Math.round(12*pw*k);i<n;i++){const a=i/n*6.283+rnd(-.2,.2),sp=rnd(1.8,3.8)*pw;puffDust(p.x,gy+.15,p.z,Math.cos(a)*sp,rnd(.3,.9),Math.sin(a)*sp,rnd(.3,.45),rnd(1.8,2.8),rnd(.7,1.2),.42)}
+      for(let i=0;i<4;i++)puffDust(p.x+rnd(-.3,.3),gy+.3,p.z+rnd(-.3,.3),rnd(-.4,.4),rnd(1,1.8),rnd(-.4,.4),rnd(.4,.55),rnd(1.5,2.2),rnd(.9,1.3),.3);
+      function ch2(x,y,z,a,sp){const m=new T.Mesh(chip,GM('#9b8b70'));m.position.set(x,y,z);add(m,{s0:rnd(.02,.04),vx:Math.cos(a)*sp*3,vy:rnd(2,5),vz:Math.sin(a)*sp*3,g:16,spin:rnd(8,20),life:rnd(.4,.8),bounce:1})}},
     // weapon-aware bullet impact (flesh = hit a creature)
     impact(p,st,c='#ffe066',flesh=false){const P=prof(st);
-      if(P.after){this.hit(p,c,16);this.shock(p,'#ffe9b8');sprite(SA('#ffffff'),p,{life:.14,s0:1.8});if(!flesh)this.dust(p)}
-      else if(P.fast)this.hit(p,c,10);else this.hit(p,c,flesh?8:6)},
-    dust(p,c='#bfae82'){for(let i=0;i<5;i++)sprite(SN(c,.55),p,{s0:rnd(.15,.26),grow:2.6,vx:rnd(-1.4,1.4),vy:rnd(.6,1.8),vz:rnd(-1.4,1.4),drag:2,life:rnd(.4,.7)});
-      for(let i=0;i<6;i++){const a=rnd(0,6.283),sp=rnd(2,6);streak(p,'#e8dcb0',Math.cos(a)*sp,rnd(1,4),Math.sin(a)*sp,{len:.14,g:12,life:.25})}},
+      if(flesh)this.hit(p,c,P.after?10:P.fast?8:6);else this.wall(p,c,!!P.after)},
+    dust(p,c='#bfae82'){const k=crowd();for(let i=0,n=Math.round(4*k);i<n;i++)puffDust(p.x,p.y,p.z,rnd(-1.4,1.4),rnd(.5,1.4),rnd(-1.4,1.4),rnd(.16,.26),rnd(1.5,2.3),rnd(.4,.7),.4);
+      for(let i=0;i<4;i++){const m=new T.Mesh(chip,GM('#8a7a62'));m.position.copy(p);add(m,{s0:rnd(.025,.05),vx:rnd(-3,3),vy:rnd(1.5,4),vz:rnd(-3,3),g:15,spin:rnd(8,20),life:rnd(.35,.6),bounce:1})}},
     shock(p,c='#ffe0a0'){ring(p,c,.7,11,.4);ring(p,'#ffffff',.4,7,.25);for(let i=0;i<14;i++){const a=i/14*6.283;sprite(SN('#bfae82',.6),p,{s0:rnd(.2,.32),grow:2.6,vx:Math.cos(a)*rnd(3,5),vy:rnd(.3,1),vz:Math.sin(a)*rnd(3,5),drag:2.4,life:rnd(.5,.8)});
         streak(p,'#e8dcb0',Math.cos(a)*rnd(5,9),rnd(1,4),Math.sin(a)*rnd(5,9),{len:.2,g:12,life:.3})}},
     puff(p,c,n=10){for(let i=0;i<n;i++)dot(p,c,rnd(.1,.2),4,{vy:rnd(1,4),life:rnd(.4,.7),grow:0});for(let i=0;i<5;i++)dot(p,'#ffffff',.06,5);
@@ -243,33 +259,15 @@ export function createFX(scene){
       // 3) glow flash, rings and a light pulse
       sprite(SA(col),at,{life:.34,s0:2.8*pw*(1+.6*D),grow:.9});sprite(SA('#ffffff'),at,{life:.1,s0:1.3*pw*(1+.5*D)});
       if(dual)sprite(SA(col2),at,{life:.3,s0:2.4*pw,grow:.9});
-      ring(at,col,.5,8+5*D,.3);if(dual)ring(at,col2,.4,10,.34);
       light.position.copy(at);ltMax=.16;ltI=4+3*D;lt=ltMax;
-      // 3b) HD flash: burst of light rays, anamorphic streak with a star core, ground scorch rings
-      {const ray=sprite(SA(col,rayTex),at,{life:.26,s0:3.4*pw*(1+.5*D),grow:.7,fade:1});ray.m.material.rotation=rnd(0,6.283);
-       const st=sprite(SA('#ffffff',flare2Tex),at,{life:.22,s0:4.2*pw*(1+.4*D),grow:.5,fade:1});st.m.material.rotation=rnd(-.5,.5);
-       const gy=(ground?ground(p.x,p.z):p.y-.85)+.06,up=new T.Vector3(0,1,0);diskRing(new T.Vector3(p.x,gy,p.z),up,col,.6,7+3*D,.42,.85);
-       if(dual||vert)diskRing(new T.Vector3(p.x,gy+.01,p.z),up,'#ffffff',.4,10,.36,.8)}
-      // hit-spark burst (twice, on different axes, for dual)
-      this.splat(p,Math.sin(yaw),Math.cos(yaw),1.15*pw*(1+.3*D),sd>0?.55:Math.PI-.55);
-      if(dual)this.splat(p,Math.sin(yaw),Math.cos(yaw),1.05*pw,sd>0?Math.PI-.55:.55);
-      // 4) fluid energy: soft additive wisps that flow along the cut, plus drifting glow motes that rise
-      for(let i=0,n=Math.round((9+9*D)*k);i<n;i++){const ang=side+(i%2?0:Math.PI)+rnd(-.4,.4),v=rnd(1.5,4.5);
-        fireP(p.x+Math.sin(side)*rnd(-.8,.8),p.y+rnd(-.1,.3),p.z+Math.cos(side)*rnd(-.8,.8),Math.sin(ang)*v,rnd(.1,.9),Math.cos(ang)*v,rnd(.22,.4)*pw,rnd(1,1.8),rnd(.3,.5),.55,heat)}
-      for(let i=0,n=Math.round((30+28*D)*k);i<n;i++){const ang=side+(i%2?0:Math.PI)+rnd(-.5,.5),v=rnd(1,5),cc=dual&&i%2?col2:col;
-        sprite(SA(i%3?cc:'#ffffff'),at,{s0:rnd(.05,.13)*pw,vx:Math.sin(ang)*v,vy:rnd(.2,2),vz:Math.cos(ang)*v,drag:1.6,g:-.5,life:rnd(.5,1.05),keep:1})}
-      // 5) realistic sparks: long thin streaks that fly off along the cut, bounce on the ground and settle; plus a shower of fine hot flecks
-      for(let i=0,n=Math.round((18+22*D)*k);i<n;i++){const a=rnd(0,6.283),sp=rnd(10,26);   // radial burst: fast thin streaks in every direction
-        streak(p,i%2?'#ffffff':col,Math.cos(a)*sp,rnd(-1,7),Math.sin(a)*sp,{len:rnd(.5,1.3),w:.9,g:12,life:rnd(.18,.4),drag:2.2,bounce:1})}
-      for(let i=0,n=Math.round((8+10*D)*k);i<n;i++){const a=rnd(0,6.283),sp=rnd(4,11);   // chunky glowing shards
-        streak(p,i%2?col:'#ffffff',Math.cos(a)*sp,rnd(2,8),Math.sin(a)*sp,{len:rnd(.18,.4),w:3.2,g:16,life:rnd(.35,.7),drag:1.2,bounce:1})}
-      for(let i=0,n=Math.round((22+22*D)*k);i<n;i++){const a=rnd(0,6.283),v=rnd(1,5.5),cc=dual&&i%2?col2:i%3?'#ffb040':col;   // long-lived embers that arc up, fall and bounce
-        sprite(SA(cc),at,{s0:rnd(.04,.1)*pw,vx:Math.cos(a)*v,vy:rnd(1,5),vz:Math.sin(a)*v,g:3,drag:1.2,life:rnd(.7,1.6),bounce:1,keep:1})}
-      for(let i=0,n=Math.round((34+40*D)*k);i<n;i++){const ang=side+(i%2?0:Math.PI)+rnd(-.7,.7),sp=rnd(6,22)*(1+.2*D),h=Math.random();
-        streak(p,h<.4?'#fff7d6':h<.75?'#ffd84a':'#ff9a30',Math.sin(ang)*sp,rnd(-.5,5),Math.cos(ang)*sp,{len:rnd(.35,.9),w:1.2,g:14,life:rnd(.25,.55),drag:1.8,bounce:1})}
-      for(let i=0,n=Math.round((26+34*D)*k);i<n;i++)dot(p,i%2?'#ffd070':'#ff8a24',rnd(.014,.03),0,{vx:rnd(-5,5),vy:rnd(1.5,6),vz:rnd(-5,5),g:14,drag:.8,life:rnd(.4,.8),bounce:1});
-      for(let i=0;i<8;i++){const m=new T.Mesh(chip,GM(i%2?'#ffd9a0':col));m.position.copy(p);add(m,{s0:rnd(.03,.06),vx:rnd(-4,4),vy:rnd(1.5,4.5),vz:rnd(-4,4),g:14,spin:rnd(8,20),life:rnd(.3,.55),bounce:1})}
-      this.hit(p,col,dual?12:8);if(vert){this.shock(p,col);this.dust(p)}},
+      // sparks fly back the way the blade came from (opposite the slash direction)
+      const sx=Math.sin(yaw),sz=Math.cos(yaw);
+      this.splat(p,sx,sz,1.15*pw*(1+.3*D));
+      sparkCone(at,sx,sz,Math.round((22+20*D)*pw),1.15*pw,['#ffffff',col,'#ffb040']);
+      if(dual)sparkCone(at,sx,sz,18,pw,['#ffffff',col2,'#ffb040']);
+      for(let i=0,n=Math.round((8+8*D)*k);i<n;i++){const ang=Math.atan2(-sx,-sz)+rnd(-.5,.5),v=rnd(1.5,4.5);
+        fireP(p.x,p.y+rnd(-.1,.3),p.z,Math.sin(ang)*v,rnd(.1,.9),Math.cos(ang)*v,rnd(.2,.34)*pw,rnd(1,1.6),rnd(.25,.4),.5,heat)}
+      for(let i=0;i<8;i++){const m=new T.Mesh(chip,GM(i%2?'#ffd9a0':col));m.position.copy(p);add(m,{s0:rnd(.03,.06),vx:-sx*rnd(1,5)+rnd(-2,2),vy:rnd(1.5,4.5),vz:-sz*rnd(1,5)+rnd(-2,2),g:14,spin:rnd(8,20),life:rnd(.3,.55),bounce:1})}},
     // ================================================================= jump / air dash
     // takeoff: a small ring of dust kicked out around the feet
     jump(p){const k=crowd(),n=Math.round(8*k);for(let i=0;i<n;i++){const a=i/n*6.283+rnd(-.2,.2),sp=rnd(1.2,2.4);puffDust(p.x,p.y+.1,p.z,Math.cos(a)*sp,rnd(.2,.6),Math.sin(a)*sp,rnd(.2,.3),rnd(1.3,1.9),rnd(.4,.65),.34)}},
