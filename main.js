@@ -10,6 +10,7 @@ import {createAtmosphere} from './js/atmosphere.js';
 import {createHUD} from './js/hud.js';
 import {WEAPONS} from './js/weapons/index.js';
 import {createSettings} from './js/settings.js';
+import {createRoguelike} from './js/roguelike.js';   // roguelike mode: waves, enemy spawning, per-wave weapon roulette
 import {createMode5v5} from './js/5v5.js';
 import {near,blocked,segBlocked} from './js/obsGrid.js';
 import {patchCat} from './js/enemies/playersAi.js';
@@ -65,6 +66,8 @@ function hints(){const k=a=>kb.label(a),e=document.querySelector('#title .kb');i
 gfx=createSettings({atm,map,audio,kb,onResolution:resize,getMobile:()=>{try{return mobile}catch(e){return null}},getPad:()=>{try{return pad}catch(e){return null}}});   // `mobile` is created further down (touch layout editor lives in Settings > Controls)   // graphics options (presets + per-option, saved, applied live)
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
 let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0,mkOn=false,camAz=0,camTo=0;
+// title / main menu camera = a fixed-angle DRONE SHOT (no rotation). drone fades 1 -> 0 while the cat maker is open (it keeps its own camera) and snaps to 0 in a match.
+const DRONE={dist:15,pit:-.82,yaw:.6,fov:58,lift:3.2};let drone=1;const dp={x:0,z:0};   // dp = smoothed point the drone hovers over (it glides after the cat instead of being glued to it)
 // ---- character save slots (5): { cfg, best } or null. Old single-cat saves migrate into slot 1.
 const SLOTN=5;let curSlot=-1;
 function loadSlots(){let s=null;try{s=JSON.parse(localStorage.getItem('sad.slots'))}catch(e){}
@@ -72,11 +75,10 @@ function loadSlots(){let s=null;try{s=JSON.parse(localStorage.getItem('sad.slots
   s=s.slice(0,SLOTN).map(x=>x&&x.cfg?x:null);while(s.length<SLOTN)s.push(null);return s}
 const MENUS=['title','slots','modes','worlds','wnew','pvp','search','lobby'];let lobby=null;   // lobby = the PVP LOCAL screens (created further down); declared here because enterTitle() runs during start-up   // declared up here: enterTitle() runs during start-up, before the menu code further down
 let slots=loadSlots();const saveSlots=()=>localStorage.setItem('sad.slots',JSON.stringify(slots));
-let gm='wave',elapsed=0,wave=1,kills=0,score=0,spawnT=1,best=+localStorage.getItem('sad.best')||0;
+let gm='wave',best=+localStorage.getItem('sad.best')||0;
 const P={x:0,z:0,hp:5,max:5,inv:0,cd:0,mv:false,aim:0,shake:0,hx:0,hz:0,rel:1,camDist:2.8,camYaw:0,camPitch:0,roll:0,rcd:0,rdx:0,rdz:1,kick:0,wpn:0,blink:0,scope:false,hs:0,dash:0,dx:0,dz:1,fwd:0,side:0,viewYaw:0,chain:0,chainT:0,dead:false,frozen:false,gy:0,y:0,vy:0,jy:0,ey:0,air:false,canDash:true,ad:0,fk:0},bullets=[],ebul=[],enemies=[],pickups=[],keys={},mouse={l:false};
-// ---- waves: a wave is a fixed number of enemies; the next wave starts only once every one of them is defeated
-const WV={phase:'intro',t:0,left:0,total:0,spawnT:0};
-const quota=w=>Math.min(44,4+w*2),maxAlive=w=>Math.min(4+Math.floor(w*1.2),12);
+// ---- ROGUELIKE (endless waves + weapon roulette) lives in js/roguelike.js; main.js only feeds it the shared game objects
+const rogue=createRoguelike({P,enemies,ebul,scene,fx,hud,audio,WEAPONS,buildEnemy,STATS,getMap:()=>map,getBest:()=>best,equipIdx:i=>equipIdx(i),casts:o=>casts(o),prepare:()=>beginRun()});
 const bGeo=new T.SphereGeometry(.14,8,8),bMat=new T.MeshBasicMaterial({color:'#ffe066'}),eMat=new T.MeshBasicMaterial({color:'#ff7a3c'});
 const hs=new T.Shape();hs.moveTo(.25,.25);hs.bezierCurveTo(.25,.25,.2,0,0,0);hs.bezierCurveTo(-.3,0,-.3,.35,-.3,.35);hs.bezierCurveTo(-.3,.55,-.15,.77,.25,.95);hs.bezierCurveTo(.65,.77,.8,.55,.8,.35);hs.bezierCurveTo(.8,.35,.8,0,.5,0);hs.bezierCurveTo(.35,0,.25,.25,.25,.25);
 const heartGeo=new T.ExtrudeGeometry(hs,{depth:.25,bevelEnabled:true,bevelSize:.06,bevelThickness:.06,bevelSegments:3});heartGeo.translate(-.25,-.5,-.12);heartGeo.scale(.5,.5,.5);const heartMat=new T.MeshStandardMaterial({color:'#ff4d6d',roughness:.5,emissive:'#ff2a52',emissiveIntensity:.35});
@@ -89,7 +91,7 @@ function reload(){if(state!=='play'||paused||!hasMag()||RL.t>0||P.dead||P.frozen
 const hudAmmo=()=>!P.unarmed&&hasMag()?hud.ammo(ammo[P.wpn],WP().stats.mag,RL.t>0?1-RL.t/RL.dur:-1):hud.ammo(0,0,-1);
 function equipIdx(i){P.wpn=i;P.scope=false;RL.t=0;cat.userData.equip(WEAPONS[i]);hud.weapon(i);hudAmmo()}
 function setCat(){if(cat){cat.userData.dispose&&cat.userData.dispose();scene.remove(cat)}cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.fx=fx;cat.userData.equip(WP());hud.weapon(P.wpn)}
-function setWeapon(i){if(P.unarmed)return;i=(i+WEAPONS.length)%WEAPONS.length;const lo=gm==='v5'&&P.loadout;if(lo&&!lo.includes(i))i=lo[0]===P.wpn?lo[1]:lo[0];   // 5v5: wheel / buttons just flip between your two roulette weapons
+function setWeapon(i){if(P.unarmed||rogue.locked())return;i=(i+WEAPONS.length)%WEAPONS.length;const lo=(gm==='v5'||rogue.active())&&P.loadout;if(lo&&!lo.includes(i))i=lo[0]===P.wpn?lo[1]:lo[0];   // 5v5: wheel / buttons just flip between your two roulette weapons
   if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
 function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false,kill=false;
   enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;if(e.hp<=0)kill=true;e.hbT=2.5;e.fl=.2;e.sf=.34;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;const hp_=new T.Vector3(e.x,(e.gy||0)+.9,e.z);fx.slashHit(hp_,P.camYaw,d,st.slashColor||'#ffe8a8',e.hp<=0?1.35:1);hitAny=true}});
@@ -108,26 +110,19 @@ function airDash(){if(!P.canDash||P.ad>0)return;P.canDash=false;let f=P.fwd,s=P.
 function tumble(){if((state!=='play'&&state!=='title')||paused||P.roll>0||P.rcd>0||P.dead||P.frozen)return;if(P.air){airDash();return}let f=P.fwd,s=P.side;if(!f&&!s)f=1;
   const fxv=Math.sin(P.camYaw),fzv=Math.cos(P.camYaw),rx=-Math.cos(P.camYaw),rz=Math.sin(P.camYaw);let dx=fxv*f+rx*s,dz=fzv*f+rz*s;const l=Math.hypot(dx,dz)||1;
   if(cat.userData.tumble(f,s)){P.roll=.55;P.rcd=.95;map.ripple(P.x,P.z,1.8);P.rdx=dx/l;P.rdz=dz/l;P.inv=Math.max(P.inv,.55);P.scope=false;fx.dash(fp.set(P.x,P.gy+.12,P.z),P.rdx,P.rdz)}}
-function hudAll(){hud.hp(P.hp,P.max);hud.wave(wave);hud.foes(WV.left+enemies.length,WV.total);hud.score(score,kills,best)}
-function beginWave(w){wave=w;WV.total=WV.left=quota(w);WV.phase='intro';WV.t=2.6;WV.spawnT=.4;P.chain=0;hud.banner(`WAVE ${w}`,`${WV.total} enemies`);hudAll()}
+function hudAll(){rogue.hudAll()}
 const TOUCH=isMobile();   // phones / tablets / installed Android app: touch controls, no mouse capture
 function lockPtr(){if(TOUCH)return;try{const r=$('#c').requestPointerLock&&$('#c').requestPointerLock();r&&r.catch&&r.catch(()=>{})}catch(e){}}
 function setPaused(v){paused=v;hud.pause(v);if(v){mouse.l=false;P.scope=false;document.exitPointerLock&&document.exitPointerLock()}else lockPtr()}
 function clearAll(){fx.clearMarks();[enemies,pickups].forEach(a=>{a.forEach(e=>scene.remove(e.g||e.m));a.length=0});[bullets,ebul].forEach(a=>{a.forEach(b=>scene.remove(b.m));a.length=0})}
 function push(o,rad){for(const r of near(map.obs,o.x,o.z)){const dx=o.x-r.x,dz=o.z-r.z,d=Math.hypot(dx,dz),m=r.r+rad;if(d<m&&d>0){o.x=r.x+dx/d*m;o.z=r.z+dz/d*m}}}
 function enterTitle(){lobby&&lobby.leave();leave5();clearAll();refill();state='title';paused=false;mouse.l=false;document.exitPointerLock&&document.exitPointerLock();
-  P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.dash=0;wave=3;spawnT=.6;bot.t=0;bot.wt=0;hud.show(false);
-  equipIdx(0);setView(-.17);$('#over').hidden=true;showMenu('title');$('#bestT').textContent=best;renderPill($('#rkpill'))}   // rank card on the title (refreshes after every ranked match)
-function start(){leave5();clearAll();refill();P.x=0;P.z=0;P.hp=P.max;P.inv=0;elapsed=0;wave=1;kills=0;score=0;spawnT=.5;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();equipIdx(0);hud.name(cfg.name);beginWave(1)}
-function spawn(){const k=Math.random()<Math.min(.55,.22+wave*.08)?'ranged':'melee';let x,z,n=0;
-  do{const a=rnd(0,6.283),d=rnd(13,18);x=P.x+Math.cos(a)*d;z=P.z+Math.sin(a)*d}while(n++<25&&(Math.abs(x)>map.W/2-2||Math.abs(z)>map.H/2-2||map.obs.some(o=>Math.hypot(o.x-x,o.z-z)<o.r+.9)));
-  x=Math.max(-map.W/2+2,Math.min(map.W/2-2,x));z=Math.max(-map.H/2+2,Math.min(map.H/2-2,z));const g=buildEnemy(k);casts(g);scene.add(g);const hp=Math.ceil(STATS[k].hp*(1+(wave-1)*.15));
-  enemies.push({g,k,x,z,y:0,hp,mhp:hp,hbT:0,r:STATS[k].r,t:rnd(0,3),s:0,st:'idle',sta:1,cd:rnd(.6,1.4),fl:0,yaw:Math.atan2(P.x-x,P.z-z),alert:rnd(0,1)<.5?4:0,
-    wx:null,wz:0,wt:0,dodge:0,dcd:0,dsd:1,ddx:0,ddz:0,lastB:null,stun:0,pt:0,hit:false,burst:0,bcd:0,aimT:0,mt:0,sneak:false,strafe:1,jcd:rnd(1.5,4),jy:0,jx:0,jz:0,tx:0,tz:0,dc:k==='ranged'?.35:.2});
-  fx.puff(new T.Vector3(x,.3,z),g.userData.col,4)}
+  P.x=0;P.z=0;dp.x=0;dp.z=0;P.hp=P.max;P.inv=0;P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.dash=0;rogue.demoReset();bot.t=0;bot.wt=0;hud.show(false);
+  equipIdx(0);setView(0);$('#over').hidden=true;showMenu('title');$('#bestT').textContent=best;renderPill($('#rkpill'))}   // rank card on the title (refreshes after every ranked match)
+function beginRun(){leave5();clearAll();refill();P.x=0;P.z=0;P.hp=P.max;P.inv=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);lockPtr();hud.name(cfg.name)}   // shared start-of-run reset; rogue.start() calls it, then rolls the first weapon
 function hurt(){if(P.inv>0)return;if(state==='title'){P.inv=.8;P.shake=Math.max(P.shake,.15);return}
-  hud.hurt();P.hp--;P.inv=1.2;P.blink=1.2;P.shake=.4;hudAll();if(P.hp<=0){audio.play('lose');state='over';mouse.l=false;document.exitPointerLock&&document.exitPointerLock();best=Math.max(best,score);localStorage.setItem('sad.best',best);if(slots[curSlot]){slots[curSlot].best=best;saveSlots()}hud.show(false);$('#over').hidden=false;
-  $('#sW').textContent=wave;$('#sK').textContent=kills;$('#sS').textContent=score;$('#best').textContent='Best: '+best}}
+  hud.hurt();P.hp--;P.inv=1.2;P.blink=1.2;P.shake=.4;hudAll();if(P.hp<=0){rogue.cancel();audio.play('lose');state='over';mouse.l=false;document.exitPointerLock&&document.exitPointerLock();best=Math.max(best,rogue.R.score);localStorage.setItem('sad.best',best);if(slots[curSlot]){slots[curSlot].best=best;saveSlots()}hud.show(false);$('#over').hidden=false;
+  $('#sW').textContent=rogue.R.wave;$('#sK').textContent=rogue.R.kills;$('#sS').textContent=rogue.R.score;$('#best').textContent='Best: '+best}}
 function shoot(){const w=WP(),st=w.stats;
   if(st.mag&&state!=='title'){if(RL.t>0)return;if(ammo[P.wpn]<=0){reload();return}ammo[P.wpn]--;if(ammo[P.wpn]<=0)reload()}   // the title-screen demo has unlimited ammo
   P.cd=st.cd;cat.userData.kick(st.kick||1);if(state!=='title'){const s=w.sfx||{};audio.play(s.shoot||'shoot',{vol:s.vol,pitch:s.pitch})}   // title-screen demo bot stays quiet
@@ -249,15 +244,8 @@ function update(dt){
   const pvpLive=state==='play'&&gm==='v5'&&!!mode5&&mode5.pvp;   // a custom battle never stops for one player's pause menu or hit-lag: the others are still fighting
   if(!(state==='play'||demo)||(paused&&!pvpLive))return;
   if(P.hs>0){P.hs-=dt;if(!pvpLive)dt*=.03}   // hit-lag: the world nearly freezes for a moment
-  if(demo){spawnT-=dt;if(spawnT<=0&&enemies.length<5){spawn();spawnT=2.2}}
-  else if(gm!=='v5'&&gm!=='story'){elapsed+=dt;
-    if(WV.phase==='intro'){WV.t-=dt;if(WV.t<=0)WV.phase='fight'}
-    else if(WV.phase==='fight'){
-      WV.spawnT-=dt;if(WV.left>0&&enemies.length<maxAlive(wave)&&WV.spawnT<=0){spawn();WV.left--;WV.spawnT=Math.max(.45,1.8-wave*.12);hudAll()}
-      if(WV.left<=0&&enemies.length===0){WV.phase='clear';WV.t=4.5;const bonus=100*wave;score+=bonus;if(P.hp<P.max)P.hp++;
-        ebul.forEach(b=>scene.remove(b.m));ebul.length=0;fx.shock(new T.Vector3(P.x,.1,P.z),'#9be84f');audio.play('win');hud.banner('WAVE CLEARED',`+${bonus} bonus   ·   +1 paw`,'clear long');hudAll();hud.foes(0,WV.total,'Area clear')}}
-    else if(WV.phase==='clear'){WV.t-=dt;hud.foes(0,WV.total,`Next wave in ${Math.ceil(WV.t)}`);if(WV.t<=0)beginWave(wave+1)}
-    P.chainT=Math.max(0,P.chainT-dt);if(P.chainT<=0)P.chain=0}
+  if(demo)rogue.demoUpdate(dt);
+  else if(gm!=='v5'&&gm!=='story')rogue.update(dt);   // roguelike waves (js/roguelike.js)
   
   // Camera rotation using Arrow keys
   const turnSpeed = 2.2, pitchSpeed = 1.8;
@@ -309,7 +297,7 @@ function update(dt){
   enemies.forEach(e=>{ai(e,dt);e.hbT=Math.max(0,e.hbT-dt)});
   for(let i=0;i<enemies.length;i++)for(let j=i+1;j<enemies.length;j++){const a=enemies[i],b=enemies[j],dx=b.x-a.x,dz=b.z-a.z,d=Math.hypot(dx,dz),m=(a.r+b.r)*.9;if(d<m&&d>0){const k=(m-d)/2/d;a.x-=dx*k;a.z-=dz*k;b.x+=dx*k;b.z+=dz*k}}
   for(let i=enemies.length-1;i>=0;i--){const e=enemies[i];if(e.hp>0)continue;fx.puff(new T.Vector3(e.x,.7,e.z),e.g.userData.col||'#6f8f45');scene.remove(e.g);enemies.splice(i,1);
-    if(!demo){P.chain++;P.chainT=3.2;score+=10*Math.min(5,1+Math.floor(P.chain/3));kills++;hud.hit(true)}
+    if(!demo){rogue.onKill();hud.hit(true)}
     if(Math.random()<(P.hp<=2?.2:.08)){const m=new T.Mesh(heartGeo,heartMat);const hy=map.heightAt(e.x,e.z);m.position.set(e.x,hy+.8,e.z);m.rotation.x=-.4;scene.add(m);pickups.push({m,x:e.x,z:e.z,t:0,hy})}if(!demo)hudAll()}
   for(let i=pickups.length-1;i>=0;i--){const k=pickups[i];k.t+=dt;k.m.position.y=k.hy+.8+Math.sin(k.t*3)*.15;k.m.rotation.y=k.t*2;
     if(Math.hypot(P.x-k.x,P.z-k.z)<.9){if(P.hp<P.max)P.hp++;fx.hit(k.m.position,'#ff9db8',10);scene.remove(k.m);pickups.splice(i,1);hudAll()}}
@@ -317,7 +305,7 @@ function update(dt){
 }
 // ---- 5v5 SPIKE RUSH: hooks the mode in js/5v5.js needs (it drives 9 AI cats; you play on the blue team)
 let wuid=0;
-function leave5(){P.unarmed=false;P.loadout=null;hud.loadout&&hud.loadout(null);mode5&&mode5.stop();saveWorldPos();storyMap&&(storyMap.group.visible=false);document.body.classList.remove('story');gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
+function leave5(){rogue.stop();P.unarmed=false;P.loadout=null;hud.loadout&&hud.loadout(null);mode5&&mode5.stop();saveWorldPos();storyMap&&(storyMap.group.visible=false);document.body.classList.remove('story');gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
 function ensureArena(){if(!arena){arena=buildArena(11,atm.envMap);scene.add(arena.group);arena.setQuality(lastQ);arena.group.visible=false}}
 // 5v5: every round is played on a freshly generated random map (js/5v5.js calls ctx.newMap behind the loading screen). The new arena replaces the old one everywhere (arena / map).
 function swapArena(theme,seed){
@@ -371,7 +359,7 @@ async function start5v5(pv){   // pv = a custom battle ({slots,theme,seed,host,m
   go5v5(pv);starting5=false}
 function begin5v5(){gm='v5';
   forest.group.visible=false;arena.group.visible=true;map=arena;if(scene.fog){scene.fog.near=35;scene.fog.far=170}
- P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;elapsed=0;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
+ P.x=0;P.z=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;paused=false;state='play';['#title','#over'].forEach(s=>$(s).hidden=true);
   hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.camYaw=0;P.viewYaw=0;P.camPitch=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
   document.body.classList.add('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='ROUND';lockPtr();
   P.unarmed=true;P.wpn=0;P.scope=false;RL.t=0;try{cat.userData.equip(null)}catch(e){}hud.loadout([]);hudAmmo();   // 5v5 starts with empty hands: the roulette hands out the weapons
@@ -433,17 +421,20 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     cat.position.set(P.x,P.air?P.y:P.gy,P.z);
     cat.rotation.y = P.camYaw;
     P.blink=Math.max(0,P.blink-dt);cat.visible=!P.dead&&(state==='title'||P.blink<=0||Math.floor(clock*20)%2===0);
+    {const wd=state==='title'&&!mkOn?1:0;drone=state==='title'?drone+(wd-drone)*Math.min(1,dt*3.5):0;if(Math.abs(drone-wd)<.002)drone=wd;   // title + main menu = drone shot, cat maker = old behind-the-cat camera, a match = no drone at all
+     const k=Math.min(1,dt*2.2);dp.x+=(P.x-dp.x)*k;dp.z+=(P.z-dp.z)*k}
     cat.userData.setAim(P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.setAir&&cat.userData.setAir(P.air?P.jy:0,P.vy);cat.userData.holster(false);cat.userData.update(paused?0:lag?dt*.06:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
-    P.shake=Math.max(0,P.shake-dt*1.2);const sh=P.shake*P.shake*1.2;
+    P.shake=Math.max(0,P.shake-dt*1.2);const sh=P.shake*P.shake*1.2*(1-drone);   // the drone shot never shakes
     
-    const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),dist=(SV?SPEC_H:state==='title'?4.8:lerp2(P.camDist,1.7,aw))+kk*.12,rightOffset=SV?0:state==='title'?.5:lerp2(1.4,.8,aw);
-    const targetFov=lerp2(gfx.get().fov||70,WP().stats.zoom||40,aw)+kk*2+P.fk*7;if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
-    const vy=state==='title'?P.viewYaw+camAz-spin:FOC.camYaw,pit=(state==='title'?-.25:SV?-1.18:P.camPitch)+kk*.02;   // spectating = TOP VIEW: high above the ally, looking steeply down
+    const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),kc=kk*(1-drone),dist=lerp2(SV?SPEC_H:state==='title'?4.8:lerp2(P.camDist,1.7,aw),DRONE.dist,drone)+kc*.12,rightOffset=lerp2(SV?0:state==='title'?.5:lerp2(1.4,.8,aw),0,drone);
+    const targetFov=lerp2(lerp2(gfx.get().fov||70,WP().stats.zoom||40,aw)+kc*2+P.fk*7,DRONE.fov,drone);if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
+    const vy0=state==='title'?P.viewYaw+camAz-spin:FOC.camYaw,vy=vy0+Math.atan2(Math.sin(DRONE.yaw-vy0),Math.cos(DRONE.yaw-vy0))*drone,pit=lerp2(state==='title'?-.25:SV?-1.18:P.camPitch,DRONE.pit,drone)+kc*.02;   // drone: fixed yaw + fixed downward pitch   // spectating = TOP VIEW: high above the ally, looking steeply down
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
-    const px=FOC.x+rx*rightOffset,pz=FOC.z+rz*rightOffset;
-    const camX=px-dX*dist+rx*rnd(-sh,sh)*.7,camZ=pz-dZ*dist+rz*rnd(-sh,sh)*.7;let camY=FOC.ey+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0)+(state==='play'&&!SV?(gfx.get().cam||0)*.015*(1-aw):0);   // Settings > Camera height: raises / lowers the camera only (the aim point stays put); fades out while scopedcamY=Math.max(.35+map.heightAt(camX,camZ),camY);
+    const fx0=lerp2(FOC.x,dp.x,drone),fz0=lerp2(FOC.z,dp.z,drone),px=fx0+rx*rightOffset,pz=fz0+rz*rightOffset;
+    const camX=px-dX*dist+rx*rnd(-sh,sh)*.7,camZ=pz-dZ*dist+rz*rnd(-sh,sh)*.7;let camY=FOC.ey+1.0-dY*dist+rnd(-sh,sh)+(P.roll>0?-.15:0)+(state==='play'&&!SV?(gfx.get().cam||0)*.0375*(1-aw):0);   // Settings > Camera height: raises / lowers the camera only (the aim point stays put); fades out while scoped
+    camY=Math.max(.35+map.heightAt(camX,camZ),camY);   // never let the camera sink below the ground
     cam.position.set(camX,camY,camZ);if(!SV)for(const o of near(map.obs,cam.position.x,cam.position.z)){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
-    cam.lookAt(FOC.x+dX*11,1+FOC.ey+dY*11,FOC.z+dZ*11);   // looks at the point the bullets converge on
+    cam.lookAt(fx0+dX*11,1+FOC.ey+dY*11+drone*DRONE.lift,fz0+dZ*11);   // looks at the point the bullets converge on (drone: a bit higher, so the cat sits in the lower half under the logo)
     cam.rotation.z+=rnd(-sh,sh)*.02+(P.roll>0?Math.sin(P.roll*14)*.02:0);
     if(state==='play'){cam.updateMatrixWorld();hudAmmo();hud.scope(aw);hud.crosshair(7+kk*34+(P.mv?3:0)+(P.scope?-3:0)+P.shake*10,!paused&&!SV);hud.tumble(1-P.rcd/.95);
       hud.combo(Math.min(5,1+Math.floor(P.chain/3)),P.chain,P.chainT/3.2);hud.bars(enemies,cam,clock);hud.radar(FOC,enemies,pickups,map,FOC.camYaw)}
@@ -460,8 +451,8 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     console.log(`[prof] frame ${((t-pf.t0)*k).toFixed(1)}ms | update ${(pf.u*k).toFixed(2)} (bot think ${(bp.think*k).toFixed(2)}, bot avatar ${(bp.avatar*k).toFixed(2)}) | render submit ${(pf.r*k).toFixed(2)} | gpu wait after submit ${gpuWait.toFixed(1)}ms | WHOLE-FRAME draw calls ${i.calls} tris ${i.triangles} | visible cats ${cats} | programs ${renderer.info.programs?renderer.info.programs.length:'?'} | geometries ${renderer.info.memory.geometries} textures ${renderer.info.memory.textures} | biggest scene groups (visible meshes): ${grp.slice(0,6).map(x=>x[1]+':'+x[0]).join(', ')}`);
     pf.n=pf.u=pf.r=0;pf.t0=t;if(globalThis.__botProf){bp.think=0;bp.avatar=0}}}})(last);
 // audio: browsers keep sound locked until a click / key press; every button also gets the click sound
-addEventListener('pointerdown',e=>{audio.unlock();if(e.target.closest&&e.target.closest('button,.btn,.mode,.cslot'))audio.play('click')},true);
-addEventListener('keydown',e=>{audio.unlock();const c=kb.canon(e.code);if(c===null){if(e.code==='Space')e.preventDefault();return}keys[c]=true;if(c==='Escape'&&state==='play'&&!paused)setPaused(true);else if(c==='KeyP'&&state==='play')setPaused(!paused);if(c==='KeyR'&&state==='play')reload();if(c==='KeyR'&&state==='over')(gm==='v5'?start5v5():start());if(c==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(c)){const n=+c[5]-1;setWeapon(gm==='v5'&&P.loadout?(P.loadout[n]??P.wpn):n)}if(c==='Space'){e.preventDefault();if(!e.repeat)jump()}if(c==='ShiftLeft'&&!e.repeat)tumble();});addEventListener('keyup',e=>{const c=kb.canon(e.code);if(c)keys[c]=false});
+addEventListener('pointerdown',e=>{audio.unlock();if(e.target.closest&&e.target.closest('button,.btn,.mode,.mm-t,.cslot,#title'))audio.play('click')},true);
+addEventListener('keydown',e=>{audio.unlock();const c=kb.canon(e.code);if(c===null){if(e.code==='Space')e.preventDefault();return}keys[c]=true;if(c==='Escape'&&state==='play'&&!paused)setPaused(true);else if(c==='KeyP'&&state==='play')setPaused(!paused);if(c==='KeyR'&&state==='play')reload();if(c==='KeyR'&&state==='over')(gm==='v5'?start5v5():rogue.start());if(c==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(c)){const n=+c[5]-1;setWeapon((gm==='v5'||rogue.active())&&P.loadout?(P.loadout[n]??P.wpn):n)}if(c==='Space'){e.preventDefault();if(!e.repeat)jump()}if(c==='ShiftLeft'&&!e.repeat)tumble();});addEventListener('keyup',e=>{const c=kb.canon(e.code);if(c)keys[c]=false});
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
 addEventListener('mousedown',e=>{if(state!=='play')return;
@@ -550,12 +541,23 @@ async function enterStory(i){
     await loading.done();hud.banner(map.biomeName(P.x,P.z),w.name);
   }catch(err){console.error(err);loading.fail('Could not build the world: '+(err&&err.message||err));await new Promise(r=>setTimeout(r,2500));loading.done();enterTitle()}
   finally{busyStory=false}}
-function selectSlot(i){curSlot=i;cfg=JSON.parse(JSON.stringify(slots[i].cfg));best=slots[i].best||0;setCat();$('#bestT').textContent=best;$('#modeName').textContent=cfg.name||'Ming';
+function selectSlot(i){curSlot=i;try{localStorage.setItem('sad.lastSlot',i)}catch(e){}cfg=JSON.parse(JSON.stringify(slots[i].cfg));best=slots[i].best||0;setCat();$('#bestT').textContent=best;$('#modeName').textContent=cfg.name||'Ming';
   const h=headHTML(cfg),hd=$('#modeHd');hd.innerHTML=h;hd.style.cssText=h?'':dotBg(cfg);renderPill($('#rkpill'));showMenu('modes')}
-$('#play').onclick=()=>{renderSlots();showMenu('slots');const b=$('#menuBack');b.classList.remove('in');void b.offsetWidth;b.classList.add('in')};   // Play is the only time Back swipes in
+// ---- TAP TO PLAY: tap anywhere on the title. Straight to the main menu with your last cat; with no cat yet, the "Create your own character" modal comes first.
+const hasChar=()=>slots.some(Boolean);
+function enterMain(){
+  const ls=parseInt(localStorage.getItem('sad.lastSlot'),10),i=slots[ls]?ls:slots.findIndex(Boolean);
+  selectSlot(i);const b=$('#menuBack');b.classList.remove('in');void b.offsetWidth;b.classList.add('in')}   // the Back button swipes in when you leave the title
+$('#title').addEventListener('click',e=>{if(e.target.closest('#install'))return;if(!hasChar()){$('#newcat').hidden=false;return}enterMain()});
+$('#ncGo').onclick=()=>{$('#newcat').hidden=true;openCreator(0,true)};   // modal -> cat maker (slot 1); saving it lands in the main menu
+$('#ncBack').onclick=()=>{$('#newcat').hidden=true};
 $('#menuBack').addEventListener('animationend',e=>e.currentTarget.classList.remove('in'));
-$('#menuBack').onclick=()=>{if(lobby.active()){lobby.back();return}if(!$('#wnew').hidden){renderWorlds();showMenu('worlds');return}if(!$('#worlds').hidden){showMenu('modes');return}if(!$('#modes').hidden){renderSlots();showMenu('slots')}else showMenu('title')};
-$('#mRogue').onclick=()=>{hideMenus();start()};          // roguelike endless = the forest map
+$('#menuBack').onclick=()=>{if(lobby.active()){lobby.back();return}if(!$('#wnew').hidden){renderWorlds();showMenu('worlds');return}if(!$('#worlds').hidden){showMenu('modes');return}
+  if(!$('#slots').hidden){   // My Character -> back to the main menu (with the current cat, or the first one that is left after a delete)
+    if(!slots[curSlot]){const j=slots.findIndex(Boolean);if(j<0){showMenu('title');return}selectSlot(j);return}
+    showMenu('modes');return}
+  showMenu('title')};   // main menu -> TAP TO PLAY
+$('#mRogue').onclick=()=>{hideMenus();rogue.start()};          // roguelike endless = the forest map
 $('#mV5').onclick=()=>{hideMenus();start5v5()};
 // ---- PVP (custom battle): WebRTC room (host's browser = the room) + the Host / Join / lobby screens
 const net=createNet();
@@ -566,21 +568,21 @@ net.onSrv=m=>{if(m.t==='closed'&&(starting5||inPvp())){pvpClosed=true;if(inPvp()
   if(inPvp()){if(m.t==='peer-')mode5.peerLeft(m.id);return}lobby.onSrv(m)};
 $('#mPvp').onclick=()=>lobby.open();
 $('#mStory').onclick=()=>{renderWorlds();showMenu('worlds')};          // story = generated world, 3 save slots
-['#mRogue','#mV5','#mStory','#mPvp'].forEach(s=>$(s).addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();$(s).click()}}));
+['#mRogue','#mV5','#mStory','#mPvp','#mChar','#gfxOpen','#mCoop','#mAch','#mDaily'].forEach(s=>$(s).addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();$(s).click()}}));
 $('#slotList').onclick=e=>{const el=e.target.closest(".cslot");if(!el)return;const i=+el.dataset.i,a=e.target.closest('button')?.dataset.a;
-  if(a==='del'){if(confirm('Delete '+(slots[i].cfg.name||'this cat')+'? This cannot be undone.')){slots[i]=null;saveSlots();renderSlots()}return}
+  if(a==='del'){if(confirm('Delete '+(slots[i].cfg.name||'this cat')+'? This cannot be undone.')){slots[i]=null;if(i===curSlot)curSlot=-1;saveSlots();renderSlots()}return}
   if(a==='edit'){openCreator(i);return}
   if(!slots[i])openCreator(i);else selectSlot(i)};
-$('#exit').onclick=()=>{try{window.close()}catch(e){}setTimeout(()=>{$('#bye').hidden=false},200)};   // browsers only allow close() on windows opened by script, so show a goodbye screen otherwise
-$('#byeBack').onclick=()=>{$('#bye').hidden=true};
-$('#again').onclick=start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
-function openCreator(slotIdx){
+$('#mChar').onclick=()=>{renderSlots();showMenu('slots')};   // My Character = the save slots (switch / edit / create / delete)
+['#mCoop','#mAch','#mDaily'].forEach(s=>{const el=$(s);el.onclick=()=>{el.classList.remove('nope');void el.offsetWidth;el.classList.add('nope')};el.addEventListener('animationend',ev=>{if(ev.animationName==='mmNope')el.classList.remove('nope')})});   // not available yet: just a shake
+$('#again').onclick=rogue.start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
+function openCreator(slotIdx,fromTitle){
   // the title battlefield keeps running live behind the maker (the demo cat keeps fighting): only the cfg, the camera angle and the side of the screen change
   const prevCfg=cfg;cfg=slots[slotIdx]?JSON.parse(JSON.stringify(slots[slotIdx].cfg)):{};setCat();hideMenus();mkOn=true;spin=0;spinHeld=false;camAz=camTo=0;viewTo=.17;   // cat glides to the left, the panel is on the right
-  const close=()=>{mkOn=false;camTo=0;spin=0;viewTo=-.17};
+  const close=()=>{mkOn=false;camTo=0;spin=0;viewTo=0};   // back to the centred drone shot
   openMaker(cfg,{change:c=>{cfg=c;setCat()},view:a=>camTo=a,
     done:()=>{cfg.name=cfg.name||'Ming';slots[slotIdx]={cfg:JSON.parse(JSON.stringify(cfg)),best:slots[slotIdx]?slots[slotIdx].best:0};saveSlots();close();selectSlot(slotIdx)},   // saved -> straight to mode select
-    cancel:()=>{cfg=prevCfg;setCat();close();renderSlots();showMenu('slots')}})};
+    cancel:()=>{cfg=prevCfg;setCat();close();if(fromTitle&&!hasChar())showMenu('title');else{renderSlots();showMenu('slots')}}})};
 // ---- keyboard navigation for every menu screen (title, slots, worlds, modes, pause, game over, settings, cat maker):
 // W A S D / arrow keys jump to the nearest item in that direction, Enter or E accepts, Esc goes back (Left/Right also adjust a slider).
 // It only listens while one of those screens is up, so the in-game controls are never touched.
@@ -589,16 +591,16 @@ function openCreator(slotIdx){
   const vis=e=>{if(!e||e.hidden)return false;const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity)>.05};
   const touchy=()=>document.body.classList.contains('mobile')||matchMedia('(hover:none)').matches||matchMedia('(pointer:coarse)').matches||matchMedia('(max-width:900px) and (max-height:520px)').matches;   // phones / tablets: no key guide
   const UP=['KeyW','ArrowUp'],DN=['KeyS','ArrowDown'],LT=['KeyA','ArrowLeft'],RT=['KeyD','ArrowRight'],OK=['Enter','NumpadEnter','KeyE'],BACK=['Escape','Backspace'];
-  const SEL={title:'#title button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',wnew:'#wnew input[type=text],#wnew .dopt,#wnew .btn',modes:'#modes .mode',pvp:'#pvp .mode',search:'#search input[type=text],#search .btn',lobby:'#lobby .cslot,#lobby .cslot button,#lobby .btn',over:'#over button',pause:'#pause button',bye:'#bye button',
+  const SEL={title:'#title button',newcat:'#newcat button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',wnew:'#wnew input[type=text],#wnew .dopt,#wnew .btn',modes:'#modes .mm-t',pvp:'#pvp .mode',search:'#search input[type=text],#search .btn',lobby:'#lobby .cslot,#lobby .cslot button,#lobby .btn',over:'#over button',pause:'#pause button',
     settings:'#gfx button,#gfx input[type=range]',maker:'#maker button,#maker input'};
-  const BACKS=new Set(['slots','worlds','wnew','modes','pvp','search','lobby','bye','settings','maker']);
+  const BACKS=new Set(['slots','worlds','wnew','modes','pvp','search','lobby','newcat','settings','maker']);
   function screen(){
     const L=$('#loading');if(L&&!L.classList.contains('out'))return null;
     if(document.pointerLockElement)return null;                          // mouse captured = you are playing, never a menu
-    if(state==='play'&&!paused&&!vis($('#gfx'))&&!vis($('#bye')))return null;   // in a match (roguelike, story, 5v5): no menu, no key guide
-    if(vis($('#bye')))return 'bye';
+    if(state==='play'&&!paused&&!vis($('#gfx')))return null;   // in a match (roguelike, story, 5v5): no menu, no key guide
     if(vis($('#gfx')))return 'settings';
     if(mkOn||vis($('#maker')))return 'maker';
+    if(vis($('#newcat')))return 'newcat';
     if(vis($('#pause')))return 'pause';
     if(vis($('#over')))return 'over';
     for(const s of ['wnew','pvp','search','lobby','slots','worlds','modes','title'])if(vis($('#'+s)))return s;
@@ -637,7 +639,7 @@ function openCreator(slotIdx){
     return b1||b2}
   function bump(el,dir){const st=+el.step||1,span=(+el.max)-(+el.min),d=Math.max(st,Math.round(span/20/st)*st),v=Math.max(+el.min,Math.min(+el.max,+el.value+dir*d));
     if(v===+el.value)return;el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))}
-  const backBtn=sc=>sc==='bye'?$('#byeBack'):sc==='maker'?$('#maker [data-a="cancel"]'):sc==='settings'?$('#gDone'):BACKS.has(sc)?$('#menuBack'):null;
+  const backBtn=sc=>sc==='newcat'?$('#ncBack'):sc==='maker'?$('#maker [data-a="cancel"]'):sc==='settings'?$('#gDone'):BACKS.has(sc)?$('#menuBack'):null;
   addEventListener('keydown',e=>{
     if(e.ctrlKey||e.altKey||e.metaKey)return;
     const sc=screen();if(!sc)return;
