@@ -1,11 +1,12 @@
 // Faceted rocks with strata, darker crevices and moss on the sun-facing planes (baked into vertex colour).
 import * as T from 'three';
 import {mat4,vnoise} from './batch.js';
+import {engrave} from './engrave.js';
 
 const smooth=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t)};
 const ROCKS=[0,1,2].map(i=>{const g=new T.IcosahedronGeometry(1,2),p=g.attributes.position;
   for(let k=0;k<p.count;k++){const x=p.getX(k),y=p.getY(k),z=p.getZ(k),f=1+.3*(vnoise(x*1.6+i*5,y*1.6,z*1.6)-.5)+.12*(vnoise(x*4+i,y*4,z*4)-.5);p.setXYZ(k,x*f,y*f,z*f)}
-  g.computeVertexNormals();return g});            // non-indexed => flat shaded facets
+  engrave(g,i*5+1,{scale:.9,depth:.05});g.computeVertexNormals();return g});            // non-indexed => flat shaded facets
 const GREY=['#8b95a1','#7f8a97','#968f86','#858f8b'];
 export function addRock(B,R,x,z,r,moss=true){
   const col=GREY[(R()*4)|0],sy=.7+R()*.2,m=mat4(x,r*sy*.55,z,r,r*sy,r*(.9+R()*.25),(R()-.5)*.25,R()*6.28,(R()-.5)*.25);
