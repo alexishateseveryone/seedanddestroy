@@ -34,8 +34,8 @@ const same=(a,b)=>ROWS.every(([,k])=>Math.abs(a[k]-b[k])<1e-6);
 export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null,getPad=()=>null,root=document.body}){
   let st={preset:'medium',q:{...PRESETS.medium},fps:false,auto:false,blur:1,fov:70,cap:0,cam:0},tab='gfx';   // blur 0..3 (Off/Low/Medium/High) and fov are personal options: presets never change them
   try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&j.q){st={...st,...j,q:{...PRESETS.medium,...j.q}};if(!j.av)st.auto=false}}catch(e){}   // auto-lower is OFF by default (av = saved by a version that knows this: older saves had it forced on)
-  st.cam=Math.max(-100,Math.min(100,Math.round(+st.cam||0)));   // camera height preference: -100 (lowest) .. 100 (highest), 0 = default; main.js reads it live every frame
-  const camTxt=v=>v===0?'Default':(v>0?'+':'')+v;
+  st.cam=Math.max(0,Math.min(40,Math.round(+st.cam||0)));   // camera height preference: 0 (default, lowest) .. 40 (highest); main.js reads it live every frame
+  const camTxt=v=>v<=0?'Default':'+'+v;
   const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({preset:st.preset,q:st.q,fps:st.fps,auto:st.auto,av:1,blur:st.blur,fov:st.fov,cap:st.cap,cam:st.cam}))}catch(e){}};
   const presetOf=q=>ORDER.find(n=>same(PRESETS[n],q))||'custom';
   // only treat the touch controls as usable when they really expose the settings API (get/set/edit/reset)
@@ -134,7 +134,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
       <div class="grows">${ROWS.map(([name,k,opts,hint])=>`<div class="grow" title="${hint}"><span>${name}<small>${hint}</small></span>${seg(`data-k="${k}"`,opts)}</div>`).join('')}
         <div class="grow"><span>Motion blur<small>Smears the picture when you turn the camera</small></span>${seg('data-x="blur"',[[0,'Off'],[1,'Low'],[2,'Medium'],[3,'High']])}</div>
         <div class="grow"><span>Field of view<small>Wider sees more around you (default 70)</small></span><div class="fovr"><input type="range" id="fovR" min="50" max="120" step="1"><b id="fovV">70°</b></div></div>
-        <div class="grow"><span>Camera height<small>Move the camera up or down behind your cat (0 = default)</small></span><div class="fovr"><input type="range" id="camR" min="-100" max="100" step="5"><b id="camV" style="min-width:64px">Default</b><button class="kbtn" data-cam0="1" title="Back to default">Reset</button></div></div>
+        <div class="grow"><span>Camera height<small>Raise the camera behind your cat (0 = default, up to +40)</small></span><div class="fovr"><input type="range" id="camR" min="0" max="40" step="1"><b id="camV" style="min-width:64px">Default</b><button class="kbtn" data-cam0="1" title="Back to default">Reset</button></div></div>
         <div class="grow"><span>FPS limit<small>Caps the frame rate. Lower = cooler and saves battery</small></span>${seg('data-x="cap"',[[30,'30'],[60,'60'],[120,'120'],[0,'Unlimited']])}</div>
         <div class="grow"><span>Show FPS<small>Frame rate counter (in game only)</small></span>${seg('data-x="fps"',[[0,'Off'],[1,'On']])}</div>
         <div class="grow"><span>Auto-lower when slow<small>Steps the preset down if the game lags</small></span>${seg('data-x="auto"',[[0,'Off'],[1,'On']])}</div></div>
