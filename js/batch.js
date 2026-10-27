@@ -71,7 +71,7 @@ export class Batch{
   /** build merged meshes. env: PMREM texture for ambient/reflection on the scenery. */
   build(env){const grp=new T.Group(),R={foliage:.82,bark:.95,rock:.88,prop:.8};
     for(const kind in this.k){const g=mergeGeometries(this.k[kind],false);this.k[kind].forEach(x=>x.dispose());
-      const m=new T.MeshStandardMaterial({vertexColors:true,roughness:R[kind]??.9,metalness:0,envMap:env||null,envMapIntensity:kind==='foliage'?.7:.55});
+      const m=new T.MeshStandardMaterial({vertexColors:true,side:kind==='foliage'?T.DoubleSide:T.FrontSide,roughness:R[kind]??.9,metalness:0,envMap:env||null,envMapIntensity:kind==='foliage'?.7:.55});
       if(kind==='foliage')windify(m,{amp:1,flutter:1});else if(kind==='bark')windify(m,{amp:.35,flutter:0});
       const mesh=new T.Mesh(g,m);mesh.castShadow=true;mesh.receiveShadow=true;mesh.matrixAutoUpdate=false;mesh.name='batch-'+kind;grp.add(mesh)}
     this.k={};return grp}
