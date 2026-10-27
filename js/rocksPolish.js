@@ -6,6 +6,7 @@
 import * as T from 'three';
 import {mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 import {mat4,vnoise,fbm3} from './batch.js';
+import {engrave} from './engrave.js';
 
 const smooth=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t)};
 const lcg=s=>()=>((s=(s*1664525+1013904223)>>>0)/4294967296);
@@ -27,6 +28,7 @@ function makeRock(detail,seed){
     const k=1+rough/len;x*=k;y*=k;z*=k;                                                                              // fine roughness + strata ripples
     if(y<-.5)y=-.5+(y+.5)*.25;                                                                                       // flat-ish base
     p.setXYZ(i,x,y,z)}
+  engrave(g,seed,{depth:.05});                                                                                        // carved cracks + chisel hatching
   g.computeVertexNormals();return g}
 
 const CACHE={};
