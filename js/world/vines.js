@@ -6,8 +6,9 @@
 //   vines.update(t,P,windOn)   every frame (P = player {x,y?,z})     vines.dispose()
 import * as T from 'three';
 
-const N=9,S=5,LV=8,MAXV=56,RANGE=44,RANGE2=RANGE*RANGE;
-const VV=N*S+LV*4,IV=(N-1)*S*6+LV*6;                 // vertices / indices per vine
+const N=9,S=5,LV=8,LP=14,MAXV=56,RANGE=44,RANGE2=RANGE*RANGE;
+const LT=[.17,.4,.64,.86];                           // leaf stations along the midrib (each = left edge, midrib, right edge) + base + tip = 14 vertices per leaf
+const VV=N*S+LV*LP,IV=(N-1)*S*6+LV*48;                 // vertices / indices per vine
 const STEM=['#436f33','#4f7d38','#3d6a30'],LEAF=['#2f8a3a','#3aa04a','#4fb350','#2a7a38','#45a844'];
 const _c=new T.Color();
 
@@ -15,7 +16,10 @@ export function createVines(env=null,world=null){
   const pos=new Float32Array(MAXV*VV*3),col=new Float32Array(MAXV*VV*3),idx=new Uint16Array(MAXV*IV);
   for(let sl=0;sl<MAXV;sl++){const vb=sl*VV;let k=sl*IV;
     for(let i=0;i<N-1;i++)for(let j=0;j<S;j++){const a=vb+i*S+j,a1=vb+i*S+(j+1)%S,b=a+S,b1=a1+S;idx[k++]=a;idx[k++]=a1;idx[k++]=b;idx[k++]=a1;idx[k++]=b1;idx[k++]=b}
-    for(let l=0;l<LV;l++){const q=vb+N*S+l*4;idx[k++]=q;idx[k++]=q+1;idx[k++]=q+2;idx[k++]=q;idx[k++]=q+2;idx[k++]=q+3}}
+    for(let l=0;l<LV;l++){const q=vb+N*S+l*LP,Li=i=>q+1+i*3,Mi=i=>q+2+i*3,Ri=i=>q+3+i*3,tip=q+13,T3=(a,b,c)=>{idx[k++]=a;idx[k++]=b;idx[k++]=c};
+      T3(q,Li(0),Mi(0));T3(q,Mi(0),Ri(0));                                                  // a real leaf outline: base, 4 widening/narrowing stations, pointed tip
+      for(let i=0;i<3;i++){T3(Li(i),Li(i+1),Mi(i));T3(Mi(i),Li(i+1),Mi(i+1));T3(Mi(i),Mi(i+1),Ri(i));T3(Ri(i),Mi(i+1),Ri(i+1))}
+      T3(Li(3),tip,Mi(3));T3(Mi(3),tip,Ri(3))}}
   const geo=new T.BufferGeometry();geo.setAttribute('position',new T.BufferAttribute(pos,3).setUsage(T.DynamicDrawUsage));geo.setAttribute('color',new T.BufferAttribute(col,3));
   geo.setAttribute('normal',new T.BufferAttribute(new Float32Array(pos.length),3).setUsage(T.DynamicDrawUsage));geo.setIndex(new T.BufferAttribute(idx,1));
   const mesh=new T.Mesh(geo,new T.MeshStandardMaterial({vertexColors:true,roughness:.85,side:T.DoubleSide,envMap:env,envMapIntensity:.4}));
@@ -27,7 +31,8 @@ export function createVines(env=null,world=null){
   function paintVine(st){const v=st.v,vb=st.slot*VV,sc=STEM[(v.seed|0)%3];
     for(let i=0;i<N;i++){_c.set(sc).multiplyScalar(.85+.3*i/(N-1));for(let j=0;j<S;j++){const k=(vb+i*S+j)*3;col[k]=_c.r;col[k+1]=_c.g;col[k+2]=_c.b}}
     for(let l=0;l<LV;l++){_c.set(LEAF[(((v.seed*7+l*3)|0)%LEAF.length+LEAF.length)%LEAF.length]);
-      for(let q=0;q<4;q++){const f=q===0?.7:q===2?1.12:1,k=(vb+N*S+l*4+q)*3;col[k]=_c.r*f;col[k+1]=_c.g*f;col[k+2]=_c.b*f}}
+      for(let q=0;q<LP;q++){const st=((q-1)/3)|0,pt=(q-1)%3,f=q===0?.62:q===LP-1?1.12:(.78+.1*st)*(pt===1?1.2:pt===0?.96:1),k=(vb+N*S+l*LP+q)*3;   // dark base, light midrib vein, bright tip
+        col[k]=_c.r*f;col[k+1]=_c.g*f;col[k+2]=_c.b*f}}
     geo.attributes.color.needsUpdate=true}
   function claim(v,sl){
     const st={v,slot:sl,p:new Float32Array(N*3),pv:new Float32Array(N*3),rest:new Float32Array(N*3),seg:v.len/(N-1)};
@@ -44,7 +49,7 @@ export function createVines(env=null,world=null){
     for(let i=0;i<MAXV;i++){const st=slots[i];if(st&&!keep.has(st.v))release(st)}
     for(const v of cand){if(v.st)continue;const sl=slots.indexOf(null);if(sl<0)break;claim(v,sl)}}
 
-  const _t=new T.Vector3(),_n=new T.Vector3(),_b=new T.Vector3(),_u=new T.Vector3(),_d=new T.Vector3(),_s=new T.Vector3();
+  const _t=new T.Vector3(),_n=new T.Vector3(),_b=new T.Vector3(),_u=new T.Vector3(),_d=new T.Vector3(),_s=new T.Vector3(),_q=new T.Vector3();
   function step(st,dt,t,pl,wind){
     const p=st.p,pv=st.pv,rest=st.rest,v=st.v,f60=dt*60,damp=Math.pow(.965,f60),g=18*v.s*dt*dt;
     const gust=wind?.5+.5*Math.sin(t*.35+v.x*.07+v.z*.05):0;
@@ -72,15 +77,19 @@ export function createVines(env=null,world=null){
       const f=i/(N-1),r=r0*(1-.55*f)*(1+.18*Math.sin(i*2.3+v.seed));                      // slightly knobbly
       for(let j=0;j<S;j++){const an=j/S*6.283185,c=Math.cos(an)*r,s=Math.sin(an)*r,o=(vb+i*S+j)*3;
         pos[o]=p[k]+_n.x*c+_b.x*s;pos[o+1]=p[k+1]+_n.y*c+_b.y*s;pos[o+2]=p[k+2]+_n.z*c+_b.z*s}
-      if(i>=1){const l=i-1,ang=l*2.4+v.seed,ca=Math.cos(ang),sa=Math.sin(ang),fl=Math.sin(Math.PI*f),L=(.2+.16*fl)*sc*(i===N-1?.75:1),W=L*.4,
-          fx=wind?Math.sin(t*3+l*1.7+v.seed)*.14:0,o=(vb+N*S+l*4)*3;
+      if(i>=1){const l=i-1,ang=l*2.4+v.seed,ca=Math.cos(ang),sa=Math.sin(ang),fl=Math.sin(Math.PI*f),L=(.2+.16*fl)*sc*(i===N-1?.75:1),W=L*.34,
+          fx=wind?Math.sin(t*3+l*1.7+v.seed)*.14:0,o=(vb+N*S+l*LP)*3;
         _u.set(_n.x*ca+_b.x*sa,_n.y*ca+_b.y*sa,_n.z*ca+_b.z*sa);                           // side the leaf grows on (round and round the stem)
         _d.copy(_u).multiplyScalar(.95).addScaledVector(_t,.3);_d.y-=.55;_d.addScaledVector(_u,fx).normalize();                   // leaves droop
         _s.crossVectors(_d,_t);if(_s.lengthSq()<1e-6)_s.copy(_b);_s.normalize();
-        pos[o]=p[k]+_u.x*r;pos[o+1]=p[k+1]+_u.y*r;pos[o+2]=p[k+2]+_u.z*r;                    // base on the stem
-        pos[o+3]=p[k]+_d.x*L*.5+_s.x*W;pos[o+4]=p[k+1]+_d.y*L*.5+_s.y*W;pos[o+5]=p[k+2]+_d.z*L*.5+_s.z*W;
-        pos[o+6]=p[k]+_d.x*L;pos[o+7]=p[k+1]+_d.y*L-.1*L;pos[o+8]=p[k+2]+_d.z*L;              // tip curls down a little
-        pos[o+9]=p[k]+_d.x*L*.5-_s.x*W;pos[o+10]=p[k+1]+_d.y*L*.5-_s.y*W;pos[o+11]=p[k+2]+_d.z*L*.5-_s.z*W}}}
+        _q.crossVectors(_d,_s);                                                                   // leaf normal (upper face)
+        pos[o]=p[k]+_u.x*r;pos[o+1]=p[k+1]+_u.y*r;pos[o+2]=p[k+2]+_u.z*r;                             // base on the stem
+        for(let m=0;m<4;m++){const tt=LT[m],w=W*Math.sin(Math.PI*Math.pow(tt,.72))*(1-.15*tt),                // ovate outline: wide near the base, narrowing to the tip
+            cx=p[k]+_d.x*L*tt,cy=p[k+1]+_d.y*L*tt-.16*L*tt*tt,cz=p[k+2]+_d.z*L*tt,lift=w*.28,sag=w*.1,a=o+3+m*9;
+          pos[a]=cx-_s.x*w-_q.x*sag;pos[a+1]=cy-_s.y*w-_q.y*sag;pos[a+2]=cz-_s.z*w-_q.z*sag;               // left edge (a little lower)
+          pos[a+3]=cx+_q.x*lift;pos[a+4]=cy+_q.y*lift;pos[a+5]=cz+_q.z*lift;                              // midrib, folded up
+          pos[a+6]=cx+_s.x*w-_q.x*sag;pos[a+7]=cy+_s.y*w-_q.y*sag;pos[a+8]=cz+_s.z*w-_q.z*sag}           // right edge
+        pos[o+39]=p[k]+_d.x*L;pos[o+40]=p[k+1]+_d.y*L-.26*L;pos[o+41]=p[k+2]+_d.z*L;}}}
 
   let lastWind=true;
   return{mesh,
