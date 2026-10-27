@@ -11,8 +11,19 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="./node_modules/bootstrap-icons/font/bootstrap-icons.min.css">
 <link rel="stylesheet" href="style.css">
 <link rel="preload" as="image" href="assets/images/sadmlogo.png">
+<script type="importmap">
+  {
+    "imports": {
+      "three": "./node_modules/three/build/three.module.js",
+      "three/addons/": "./node_modules/three/examples/jsm/",
+      "peerjs": "./node_modules/peerjs/dist/bundle.mjs"
+    }
+  }
+</script>
+
 <!-- Google Fonts CDN Backup -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -20,8 +31,6 @@
 
 <!-- Bootstrap Icons CDN Backup -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/font/bootstrap-icons.min.css">
-
-<link rel="stylesheet" href="style.css">
 
 <!-- Three.js Import Map using High-Speed CDN -->
 <script type="importmap">{
@@ -33,8 +42,8 @@
 <link rel="stylesheet" href="style.css">
 <link rel="preload" as="image" href="assets/images/sadmlogo.png">
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>  <!-- WebRTC (PeerJS) -> window.Peer, used by js/net.js -->
-
 <style>
+
   /* Swaying & Floating Animation for the Logo */
   @keyframes logoSway {
     0% {
@@ -76,8 +85,7 @@
   html,body{margin:0;overflow:hidden;overscroll-behavior:none;-webkit-text-size-adjust:100%}
   .panel{padding-left:max(10px,env(safe-area-inset-left));padding-right:max(10px,env(safe-area-inset-right));box-sizing:border-box}
   .card{max-height:94vh;max-height:94dvh;max-width:96vw;overflow:auto}
-  @media (max-width:700px){.animated-logo{margin-left:0!important}#title .tbox>div:first-child{margin-left:0!important}}
-  /* HUD shrinks on short screens (phones in landscape) and grows on very large ones */
+    /* HUD shrinks on short screens (phones in landscape) and grows on very large ones */
   @media (max-height:520px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.72}#v5bar,#v5sp,#v5feed{zoom:.75}#v5pr{zoom:.8;bottom:110px!important}#banner{zoom:.7}}
   @media (max-height:400px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.62}#v5bar,#v5sp,#v5feed{zoom:.65}}
   @media (max-width:640px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.7}}
@@ -94,20 +102,29 @@
 <div id="toast"></div>
 
 <div id="title" class="panel">
-  <div class="tbox" style="align-items: flex-start; text-align: left;">
-    <!-- Custom PNG Title Logo pulled further to the left -->
-    <div style="width: 100%; margin-bottom: 12px; margin-left: -35px; display: flex; justify-content: flex-start;">
-      <img src="assets/images/sadmlogo.png" alt="Seed and Destroy No Mercy!" class="animated-logo" style="width: 100%; max-width: 460px; height: auto; filter: drop-shadow(0 12px 22px rgba(0,0,0,0.55)); image-rendering: pixelated;">
-    </div>
-
+  <div class="tbox">
+    <img src="assets/images/sadmlogo.png" alt="Seed and Destroy No Mercy!" class="animated-logo tlogo" draggable="false">
     <div class="best" hidden>BEST <b id="bestT">0</b></div>
-    <button id="play" class="btn green"><svg class="ic"><use href="#paw"/></svg>Play</button>
-    <button id="gfxOpen" class="btn gold"><i class="bi bi-gear-fill" style="font-size:22px"></i>Settings</button>
-    <button id="exit" class="btn red"><i class="bi bi-box-arrow-right" style="font-size:22px"></i>Exit Game</button>
-    <button id="install" class="btn green" hidden><i class="bi bi-download" style="font-size:22px"></i>Install App</button>
+    <button id="play" class="tap" type="button">TAP TO PLAY</button>
   </div>
+  <!-- only visible when the browser says the game can be installed (js/install.js un-hides it) -->
+  <button id="install" class="btn green" hidden><i class="bi bi-download" style="font-size:22px"></i>Install App</button>
   <div class="tmark" style="position:fixed;right:max(18px,env(safe-area-inset-right));bottom:max(14px,env(safe-area-inset-bottom));left:auto;top:auto;z-index:3;pointer-events:none;white-space:nowrap;text-align:right;letter-spacing:.06em;opacity:.85;color:#f1e8d2;font-size:14px;text-shadow:0 2px 0 rgba(23,16,14,.85),0 3px 7px rgba(0,0,0,.55)">&copy; 2026 Superioraj Games&trade;</div>
+</div>
 
+<!-- first time only: no character yet -> tap lands here before the main menu, then straight into the cat maker -->
+<div id="newcat" class="menu" hidden>
+  <div class="card ncard">
+    <div class="ncpaw"><svg class="ic"><use href="#paw"/></svg></div>
+    <h2>Create Your Own Character</h2>
+    <p class="ncp">Every adventure starts with a cat. Make yours before you jump in!</p>
+    <ol class="ncsteps">
+      <li><b>1</b><span>Style your cat<small>Fur, face, clothes and more</small></span></li>
+      <li><b>2</b><span>Give it a name<small>Type it in the box at the top left</small></span></li>
+      <li><b>3</b><span>Save it<small>Then you land in the main menu</small></span></li>
+    </ol>
+    <div class="row"><button id="ncGo" class="btn green" type="button"><i class="bi bi-brush-fill"></i>Let's Go!</button><button id="ncBack" class="btn gold" type="button">Not Now</button></div>
+  </div>
 </div>
 <div id="maker" hidden></div>
 <div id="kbhint" hidden data-s="" data-back="0">
@@ -141,35 +158,23 @@
   </div>
 </div>
 
-<!-- game mode select: back + title on top, tall Story card on the left, Roguelike + 5v5 wide cards stacked on the right -->
+<!-- main menu: grid layout. Left: Adventure (story) + Survival (roguelike) + Coop + 5v5 + PVP + Settings + Achievement. Right: My Character + Daily Task.
+     Coop / Achievement / Daily Task are placeholders (class "lock"): they only shake when pressed. -->
 <div id="modes" class="menu" hidden>
-  <div class="mscreen">
-    <div class="mbar"><h2 class="mtitle">Game Mode Select</h2><div class="who"><span class="hd" id="modeHd"></span><b id="modeName">Ming</b></div></div>
-    <div class="mlist" id="mList">
-      <div class="mode story" id="mStory" role="button" tabindex="0" style="--i:0">
-        <div class="fx"><i class="fog"></i><i class="star" style="--x:10%;--y:12%;--d:2.6s;--w:0s"></i><i class="star" style="--x:26%;--y:30%;--d:3.2s;--w:-1s"></i><i class="star" style="--x:44%;--y:10%;--d:2.2s;--w:-2s"></i><i class="star" style="--x:62%;--y:24%;--d:3.6s;--w:-0.5s"></i><i class="star" style="--x:80%;--y:14%;--d:2.8s;--w:-1.5s"></i><i class="star" style="--x:90%;--y:38%;--d:3.1s;--w:-2.5s"></i><i class="star" style="--x:16%;--y:50%;--d:3.4s;--w:-0.8s"></i><i class="star" style="--x:70%;--y:56%;--d:2.4s;--w:-1.2s"></i></div>
-        <span class="mi"><i class="bi bi-book-fill"></i></span>
-        <div class="mt"><b>Story</b><span class="sub">Explore</span><small>Wander a world made just for you: forests, rainforest, savanna, desert and mountains, cut by winding rivers</small></div>
-        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
+  <div class="mscreen mm">
+    <div class="mm-main">
+      <div class="mm-grid" id="mList">
+        <div class="mm-t col adv" id="mStory" role="button" tabindex="0" style="--i:0"><i class="bi bi-compass-fill mm-i"></i><span class="mm-l"><b>Adventure</b><small>Explore your own world</small></span></div>
+        <div class="mm-t surv" id="mRogue" role="button" tabindex="0" style="--i:1"><i class="bi bi-tree-fill mm-i"></i><span class="mm-l"><b>Survival</b><small>Roguelike</small></span></div>
+        <div class="mm-t lock coop" id="mCoop" role="button" tabindex="0" aria-disabled="true" style="--i:2"><i class="bi bi-people-fill mm-i"></i><span class="mm-l"><b>Coop</b></span><em class="soon">Soon</em></div>
+        <div class="mm-t v5" id="mV5" role="button" tabindex="0" style="--i:3"><i class="bi bi-crosshair mm-i"></i><span class="mm-l"><b>5v5 Spike</b><span class="rkx"><span class="rkpill" id="rkpill"></span></span></span></div>
+        <div class="mm-t pvp" id="mPvp" role="button" tabindex="0" style="--i:4"><i class="bi bi-globe2 mm-i"></i><span class="mm-l"><b>PVP Local</b><small>Custom battle</small></span></div>
+        <div class="mm-t col set" id="gfxOpen" role="button" tabindex="0" style="--i:5"><i class="bi bi-gear-fill mm-i"></i><span class="mm-l"><b>Settings</b></span></div>
+        <div class="mm-t col lock ach" id="mAch" role="button" tabindex="0" aria-disabled="true" style="--i:6"><i class="bi bi-trophy-fill mm-i"></i><span class="mm-l"><b>Achievement</b></span><em class="soon">Soon</em></div>
       </div>
-      <div class="mode rogue wide" id="mRogue" role="button" tabindex="0" style="--i:1">
-        <div class="fx"><i class="sun"></i><i class="leaf a" style="--x:8%;--s:14px;--d:7.5s;--w:-1s"></i><i class="leaf b" style="--x:20%;--s:18px;--d:9s;--w:-4s"></i><i class="leaf a" style="--x:33%;--s:12px;--d:6.5s;--w:-2.5s"></i><i class="leaf b" style="--x:46%;--s:20px;--d:10s;--w:-6s"></i><i class="leaf a" style="--x:58%;--s:15px;--d:7s;--w:-0.5s"></i><i class="leaf b" style="--x:70%;--s:17px;--d:8.5s;--w:-3.5s"></i><i class="leaf a" style="--x:82%;--s:13px;--d:6.8s;--w:-5s"></i><i class="leaf b" style="--x:92%;--s:19px;--d:9.5s;--w:-7s"></i><i class="leaf b" style="--x:14%;--s:11px;--d:6s;--w:-3s"></i><i class="leaf a" style="--x:64%;--s:12px;--d:7.2s;--w:-8s"></i><i class="leaf a" style="--x:26%;--s:13px;--d:8s;--w:-2s"></i><i class="leaf b" style="--x:76%;--s:15px;--d:9s;--w:-6.5s"></i></div>
-        <span class="mi"><i class="bi bi-tree-fill"></i></span>
-        <div class="mt"><b>Roguelike</b><span class="sub">Endless</span><small>Survive wave after wave in the forest</small></div>
-        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
-      </div>
-      <div class="mode v5 wide" id="mV5" role="button" tabindex="0" style="--i:2">
-        <div class="fx"><i class="caus c1"></i><i class="caus c2"></i><i class="caus c3"></i>
-          <div class="waves"><i class="wv a"></i><i class="wv b r"></i><i class="bub" style="--x:6%;--s:8px;--d:6s;--w:-1s"></i><i class="bub" style="--x:16%;--s:12px;--d:8s;--w:-3s"></i><i class="bub" style="--x:28%;--s:7px;--d:5.5s;--w:-4s"></i><i class="bub" style="--x:40%;--s:10px;--d:7s;--w:-2s"></i><i class="bub" style="--x:52%;--s:14px;--d:9s;--w:-5s"></i><i class="bub" style="--x:63%;--s:8px;--d:6.5s;--w:-6s"></i><i class="bub" style="--x:74%;--s:11px;--d:7.5s;--w:-0.5s"></i><i class="bub" style="--x:85%;--s:9px;--d:6.8s;--w:-3.5s"></i><i class="bub" style="--x:94%;--s:13px;--d:8.4s;--w:-1.5s"></i><i class="wv c"></i></div></div>
-        <span class="mi"><i class="bi bi-people-fill"></i></span>
-        <div class="mt"><b>5v5</b><span class="sub">Spike Rush</span><small>Plant the spike, win the round</small></div>
-        <div class="rkx"><div class="rkpill" id="rkpill"></div></div>
-        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
-      </div>
-      <div class="mode pvp wide" id="mPvp" role="button" tabindex="0" style="--i:3">
-        <span class="mi"><i class="bi bi-globe2"></i></span>
-        <div class="mt"><b>PVP</b><span class="sub">Online</span><small>Custom battle with friends: host a lobby and share the room code, no spike, just fighting</small></div>
-        <span class="play">Play <i class="bi bi-chevron-right"></i></span>
+      <div class="mm-side">
+        <div class="mm-t col chr" id="mChar" role="button" tabindex="0" style="--i:7"><span class="hd" id="modeHd"></span><span class="mm-l"><b>My Character</b><small id="modeName">Ming</small></span></div>
+        <div class="mm-t lock daily" id="mDaily" role="button" tabindex="0" aria-disabled="true" style="--i:8"><i class="bi bi-calendar-check-fill mm-i"></i><span class="mm-l"><b>Daily Task</b></span><em class="soon">Soon</em></div>
       </div>
     </div>
   </div>
@@ -203,8 +208,6 @@
   </div>
 </div>
 
-<div id="bye" class="menu" hidden><div class="mcard"><h2 class="mtitle">Thanks for playing!</h2><p class="msub">You can close this tab / window now.</p>
-  <div class="mrow"><button id="byeBack" class="btn green">Back to game</button></div></div></div>
 
 <style>
   /* ---------- menus: dimmed page + floating cards (no container) ---------- */
