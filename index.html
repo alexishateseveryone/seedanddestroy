@@ -11,18 +11,29 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="fonts.css">
-<link rel="stylesheet" href="./node_modules/bootstrap-icons/font/bootstrap-icons.min.css">
 <link rel="stylesheet" href="style.css">
 <link rel="preload" as="image" href="assets/images/sadmlogo.png">
-<script type="importmap">
-  {
-    "imports": {
-      "three": "./node_modules/three/build/three.module.js",
-      "three/addons/": "./node_modules/three/examples/jsm/",
-      "peerjs": "./node_modules/peerjs/dist/bundle.mjs"
-    }
+
+  <!-- Google Fonts CDN Backup -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bungee&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
+
+<!-- Bootstrap Icons CDN Backup -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/font/bootstrap-icons.min.css">
+
+
+<!-- Three.js Import Map using High-Speed CDN -->
+<script type="importmap">{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
   }
-</script>
+}</script>
+<link rel="stylesheet" href="style.css">
+<link rel="preload" as="image" href="assets/images/sadmlogo.png">
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>  <!-- WebRTC (PeerJS) -> window.Peer, used by js/net.js -->
+
 <style>
   /* Swaying & Floating Animation for the Logo */
   @keyframes logoSway {
