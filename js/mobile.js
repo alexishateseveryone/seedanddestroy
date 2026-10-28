@@ -3,20 +3,22 @@
 //   left side  : floating joystick (drives the same W/A/S/D keys as the keyboard)
 //   right side : drag anywhere to look around (same as the mouse)
 //   buttons    : FIRE (hold to shoot / slash, drag while holding to aim), JUMP, ROLL (= air dash in the air), SCOPE, F (plant / defuse, 5v5 only),
-//                < > switch weapon, II pause
+//                < > switch weapon, BAG (story: inventory), II pause
 // Settings > Controls API (used by settings.js): get() / set(key,value) / reset() / edit(onDone)
 const MOBILE_RE=/Android|iPhone|iPad|iPod|Mobile|Silk|Opera Mini/i;
 export function isMobile(){
   const q=new URLSearchParams(location.search).get('mobile');if(q==='1')return true;if(q==='0')return false;
   const ua=MOBILE_RE.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);   // 2nd check = iPadOS pretending to be a Mac
   const touchOnly=matchMedia('(pointer:coarse)').matches&&matchMedia('(hover:none)').matches;
-  return ua||touchOnly}
+  const installed=matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches;   // installed app on a touch-only screen = touch controls
+  return ua||touchOnly||(installed&&navigator.maxTouchPoints>0&&!matchMedia('(pointer:fine)').matches)}
+export const isInstalled=()=>matchMedia('(display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui)').matches||navigator.standalone===true;
 
 export function createMobile(o){
   if(!isMobile())return{active:false,update(){}};
   const {P,keys,mouse}=o,SX=.0055,SY=.0046,R=56;   // look sensitivity (rad per px) and joystick radius (px)
   // ---- saved touch settings: button size, look speed, and per-button offsets from the layout editor
-  const KEY='sad.touch',IDS=['mFire','mRoll','mJump','mScope','mPlant','mReload','mPause','mWpn'];
+  const KEY='sad.touch',IDS=['mFire','mRoll','mJump','mScope','mPlant','mReload','mPause','mBag','mWpn'];
   const cfg={scale:1,sens:1,pos:{}};
   try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j){if(+j.scale)cfg.scale=+j.scale;if(+j.sens)cfg.sens=+j.sens;if(j.pos&&typeof j.pos==='object')cfg.pos=j.pos}}catch(e){}
   const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(cfg))}catch(e){}};
@@ -42,6 +44,7 @@ export function createMobile(o){
   #mPlant{right:218px;bottom:96px;width:64px;height:64px;display:none;background:rgba(255,213,74,.65);color:#3a2308;font-size:22px}
   #mReload{right:214px;bottom:30px;width:54px;height:54px;display:none;font-size:18px;background:rgba(31,140,200,.6)}
   #mPause{top:10px;right:calc(10px + env(safe-area-inset-right));width:46px;height:46px;font-size:16px}
+  #mBag{top:10px;right:calc(66px + env(safe-area-inset-right));width:46px;height:46px;font-size:12px;display:none}
   #mWpn{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;pointer-events:none}
   #mWpn .b{position:static;width:46px;height:46px;font-size:16px}
   #mWn{min-width:120px;text-align:center;padding:8px 12px;border-radius:999px;background:rgba(43,33,80,.6);border:2px solid rgba(255,255,255,.4);color:#fff;font-size:13px;white-space:nowrap}
@@ -58,26 +61,27 @@ export function createMobile(o){
   #mob.edit .z{pointer-events:none}
   #mob.edit #mBase{display:none}
   #mob.edit .b{outline:2px dashed #ffd54a;outline-offset:3px}
-  #mrot{position:fixed;inset:0;z-index:2000;background:#2b2150;color:#fff;font:400 20px 'Bungee',sans-serif;text-align:center;align-items:center;justify-content:center;padding:30px;display:none}
+  #mrot{position:fixed;inset:0;z-index:2000;touch-action:none;background:#2b2150;color:#fff;font:400 20px 'Bungee',sans-serif;text-align:center;align-items:center;justify-content:center;padding:30px;display:none}
   @media (max-height:430px){
     #mFire{width:82px;height:82px;bottom:20px;font-size:15px}#mRoll{right:116px;bottom:16px;width:54px;height:54px;font-size:12px}
     #mScope{right:26px;bottom:114px;width:50px;height:50px;font-size:19px}#mPlant{right:182px;bottom:76px;width:54px;height:54px}#mJump{right:112px;bottom:78px;width:54px;height:54px;font-size:11px}
-    #mReload{right:182px;bottom:16px;width:46px;height:46px;font-size:16px}#mPause{width:40px;height:40px;top:6px}#mWpn{bottom:6px}#mWpn .b{width:38px;height:38px}#mWn{min-width:96px;font-size:11px;padding:6px 10px}
+    #mReload{right:182px;bottom:16px;width:46px;height:46px;font-size:16px}#mPause{width:40px;height:40px;top:6px}#mBag{width:40px;height:40px;top:6px;right:calc(56px + env(safe-area-inset-right));font-size:11px}#mWpn{bottom:6px}#mWpn .b{width:38px;height:38px}#mWn{min-width:96px;font-size:11px;padding:6px 10px}
     #mBase{width:104px;height:104px;margin:-52px 0 0 -52px}}
   @media (min-width:900px) and (min-height:700px){
     #mFire{width:118px;height:118px}#mRoll{width:76px;height:76px;right:164px}#mReload{right:252px;bottom:30px;width:64px;height:64px}#mScope{width:70px;height:70px;bottom:170px}#mPlant{width:76px;height:76px;right:250px;bottom:110px}#mJump{width:70px;height:70px;right:164px;bottom:118px}}
-  @media (orientation:portrait){body.mobile #mrot{display:flex}}`;
+  @media (orientation:portrait){body.mobile #mrot{display:flex}}
+  @media (orientation:landscape){body.mobile #mrot{display:none!important}}`;
   document.head.appendChild(css);
   const root=document.createElement('div');root.id='mob';
   root.innerHTML=`<div id="mBg"></div><div class="z" id="mzL"></div><div class="z" id="mzR"></div><div id="mBase"><div id="mKnob"></div></div>
-    <div class="b" id="mFire">FIRE</div><div class="b" id="mJump">JUMP</div><div class="b" id="mRoll">ROLL</div><div class="b" id="mScope">◎</div><div class="b" id="mPlant">F</div><div class="b" id="mReload">R</div><div class="b" id="mPause">II</div>
+    <div class="b" id="mFire">FIRE</div><div class="b" id="mJump">JUMP</div><div class="b" id="mRoll">ROLL</div><div class="b" id="mScope">◎</div><div class="b" id="mPlant">F</div><div class="b" id="mReload">R</div><div class="b" id="mPause">II</div><div class="b" id="mBag">BAG</div>
     <div id="mWpn"><div class="b" id="mPrev">◀</div><span id="mWn"></span><div class="b" id="mNext">▶</div></div>
     <div id="mEd"><b>MOVE BUTTONS</b><small>Drag each button where you want it, then tap Done</small><div class="r"><button class="g" id="mEdReset">Reset</button><button id="mEdDone">Done</button></div></div>`;
   document.body.appendChild(root);
   const rot=document.createElement('div');rot.id='mrot';rot.textContent='Rotate your device to landscape to play';document.body.appendChild(rot);
   const $=s=>root.querySelector(s),base=$('#mBase'),knob=$('#mKnob'),releasers=[];
-  let shown=false,lastN=null,lastV=null,lastA=null,editing=false,editCb=null,drag=null;
-  const wn=$('#mWn'),plant=$('#mPlant'),rld=$('#mReload');
+  let shown=false,lastN=null,lastV=null,lastA=null,lastS=null,editing=false,editCb=null,drag=null;
+  const wn=$('#mWn'),plant=$('#mPlant'),rld=$('#mReload'),bag=$('#mBag');
   const look=(dx,dy)=>{if(!o.canPlay())return;P.camYaw-=dx*SX*cfg.sens;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-dy*SY*cfg.sens))};
 
   // ---- floating joystick (left): appears where the thumb lands
@@ -116,6 +120,7 @@ export function createMobile(o){
   btn('#mPlant',()=>{keys.KeyF=true},()=>{keys.KeyF=false});
   btn('#mPrev',()=>o.weapon(-1));btn('#mNext',()=>o.weapon(1));
   btn('#mPause',()=>o.pause());
+  btn('#mBag',()=>o.inventory&&o.inventory());
 
   // ---- layout editor: drag every button where your thumbs like it (offsets are saved)
   const applyCfg=()=>{root.style.setProperty('--bs',cfg.scale);
@@ -131,13 +136,20 @@ export function createMobile(o){
     drag.el.style.translate=p[0]+'px '+p[1]+'px'},true);
   for(const t of['pointerup','pointercancel'])root.addEventListener(t,e=>{if(editing&&drag&&e.pointerId===drag.id){e.stopPropagation();drag=null;save()}},true);
   $('#mEdReset').addEventListener('click',()=>{cfg.pos={};save();applyCfg()});
-  $('#mEdDone').addEventListener('click',()=>{editing=false;drag=null;root.classList.remove('edit');root.style.display='none';shown=false;lastV=lastA=null;
+  $('#mEdDone').addEventListener('click',()=>{editing=false;drag=null;root.classList.remove('edit');root.style.display='none';shown=false;lastV=lastA=lastS=null;
     const f=editCb;editCb=null;f&&f()});
 
   // first touch: try fullscreen + landscape lock (only works where the browser allows it)
-  document.addEventListener('pointerdown',()=>{try{const d=document.documentElement,f=d.requestFullscreen||d.webkitRequestFullscreen;
+  // installed app: lock landscape (Android / Chrome allow it; iOS has no such API, there the rotate screen below covers portrait)
+  const lockLand=()=>{try{if(screen.orientation&&screen.orientation.lock){const r=screen.orientation.lock('landscape');r&&r.catch&&r.catch(()=>{})}}catch(e){}};
+  if(isInstalled()){lockLand();document.addEventListener('pointerdown',lockLand,{once:true});addEventListener('orientationchange',()=>setTimeout(lockLand,300))}
+  // (skipped inside the installed app: it is already full screen, and asking again makes Android swallow the next touches)
+  if(!isInstalled())document.addEventListener('pointerdown',()=>{try{const d=document.documentElement,f=d.requestFullscreen||d.webkitRequestFullscreen;
     if(f){const r=f.call(d);r&&r.catch&&r.catch(()=>{})}
     if(screen.orientation&&screen.orientation.lock){const r=screen.orientation.lock('landscape');r&&r.catch&&r.catch(()=>{})}}catch(e){}},{once:true});
+  // the installed app can be sent to the background mid-touch: never keep a stuck stick / fire button
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)releasers.forEach(f=>f())});
+  addEventListener('blur',()=>releasers.forEach(f=>f()));
   addEventListener('resize',()=>{if(stick.id===null)home()});home();
 
   return{active:true,
@@ -145,7 +157,7 @@ export function createMobile(o){
     set(k,v){cfg[k]=v;save();applyCfg()},
     reset(){cfg.pos={};save();applyCfg()},
     edit(cb){editing=true;editCb=cb||null;releasers.forEach(f=>f());root.style.display='block';root.classList.add('edit');
-      plant.style.display='flex';rld.style.display='flex';wn.textContent=o.wname();applyCfg()},
+      plant.style.display='flex';rld.style.display='flex';bag.style.display='flex';wn.textContent=o.wname();applyCfg()},
     update(){
       if(editing)return;
       const show=o.canPlay();
@@ -153,4 +165,5 @@ export function createMobile(o){
       if(!show)return;
       const n=o.wname();if(n!==lastN){lastN=n;wn.textContent=n}
       const am=!!(o.hasAmmo&&o.hasAmmo());if(am!==lastA){lastA=am;rld.style.display=am?'flex':'none'}   // reload button only for guns with a magazine
-      const v=o.is5v5();if(v!==lastV){lastV=v;plant.style.display=v?'flex':'none'}}}}
+      const v=o.is5v5();if(v!==lastV){lastV=v;plant.style.display=v?'flex':'none'}
+      const sy=!!(o.isStory&&o.isStory());if(sy!==lastS){lastS=sy;bag.style.display=sy?'flex':'none'}}}}   // the bag button only exists in story mode
