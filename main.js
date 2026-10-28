@@ -22,19 +22,24 @@ import {renderPill} from './js/rank.js';
 import {createAudio} from './js/audio.js';
 import {createKeybinds} from './js/keybinds.js';
 import {headIconURL} from './js/headIcon.js';
+import {charIconFrames,charIconCached,charRunFrames} from './js/charIcon.js';
 import {loading} from './js/loadingScreen.js';          // reusable loading screen (boot + world generation)
-import {generateWorld} from './js/world/worldGen.js';   // story mode: seeded random world (biomes + rivers)
-import {buildWorldMap} from './js/world/worldMap.js';   // ... and the streamed scene built from it
+import {createStory} from './js/storyMode.js';       // story mode lives in its own file: world slots, world generation, day / night, inventory
 
 // ---- loading screen (see index.html): real steps, each one painted before the heavy work starts
 const L=window.__load||{set(){},done(){}},tick=()=>new Promise(res=>requestAnimationFrame(()=>setTimeout(res,0)));
 L.set(.14,'Starting renderer…');await tick();
+// boot loading screen: the white running cat (the cat you last played, or the default one), handed to the loading screen in index.html
+try{let bc=null;const ls=JSON.parse(localStorage.getItem('sad.slots')||'null'),li=parseInt(localStorage.getItem('sad.lastSlot'),10);
+  if(Array.isArray(ls)){const e=(ls[li]&&ls[li].cfg)?ls[li]:ls.find(x=>x&&x.cfg);bc=e&&e.cfg}
+  if(!bc)try{bc=JSON.parse(localStorage.getItem('sad.cat')||'null')}catch(e){}
+  const rf=charRunFrames(bc||{});if(rf&&window.__loadCat)window.__loadCat(rf);await tick()}catch(e){console.warn('loading cat skipped',e)}
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
 const scene=new T.Scene();
 const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3(),fp=new T.Vector3();
-const atm=createAtmosphere(renderer,scene,cam);let curMode='',cycOn=false;   // cycOn: story day/night clock running
+const atm=createAtmosphere(renderer,scene,cam);let curMode='';
 const hud=createHUD();
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
 [[1.9,.1],[1.35,.17],[.85,.12]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
@@ -57,9 +62,9 @@ function resize() {
 let viewTo=0;function setView(f){viewTo=f;cam.userData.off=f;resize()}resize();
 L.set(.26,'Growing the forest…');await tick();
 const forest=buildMap(7,atm.envMap);scene.add(forest.group);forest.prime(0,0,60);if(scene.fog){scene.fog.near=30;scene.fog.far=150}   // chunk-streamed hilly forest: build around the start, the rest streams in
-let map=forest,arena=null,mode5=null,storyMap=null,storySlot=-1,curWorld=-1;const lastQ={};
+let map=forest,arena=null,mode5=null,story=null;const lastQ={};   // story = js/storyMode.js (created below, once everything it needs exists)
 fx.setGround((x,z)=>map.heightAt(x,z));   // shells / embers / chips land on the real terrain (forest or arena)
-{const fq=forest.setQuality;forest.setQuality=q=>{Object.assign(lastQ,q);fq(q);arena&&arena.setQuality(q);storyMap&&storyMap.setQuality(q)}}   // graphics options also reach the 5v5 arena
+{const fq=forest.setQuality;forest.setQuality=q=>{Object.assign(lastQ,q);fq(q);arena&&arena.setQuality(q);story&&story.setQuality(q)}}   // graphics options also reach the 5v5 arena
 const audio=createAudio();
 const kb=createKeybinds(()=>{for(const k in keys)keys[k]=false;hints()});   // remappable PC keys (js/keybinds.js); the game keeps reading the default codes, `kb.canon` translates
 function hints(){const k=a=>kb.label(a),e=document.querySelector('#title .kb');if(e)e.innerHTML=`<b>${k('fwd')}${k('left')}${k('back')}${k('right')}</b> move &nbsp;·&nbsp; <b>Mouse</b> aim<br><b>Left click</b> shoot / slash &nbsp;·&nbsp; <b>Right click</b> scope<br><b>${k('jump')}</b> jump &nbsp;·&nbsp; <b>${k('roll')}</b> roll / air dash &nbsp;·&nbsp; <b>1-8 / wheel</b> weapon &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>${k('settings')}</b> settings<br><b>5v5:</b> hold <b>${k('plant')}</b> to plant / defuse the spike`}
@@ -67,7 +72,9 @@ gfx=createSettings({atm,map,audio,kb,onResolution:resize,getMobile:()=>{try{retu
 const KC={frog:'#6fd36b',rabbit:'#d9c3a0',spider:'#6a4c9a',bee:'#ffd23a'};
 let cfg=JSON.parse(localStorage.getItem('sad.cat')||'{}'),cat,state='title',clock=0,paused=false,spin=0,spinHeld=false,run=false,ang=0,backup=null,gunUntil=0,mkOn=false,camAz=0,camTo=0;
 // title / main menu camera = a fixed-angle DRONE SHOT (no rotation). drone fades 1 -> 0 while the cat maker is open (it keeps its own camera) and snaps to 0 in a match.
-const DRONE={dist:15,pit:-.82,yaw:.6,fov:58,lift:3.2};let drone=1;const dp={x:0,z:0};   // dp = smoothed point the drone hovers over (it glides after the cat instead of being glued to it)
+const DRONE={dist:15,pit:-.82,yaw:.6,fov:58,lift:3.2};let drone=1;const dp={x:0,z:0};
+const selOn=()=>!$('#slots').hidden;   // My Character screen open = catMaker camera, centred, cat standing still in front of you
+const IDLE={f:0,s:0,atk:false,roll:false};   // dp = smoothed point the drone hovers over (it glides after the cat instead of being glued to it)
 // ---- character save slots (5): { cfg, best } or null. Old single-cat saves migrate into slot 1.
 const SLOTN=5;let curSlot=-1;
 function loadSlots(){let s=null;try{s=JSON.parse(localStorage.getItem('sad.slots'))}catch(e){}
@@ -91,7 +98,7 @@ function reload(){if(state!=='play'||paused||!hasMag()||RL.t>0||P.dead||P.frozen
 const hudAmmo=()=>!P.unarmed&&hasMag()?hud.ammo(ammo[P.wpn],WP().stats.mag,RL.t>0?1-RL.t/RL.dur:-1):hud.ammo(0,0,-1);
 function equipIdx(i){P.wpn=i;P.scope=false;RL.t=0;cat.userData.equip(WEAPONS[i]);hud.weapon(i);hudAmmo()}
 function setCat(){if(cat){cat.userData.dispose&&cat.userData.dispose();scene.remove(cat)}cat=createCatAvatar(cfg);patchCat(cat);casts(cat);scene.add(cat);hud.name(cfg.name);cat.userData.onSlashHit=meleeHit;cat.userData.fx=fx;cat.userData.equip(WP());hud.weapon(P.wpn)}
-function setWeapon(i){if(P.unarmed||rogue.locked())return;i=(i+WEAPONS.length)%WEAPONS.length;const lo=(gm==='v5'||rogue.active())&&P.loadout;if(lo&&!lo.includes(i))i=lo[0]===P.wpn?lo[1]:lo[0];   // 5v5: wheel / buttons just flip between your two roulette weapons
+function setWeapon(i){if(P.unarmed||rogue.locked()||(story&&story.invOpen()))return;i=(i+WEAPONS.length)%WEAPONS.length;const lo=(gm==='v5'||gm==='story'||rogue.active())&&P.loadout;if(lo&&!lo.includes(i))i=lo[0]===P.wpn?lo[1]:lo[0];   // 5v5: wheel / buttons just flip between your two roulette weapons
   if(state!=='play'||paused||P.roll>0||P.wpn===i)return;equipIdx(i)}
 function meleeHit(d){const st=WP().stats,fx_=Math.sin(P.camYaw),fz_=Math.cos(P.camYaw);let hitAny=false,kill=false;
   enemies.forEach(e=>{const dx=e.x-P.x,dz=e.z-P.z,dist=Math.hypot(dx,dz)||1;if(e.dodge<=0&&dist<st.range+e.r&&(dx*fx_+dz*fz_)/dist>st.arc){e.hp-=st.dmg;if(e.hp<=0)kill=true;e.hbT=2.5;e.fl=.2;e.sf=.34;e.stun=.3;e.alert=6;e.x+=dx/dist*1.4;e.z+=dz/dist*1.4;const hp_=new T.Vector3(e.x,(e.gy||0)+.9,e.z);fx.slashHit(hp_,P.camYaw,d,st.slashColor||'#ffe8a8',e.hp<=0?1.35:1);hitAny=true}});
@@ -242,9 +249,9 @@ function botInput(dt){
 function update(dt){
   const demo=state==='title';
   const pvpLive=state==='play'&&gm==='v5'&&!!mode5&&mode5.pvp;   // a custom battle never stops for one player's pause menu or hit-lag: the others are still fighting
-  if(!(state==='play'||demo)||(paused&&!pvpLive))return;
+  if(!(state==='play'||demo)||(paused&&!pvpLive)||(story&&story.invOpen())||hud.bigmapOn())return;   // the inventory screen and the map page stop the world like a pause
   if(P.hs>0){P.hs-=dt;if(!pvpLive)dt*=.03}   // hit-lag: the world nearly freezes for a moment
-  if(demo)rogue.demoUpdate(dt);
+  if(demo){if(!selOn())rogue.demoUpdate(dt)}
   else if(gm!=='v5'&&gm!=='story')rogue.update(dt);   // roguelike waves (js/roguelike.js)
   
   // Camera rotation using Arrow keys
@@ -256,7 +263,7 @@ function update(dt){
   P.camPitch = Math.max(-0.5, Math.min(0.6, P.camPitch));
 
   // Player movement using WASD
-  const inp=demo?botInput(dt):null;
+  const inp=demo?(selOn()?IDLE:botInput(dt)):null;
   let fwd=demo?inp.f:(keys.KeyW?1:0)-(keys.KeyS?1:0),side=demo?inp.s:(keys.KeyD?1:0)-(keys.KeyA?1:0);if(P.dead||P.frozen||paused){fwd=0;side=0}
   P.fwd=fwd;P.side=side;P.rel=fwd<0?-1:1;cat.userData.move.f=fwd;cat.userData.move.s=side;
   P.mv=(fwd!==0||side!==0)&&P.roll<=0;P.rcd=Math.max(0,P.rcd-dt);if(demo&&inp.roll)tumble();
@@ -268,7 +275,7 @@ function update(dt){
     const dx=fxv*fwd+rx*side,dz=fzv*fwd+rz*side,len=Math.hypot(dx,dz);if(len>0){P.x+=dx/len*sp*dt;P.z+=dz/len*sp*dt}}
   if(P.dash>0){P.x+=P.dx*P.dash*3*dt;P.z+=P.dz*P.dash*3*dt;P.dash=Math.max(0,P.dash-dt*9)}
   P.x=Math.max(-map.W/2+1,Math.min(map.W/2-1,P.x));P.z=Math.max(-map.H/2+1,Math.min(map.H/2-1,P.z));push(P,.45);
-  if(gm==='story'&&map.world&&map.world.slopeAt(P.x,P.z,.8)>1.3){P.x=px0;P.z=pz0}   // cliffs are too steep to climb
+  if(gm==='story')story.blockSlope(px0,pz0);   // cliffs are too steep to climb
   
   P.gy=map.heightAt(P.x,P.z);
   if(P.air){ // ---- jump / fall (an air dash hovers: no gravity while it lasts)
@@ -280,7 +287,7 @@ function update(dt){
   else P.y=P.gy;
   P.jy=Math.max(0,P.y-P.gy);P.ey=P.gy+P.jy*.65;P.fk+=((P.ad>0?1:0)-P.fk)*Math.min(1,dt*14);
   map.walk('player',P.x,P.z,(P.mv||P.roll>0)&&!P.air);   // ripples when you walk on water
-  if(gm==='story')storyTick(dt);
+  if(gm==='story')story.tick(dt);
   P.aim=P.camYaw;
   if(RL.t>0){RL.t-=dt;if(RL.t<=0){RL.t=0;ammo[P.wpn]=WP().stats.mag||0}}
   P.cd-=dt;P.inv-=dt;cat.userData.setScope(P.scope&&isGunW()&&P.roll<=0);
@@ -305,7 +312,7 @@ function update(dt){
 }
 // ---- 5v5 SPIKE RUSH: hooks the mode in js/5v5.js needs (it drives 9 AI cats; you play on the blue team)
 let wuid=0;
-function leave5(){rogue.stop();P.unarmed=false;P.loadout=null;hud.loadout&&hud.loadout(null);mode5&&mode5.stop();saveWorldPos();storyMap&&(storyMap.group.visible=false);document.body.classList.remove('story');gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
+function leave5(){rogue.stop();P.unarmed=false;P.loadout=null;hud.loadout&&hud.loadout(null);mode5&&mode5.stop();story&&story.leave();gm='wave';if(scene.fog){scene.fog.near=30;scene.fog.far=150}map=forest;forest.group.visible=true;arena&&(arena.group.visible=false);document.body.classList.remove('v5');const l=document.querySelector('.wplate small');if(l)l.textContent='WAVE'}
 function ensureArena(){if(!arena){arena=buildArena(11,atm.envMap);scene.add(arena.group);arena.setQuality(lastQ);arena.group.visible=false}}
 // 5v5: every round is played on a freshly generated random map (js/5v5.js calls ctx.newMap behind the loading screen). The new arena replaces the old one everywhere (arena / map).
 function swapArena(theme,seed){
@@ -376,8 +383,8 @@ const mk5=()=>createMode5v5({scene,cam,fx,get map(){return arena},newMap:(theme,
   toast:t=>{const [a,b='']=t.split(' · ');hud.banner(a,b)},hurt:hurt5,resetPlayer,heightAt:(x,z)=>arena.heightAt(x,z),walk:(id,x,z,mv)=>arena.walk(id,x,z,mv),ripple:(x,z,a)=>arena.ripple(x,z,a),hud:hud5,cat:()=>cat,endMatch,
   clearBullets:()=>{fx.clearMarks();bullets.forEach(b=>scene.remove(b.m));bullets.length=0}});
 // ---- touch controls: only created on phones / tablets (see js/mobile.js); on PC this is a no-op
-const mobile=createMobile({P,keys,mouse,canPlay:()=>state==='play'&&!paused,tumble,jump,pause:()=>setPaused(true),
-  weapon:d=>setWeapon(P.wpn+d),wname:()=>WP().name,reload,hasAmmo:hasMag,is5v5:()=>gm==='v5',
+const mobile=createMobile({P,keys,mouse,canPlay:()=>state==='play'&&!paused&&!story.invOpen()&&!hud.bigmapOn(),tumble,jump,pause:()=>setPaused(true),
+  weapon:d=>setWeapon(P.wpn+d),wname:()=>WP().name,reload,hasAmmo:hasMag,is5v5:()=>gm==='v5',inventory:()=>story.toggle(),isStory:()=>gm==='story',
   scope:()=>{if(isGunW()&&WP().stats.zoom&&P.roll<=0)P.scope=!P.scope}});
 // ---- controller: sticks / triggers in a match, the same keyboard menu navigation (A = accept, B = back) everywhere else
 const pad=createGamepad({P,keys,mouse,inGame:()=>state==='play'&&!paused,inPlay:()=>state==='play',
@@ -387,6 +394,17 @@ const pad=createGamepad({P,keys,mouse,inGame:()=>state==='play'&&!paused,inPlay:
   notify:(a,b)=>hud.banner(a,b)});
 let last=performance.now();
 hints();
+// ---- STORY MODE (js/storyMode.js): it reaches the game through these hooks. `activate` is the one place that flips main.js into 'story'.
+story=createStory({$,scene,atm,hud,P,keys,mouse,renderer,cam,tick,touch:TOUCH,
+  game:{get gm(){return gm},get map(){return map},get state(){return state},get paused(){return paused}},
+  activate:(m,sx,sz,yaw)=>{gm='story';forest.group.visible=false;arena&&(arena.group.visible=false);m.group.visible=true;map=m;if(scene.fog){scene.fog.near=50;scene.fog.far=230}
+    P.x=sx;P.z=sz;P.camYaw=yaw||0;P.viewYaw=P.camYaw;P.camPitch=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;paused=false;state='play';
+    ['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
+    document.body.classList.add('story');hud.name(cfg.name);P.gy=map.heightAt(P.x,P.z)},
+  hideMenus,showMenu,enterTitle,leave5,clearAll,refill,equipIdx,lockPtr,
+  view:f=>{viewTo=f},quality:()=>lastQ,getCat:()=>cat});
+// the full-screen map page (M): the game stands still while it is open and the cursor is freed for panning
+hud.onMap=open=>{if(open){for(const k in keys)keys[k]=false;mouse.l=false;P.scope=false;P.mv=false;try{document.exitPointerLock&&document.exitPointerLock()}catch(e){}}else if(state==='play'&&!paused)lockPtr()};
 L.set(.5,'Dressing the cat…');await tick();
 setCat();enterTitle();
 L.set(.62,'Building the 5v5 arena…');await tick();ensureArena();
@@ -404,30 +422,28 @@ let lf=0,lastDraw=0;const PROF=/[?&]prof/.test(location.search),NOB=/[?&]nobots/
 const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!paused&&raw<.5)gfx.frame(raw,n=>hud.banner('Graphics: '+n,'lowered automatically for smoother play'));clock+=dt;mobile.update();pad.update(raw);const lag=P.hs>0&&!paused&&!(gm==='v5'&&mode5&&mode5.pvp);if(PROF){renderer.info.autoReset=false;renderer.info.reset();globalThis.__hideBots=NOB;if(NOA&&arena&&gm==='v5')arena.group.visible=false}   // ?prof&nobots / &noarena hide the bots / the arena so you can see what each costs
   const _u0=performance.now();update(dt);pf.u+=performance.now()-_u0;fx.update(lag?dt*.3:dt);   // sparks keep moving in slow motion during the freeze
   {const c=cam.userData.off||0;if(c!==viewTo){const n=Math.abs(viewTo-c)<.001?viewTo:c+(viewTo-c)*Math.min(1,dt*6);cam.userData.off=n;const W=Math.max(1,renderer.domElement.clientWidth||innerWidth),H=Math.max(1,renderer.domElement.clientHeight||innerHeight);n?cam.setViewOffset(W,H,W*n,0,W,H):cam.clearViewOffset();cam.updateProjectionMatrix()}   // maker open/close: the cat glides to the other side of the screen
-  let d=camTo-camAz;d=Math.atan2(Math.sin(d),Math.cos(d));camAz+=d*Math.min(1,dt*5);   // maker: camera swings round the cat (0 = behind it as usual, PI = in front of it)
+  if(!mkOn)camTo=selOn()?Math.PI:0;let d=camTo-camAz;d=Math.atan2(Math.sin(d),Math.cos(d));camAz+=d*Math.min(1,dt*5);   // maker: camera swings round the cat (0 = behind it as usual, PI = in front of it)
   if(!spinHeld){spin=Math.atan2(Math.sin(spin),Math.cos(spin));spin-=spin*Math.min(1,dt*4)}}
   const mode=state==='maker'?'maker':'play';if(mode!==curMode){curMode=mode;atm.setMode(mode)}
   audio.music(state==='title'||state==='maker'||gm==='story'?'title':state==='over'?null:gm==='v5'?'v5':'wave');audio.duck(paused)
   // 5v5: when you are dead the camera follows the ally you picked (the spectate buttons live in 5v5.js); the map and the sun's shadows follow it too
   const SV=(gm==='v5'&&state==='play'&&P.dead&&mode5&&mode5.spectateView)?mode5.spectateView():null,FOC=SV?SVO:P;
   if(SV){SVO.x=SV.x;SVO.z=SV.z;SVO.gy=SV.gy;SVO.ey=SV.ey;SVO.camYaw=SV.yaw;if(document.pointerLockElement&&!paused)document.exitPointerLock()}   // free the cursor so the buttons can be clicked
-  {const want=gm==='story'&&state==='play';   // day/night: only while you play a story world; every other mode keeps the fixed sun
-    if(want!==cycOn){if(!want&&worlds[curWorld]){worlds[curWorld].time=+atm.hour.toFixed(3);saveWorlds()}
-      cycOn=want;const w=worlds[curWorld];atm.setCycle(want,want?(w&&w.time!==undefined?w.time:8):undefined)}
-    atm.hold=paused}
+  story.cycle(state==='play');atm.hold=paused||story.invOpen()||hud.bigmapOn();   // day/night runs only in a story world and stops with the inventory open
   if(state!=='maker')map.update(clock,FOC,{sun:atm.lightDir,sky:atm.fogColor});atm.update(dt,clock,FOC);
   if(state!=='play')hud.scope(0);
   if(state==='play'||state==='over'||state==='title'){
+    const invOn=story.invOpen();   // story inventory open: the camera turns into a slightly angled character preview
     cat.position.set(P.x,P.air?P.y:P.gy,P.z);
     cat.rotation.y = P.camYaw;
     P.blink=Math.max(0,P.blink-dt);cat.visible=!P.dead&&(state==='title'||P.blink<=0||Math.floor(clock*20)%2===0);
-    {const wd=state==='title'&&!mkOn?1:0;drone=state==='title'?drone+(wd-drone)*Math.min(1,dt*3.5):0;if(Math.abs(drone-wd)<.002)drone=wd;   // title + main menu = drone shot, cat maker = old behind-the-cat camera, a match = no drone at all
+    {const wd=state==='title'&&!mkOn&&!selOn()?1:0;drone=state==='title'?drone+(wd-drone)*Math.min(1,dt*3.5):0;if(Math.abs(drone-wd)<.002)drone=wd;   // title + main menu = drone shot, cat maker = old behind-the-cat camera, a match = no drone at all
      const k=Math.min(1,dt*2.2);dp.x+=(P.x-dp.x)*k;dp.z+=(P.z-dp.z)*k}
-    cat.userData.setAim(P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.setAir&&cat.userData.setAir(P.air?P.jy:0,P.vy);cat.userData.holster(false);cat.userData.update(paused?0:lag?dt*.06:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
+    cat.userData.setAim(invOn?0:P.camPitch,(state==='play'&&!paused)||state==='title');cat.userData.setAir&&cat.userData.setAir(P.air?P.jy:0,P.vy);cat.userData.holster(false);cat.userData.update(paused?0:lag?dt*.06:dt,P.mv&&(state==='play'||state==='title')&&!paused,P.rel);
     P.shake=Math.max(0,P.shake-dt*1.2);const sh=P.shake*P.shake*1.2*(1-drone);   // the drone shot never shakes
     
-    const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),kc=kk*(1-drone),dist=lerp2(SV?SPEC_H:state==='title'?4.8:lerp2(P.camDist,1.7,aw),DRONE.dist,drone)+kc*.12,rightOffset=lerp2(SV?0:state==='title'?.5:lerp2(1.4,.8,aw),0,drone);
-    const targetFov=lerp2(lerp2(gfx.get().fov||70,WP().stats.zoom||40,aw)+kc*2+P.fk*7,DRONE.fov,drone);if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
+    const aw=cat.userData.scope(),kk=P.kick=Math.max(0,P.kick-dt*5),kc=kk*(1-drone),dist=lerp2(SV?SPEC_H:state==='title'?4.8:lerp2(P.camDist,1.7,aw),DRONE.dist,drone)+kc*.12,rightOffset=lerp2(SV?0:state==='title'?(selOn()?0:.5):lerp2(1.4,.8,aw),0,drone);
+    const targetFov=invOn?36:lerp2(lerp2(gfx.get().fov||70,WP().stats.zoom||40,aw)+kc*2+P.fk*7,DRONE.fov,drone);if(Math.abs(cam.fov-targetFov)>.01){cam.fov=targetFov;cam.updateProjectionMatrix()}
     const vy0=state==='title'?P.viewYaw+camAz-spin:FOC.camYaw,vy=vy0+Math.atan2(Math.sin(DRONE.yaw-vy0),Math.cos(DRONE.yaw-vy0))*drone,pit=lerp2(state==='title'?-.25:SV?-1.18:P.camPitch,DRONE.pit,drone)+kc*.02;   // drone: fixed yaw + fixed downward pitch   // spectating = TOP VIEW: high above the ally, looking steeply down
     const rx=-Math.cos(vy),rz=Math.sin(vy),cp=Math.cos(pit),sp=Math.sin(pit),dX=Math.sin(vy)*cp,dY=sp,dZ=Math.cos(vy)*cp;
     const fx0=lerp2(FOC.x,dp.x,drone),fz0=lerp2(FOC.z,dp.z,drone),px=fx0+rx*rightOffset,pz=fz0+rz*rightOffset;
@@ -436,8 +452,9 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     cam.position.set(camX,camY,camZ);if(!SV)for(const o of near(map.obs,cam.position.x,cam.position.z)){if(o.r>3)continue;const ox=cam.position.x-o.x,oz=cam.position.z-o.z,od=Math.hypot(ox,oz),om=o.r+.35;if(od<om&&od>1e-3){cam.position.x=o.x+ox/od*om;cam.position.z=o.z+oz/od*om}}   // keep the camera out of trunks and rocks
     cam.lookAt(fx0+dX*11,1+FOC.ey+dY*11+drone*DRONE.lift,fz0+dZ*11);   // looks at the point the bullets converge on (drone: a bit higher, so the cat sits in the lower half under the logo)
     cam.rotation.z+=rnd(-sh,sh)*.02+(P.roll>0?Math.sin(P.roll*14)*.02:0);
+    if(invOn){const a=P.camYaw-.5-story.invSpin(),r=6.6;cam.position.set(P.x+Math.sin(a)*r,P.gy+1.55,P.z+Math.cos(a)*r);cam.lookAt(P.x,P.gy+.85,P.z)}   // zoomed-out 3/4 view from the front; the cat turns a little to the screen's right (drag on the left to turn it)
     if(state==='play'){cam.updateMatrixWorld();hudAmmo();hud.scope(aw);hud.crosshair(7+kk*34+(P.mv?3:0)+(P.scope?-3:0)+P.shake*10,!paused&&!SV);hud.tumble(1-P.rcd/.95);
-      hud.combo(Math.min(5,1+Math.floor(P.chain/3)),P.chain,P.chainT/3.2);hud.bars(enemies,cam,clock);hud.radar(FOC,enemies,pickups,map,FOC.camYaw)}
+      hud.combo(Math.min(5,1+Math.floor(P.chain/3)),P.chain,P.chainT/3.2);hud.bars(enemies,cam,clock);hud.radar(FOC,enemies,pickups,map,FOC.camYaw);if(hud.bigmapOn())hud.bigradar(FOC,enemies,pickups,map)}
   }
   else{const mk=state==='maker';let mv=false;
     if(mk&&run){ang+=dt*3;cat.position.set(Math.cos(ang)*.9,0,3+Math.sin(ang)*.9);cat.rotation.y=Math.atan2(-Math.sin(ang),Math.cos(ang));mv=true}
@@ -452,97 +469,67 @@ const raw=(now-last)/1000,dt=Math.min(raw,.05);last=now;if(state!=='maker'&&!pau
     pf.n=pf.u=pf.r=0;pf.t0=t;if(globalThis.__botProf){bp.think=0;bp.avatar=0}}}})(last);
 // audio: browsers keep sound locked until a click / key press; every button also gets the click sound
 addEventListener('pointerdown',e=>{audio.unlock();if(e.target.closest&&e.target.closest('button,.btn,.mode,.mm-t,.cslot,#title'))audio.play('click')},true);
-addEventListener('keydown',e=>{audio.unlock();const c=kb.canon(e.code);if(c===null){if(e.code==='Space')e.preventDefault();return}keys[c]=true;if(c==='Escape'&&state==='play'&&!paused)setPaused(true);else if(c==='KeyP'&&state==='play')setPaused(!paused);if(c==='KeyR'&&state==='play')reload();if(c==='KeyR'&&state==='over')(gm==='v5'?start5v5():rogue.start());if(c==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(c)){const n=+c[5]-1;setWeapon((gm==='v5'||rogue.active())&&P.loadout?(P.loadout[n]??P.wpn):n)}if(c==='Space'){e.preventDefault();if(!e.repeat)jump()}if(c==='ShiftLeft'&&!e.repeat)tumble();});addEventListener('keyup',e=>{const c=kb.canon(e.code);if(c)keys[c]=false});
+addEventListener('keydown',e=>{if(e.code==='KeyM'&&!e.repeat&&!e.ctrlKey&&!e.altKey&&!e.metaKey&&state==='play'&&!paused&&!story.invOpen()&&!/INPUT|TEXTAREA|SELECT/.test((e.target&&e.target.tagName)||'')){hud.bigmap(!hud.bigmapOn());e.preventDefault();return}
+  audio.unlock();const c=kb.canon(e.code);if(c===null){if(e.code==='Space')e.preventDefault();return}keys[c]=true;if(c==='Escape'&&state==='play'&&!paused)setPaused(true);else if(c==='KeyP'&&state==='play')setPaused(!paused);if(c==='KeyR'&&state==='play')reload();if(c==='KeyR'&&state==='over')(gm==='v5'?start5v5():rogue.start());if(c==='KeyG'&&(state==='play'||state==='title')){if(state==='play'&&!paused)setPaused(true);gfx.open()}if(/^Digit[1-8]$/.test(c)){const n=+c[5]-1;setWeapon((gm==='v5'||gm==='story'||rogue.active())&&P.loadout?(P.loadout[n]??P.wpn):n)}if(c==='Space'){e.preventDefault();if(!e.repeat)jump()}if(c==='ShiftLeft'&&!e.repeat)tumble();});addEventListener('keyup',e=>{const c=kb.canon(e.code);if(c)keys[c]=false});
 
 // mouse: move = look (pointer lock), left click / hold = attack or shoot, right click = scope, wheel = swap weapon
-addEventListener('mousedown',e=>{if(state!=='play')return;
+addEventListener('mousedown',e=>{if(state!=='play'||story.invOpen())return;
   if(e.button===0){if(TOUCH&&!paused)return;   // touch controls have their own fire button (a touch also sends a fake mouse click)
     if(paused){if(!(e.target.closest&&e.target.closest('#quit,#pgfx,#gfx')))setPaused(false);return}if(gm==='v5'&&P.dead)return;if(!document.pointerLockElement)lockPtr();mouse.l=true}
   if(e.button===2&&isGunW()&&WP().stats.zoom&&!paused&&!P.dead)P.scope=true});
 addEventListener('mouseup',e=>{if(TOUCH)return;if(e.button===0)mouse.l=false;if(e.button===2)P.scope=false});
 addEventListener('mousemove',e=>{if(state==='play'&&!paused&&document.pointerLockElement){P.camYaw-=e.movementX*.0026;P.camPitch=Math.max(-.5,Math.min(.6,P.camPitch-e.movementY*.0022))}});
 addEventListener('wheel',e=>{if(state==='play'&&!paused)setWeapon(P.wpn+(e.deltaY>0?1:-1))},{passive:true});
-document.addEventListener('pointerlockchange',()=>{if(TOUCH||rouletteOn||starting5)return;   // setting up a match / roulette is not a pause
+document.addEventListener('pointerlockchange',()=>{if(TOUCH||rouletteOn||starting5||story.invOpen()||hud.bigmapOn())return;   // setting up a match / roulette is not a pause
   if(!document.pointerLockElement&&state==='play'&&!paused&&!(gm==='v5'&&P.dead))setPaused(true)});
 document.addEventListener('visibilitychange',()=>{if(TOUCH&&document.hidden&&state==='play'&&!paused&&!rouletteOn&&!starting5)setPaused(true)});   // app switched / screen off
 addEventListener('contextmenu',e=>e.preventDefault());
-addEventListener('pointermove',e=>{if(mkOn&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
+addEventListener('pointermove',e=>{if((mkOn||selOn())&&e.buttons&&e.target.id==='c'){spin+=e.movementX*.01;spinHeld=true}});addEventListener('pointerup',()=>spinHeld=false);
 // ---- menu flow: Title (Play / Settings / Exit) -> Character slots -> [Character maker if new] -> Mode select -> game
 function hideMenus(){MENUS.forEach(m=>$('#'+m).hidden=true);$('#menuBack').hidden=true}
 function showMenu(w){MENUS.forEach(m=>$('#'+m).hidden=m!==w);$('#menuBack').hidden=!(w==='slots'||w==='modes'||w==='worlds'||w==='wnew'||w==='pvp'||w==='search'||w==='lobby')}   // one shared Back button: switching slots <-> modes never re-animates it
 const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const headHTML=c=>{const u=headIconURL(c);return u?`<img src="${u}" alt="" draggable="false">`:''};   // 3D head of the cat (falls back to a coat-coloured dot)
+// My Character tile: the WHOLE cat as a black front-facing silhouette with white eyes, playing its real idle animation (js/charIcon.js makes one sprite sheet, CSS plays it back and forth).
+// Built right AFTER the menu is on screen (a few hundred ms, once per cat look), so the cards' pop-in never stutters. Falls back to the old head picture.
+let silTok=0;
+function showSil(c){
+  const hd=$('#modeHd'),tok=++silTok;
+  const put=f=>{
+    if(tok!==silTok)return;                                   // the player picked another cat meanwhile
+    hd.className='hd';hd.style.cssText='';hd.textContent='';
+    if(f){const w=document.createElement('span'),i=document.createElement('i');w.className='chi';w.style.cssText=`--n:${f.n};--m:${f.n-1};--ar:${f.ar};--dur:${f.dur}s`;i.style.backgroundImage=`url(${f.sheet})`;w.appendChild(i);hd.appendChild(w);return}
+    const h=headHTML(c);hd.className='hd fb';hd.innerHTML=h;if(!h)hd.style.cssText=dotBg(c)};
+  const f=charIconCached(c);
+  if(f){put(f);return}
+  hd.className='hd';hd.style.cssText='';hd.textContent='';
+  setTimeout(()=>{let r=null;try{r=charIconFrames(c)}catch(e){console.warn(e)}put(r)},80)}
 const dotBg=c=>`background:radial-gradient(circle at 35% 30%,${c.pat||'#ee9a48'} 0 28%,${c.fur||'#f6dfbd'} 30%)`;
-function renderSlots(){
-  $('#slotList').innerHTML=slots.map((s,i)=>s
-    ?(()=>{const h=headHTML(s.cfg);return `<div class="cslot" data-i="${i}" style="--i:${i}"><span class="hd"${h?'':` style="${dotBg(s.cfg)}"`}>${h}</span>
-       <div class="si"><b>${esc(s.cfg.name||'Ming')}</b><span>BEST ${s.best||0}</span></div><span class="sn">#${i+1}</span>
-       <button class="sb" data-a="edit" title="Edit cat"><i class="bi bi-pencil-fill"></i></button><button class="sb del" data-a="del" title="Delete"><i class="bi bi-trash-fill"></i></button></div>`})()
-    :`<div class="cslot empty" data-i="${i}" style="--i:${i}"><i class="bi bi-plus-circle-fill" style="font-size:26px"></i>Create Character<span class="sn">#${i+1}</span></div>`).join('')}
-// ---- STORY MODE: 3 world slots. A slot remembers the seed (plus name and where you stood); the world is generated from that seed (js/world/worldGen.js),
-// the first time behind the loading screen. Same seed = same world, so nothing big has to be stored. Leaving and re-entering the same slot is instant.
-const WORLDN=3,WKEY='sad.worlds';
-function loadWorlds(){let s=null;try{s=JSON.parse(localStorage.getItem(WKEY))}catch(e){}if(!Array.isArray(s))s=[];s=s.slice(0,WORLDN).map(x=>x&&typeof x.seed==='number'?x:null);while(s.length<WORLDN)s.push(null);return s}
-let worlds=loadWorlds(),busyStory=false,storyT=0,lastBiome='',pendBiome='',biomeT=0,lastPhase='';const saveWorlds=()=>{try{localStorage.setItem(WKEY,JSON.stringify(worlds))}catch(e){}};
-const ago=t=>{const m=Math.max(1,Math.round((Date.now()-t)/6e4));return m<60?m+' MIN AGO':m<1440?Math.round(m/60)+' H AGO':Math.round(m/1440)+' D AGO'};
-function renderWorlds(){
-  $('#worldList').innerHTML=worlds.map((w,i)=>w
-    ?`<div class="cslot" data-i="${i}" style="--i:${i}"><span class="wic"><i class="bi bi-heart-fill"></i></span>
-       <div class="si"><b>${esc(w.name)}</b><span>${esc(w.diff||'NORMS')} · SEED ${esc(w.seedText||w.seed.toString(36).toUpperCase())} · ${w.played?'PLAYED '+ago(w.played):'NOT VISITED YET'}</span></div><span class="sn">#${i+1}</span>
-       <button class="sb" data-a="ren" title="Rename"><i class="bi bi-pencil-fill"></i></button><button class="sb del" data-a="del" title="Delete world"><i class="bi bi-trash-fill"></i></button></div>`
-    :`<div class="cslot empty" data-i="${i}" style="--i:${i}"><i class="bi bi-plus-circle-fill" style="font-size:26px"></i>Generate New World<span class="sn">#${i+1}</span></div>`).join('')}
-$('#worldList').onclick=e=>{const el=e.target.closest('.cslot');if(!el||busyStory)return;const i=+el.dataset.i,a=e.target.closest('button')?.dataset.a;
-  if(a==='del'){if(confirm('Delete '+worlds[i].name+'? The world will be gone for good.')){worlds[i]=null;saveWorlds();if(storySlot===i&&storyMap){storyMap.dispose();storyMap=null;storySlot=-1}renderWorlds()}return}
-  if(a==='ren'){const n=prompt('World name',worlds[i].name);if(n&&n.trim()){worlds[i].name=n.trim().slice(0,24);saveWorlds();renderWorlds()}return}
-  if(!worlds[i]){openNewWorld(i);return}
-  enterStory(i)};
-// ---- New World screen: name, seed (empty = random; a number is used as is, any other text is hashed to a number), difficulty (UI only for now)
-const DIFFS=['GGEZ','NORMS','HARD','MERCILESS'];let newSlot=-1,newDiff='NORMS';
-const hashStr=s=>{let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return h>>>0};
-const parseSeed=s=>{s=String(s||'').trim();if(!s)return{seed:(Math.random()*4294967295)>>>0,text:''};
-  return /^\d{1,15}$/.test(s)?{seed:(Number(s)%4294967296)>>>0,text:s}:{seed:hashStr(s),text:s}};
-function setDiff(d){if(!DIFFS.includes(d))d='NORMS';newDiff=d;document.querySelectorAll('#wnDiff .dopt').forEach(b=>b.classList.toggle('on',b.dataset.v===d))}
-function openNewWorld(i){newSlot=i;$('#wnName').value='World '+(i+1);$('#wnSeed').value='';setDiff('NORMS');showMenu('wnew')}
-function createWorld(){const i=newSlot;if(i<0||worlds[i]||busyStory)return;
-  const sd=parseSeed($('#wnSeed').value),name=($('#wnName').value.trim()||'World '+(i+1)).slice(0,24);
-  worlds[i]={seed:sd.seed,seedText:sd.text,name,diff:newDiff,created:Date.now(),played:0,time:8};saveWorlds();newSlot=-1;enterStory(i)}
-$('#wnDiff').onclick=e=>{const b=e.target.closest('.dopt');if(b)setDiff(b.dataset.v)};
-$('#wnDice').onclick=()=>{$('#wnSeed').value=String((Math.random()*1e9)|0)};
-$('#wnGo').onclick=createWorld;
-['#wnName','#wnSeed'].forEach(s=>$(s).addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')createWorld()}));
-function saveWorldPos(){if(gm!=='story'||curWorld<0||!worlds[curWorld])return;const w=worlds[curWorld];w.x=+P.x.toFixed(2);w.z=+P.z.toFixed(2);w.yaw=+P.camYaw.toFixed(3);if(cycOn)w.time=+atm.hour.toFixed(3);saveWorlds()}
-addEventListener('beforeunload',saveWorldPos);
-function storyTick(dt){storyT+=dt;
-  if(cycOn){const ph=atm.night>.55?'night':'day';if(ph!==lastPhase){if(lastPhase)hud.banner(ph==='night'?'Night falls':'A new day begins','');lastPhase=ph}}
-  const n=map.biomeName(P.x,P.z);                                  // banner when you walk into a new biome (after standing in it a moment)
-  if(n!==pendBiome){pendBiome=n;biomeT=0}else{biomeT+=dt;if(biomeT>1.2&&n!==lastBiome){lastBiome=n;hud.banner(n,'')}}
-  if(storyT>6){storyT=0;saveWorldPos()}}
-function startStory(i,sx,sz){
-  leave5();clearAll();refill();gm='story';curWorld=i;
-  forest.group.visible=false;arena&&(arena.group.visible=false);storyMap.group.visible=true;map=storyMap;if(scene.fog){scene.fog.near=50;scene.fog.far=230}
-  const w=worlds[i];P.x=sx;P.z=sz;P.camYaw=w.yaw||0;P.viewYaw=P.camYaw;P.camPitch=0;P.hp=P.max;P.inv=0;P.dead=false;P.frozen=false;paused=false;state='play';
-  ['#title','#over'].forEach(s=>$(s).hidden=true);hud.reset();hud.show(true);hud.pause(false);P.roll=0;P.rcd=0;P.scope=false;resetAir();P.kick=0;P.chain=0;P.chainT=0;mouse.l=false;setView(0);
-  document.body.classList.add('story');equipIdx(0);hud.name(cfg.name);P.gy=map.heightAt(P.x,P.z);storyT=0;lastBiome='';pendBiome='';biomeT=0;lastPhase='';lockPtr()}
-async function enterStory(i){
-  const w=worlds[i];if(!w||busyStory)return;busyStory=true;hideMenus();
-  loading.tips(['Rivers always flow downhill and end in lakes.','Every biome grows its own trees, flowers and mushrooms.','Savanna grass is golden, rainforest grass is deep green.','Your world is saved in its slot: come back any time.','Mountains ring the world, rivers start high up in them.']);
-  loading.show(storySlot===i&&storyMap?'Returning to your world…':'Generating your world…',w.name);await tick();
-  try{
-    if(storySlot!==i||!storyMap){
-      if(storyMap){storyMap.dispose();storyMap=null;storySlot=-1}
-      const world=await generateWorld(w.seed,{onProgress:(p,t)=>loading.set(p*.55,t)});
-      storyMap=buildWorldMap(world,atm.envMap);storyMap.setQuality(lastQ);scene.add(storyMap.group);storyMap.group.visible=false;storySlot=i}
-    const sx=w.x!==undefined?w.x:storyMap.spawn.x,sz=w.z!==undefined?w.z:storyMap.spawn.z;
-    loading.set(.58,'Planting trees and flowers…');
-    await storyMap.primeAsync(sx,sz,60,p=>loading.set(.58+.32*p,'Planting trees and flowers…'));
-    startStory(i,sx,sz);
-    loading.set(.94,'Compiling shaders…');await tick();try{renderer.compile(scene,cam)}catch(e){}await tick();   // upload shaders + geometry behind the loading screen
-    w.played=Date.now();saveWorlds();
-    await loading.done();hud.banner(map.biomeName(P.x,P.z),w.name);
-  }catch(err){console.error(err);loading.fail('Could not build the world: '+(err&&err.message||err));await new Promise(r=>setTimeout(r,2500));loading.done();enterTitle()}
-  finally{busyStory=false}}
+// ---- MY CHARACTER: arrows flip through your cats, the last page is one empty slot shown as a black cat -> Create Character (opens the cat maker)
+let selList=[],selPos=0;
+const BLACK=new T.MeshBasicMaterial({color:'#050505'});
+function blackOut(o){o.traverse(m=>{if(m.isMesh)m.material=Array.isArray(m.material)?m.material.map(()=>BLACK):BLACK})}   // silhouette
+function drawSel(){
+  const i=selList[selPos],c=slots[i];
+  $('#chName').textContent=c?(c.cfg.name||'Ming'):'New Cat';
+  $('#chSub').textContent=c?`BEST ${c.best||0}  \u00b7  SLOT #${i+1}`:`EMPTY SLOT #${i+1}`;
+  $('#chDots').innerHTML=selList.map((_,k)=>`<i${k===selPos?' class="on"':''}></i>`).join('');
+  $('#chSel').hidden=$('#chEdit').hidden=$('#chDel').hidden=!c;$('#chNew').hidden=!!c;
+  const picked=!!c&&i===curSlot,sb=$('#chSel');sb.classList.toggle('green',!picked);sb.classList.toggle('gold',picked);sb.classList.toggle('picked',picked);
+  sb.innerHTML=picked?'<i class="bi bi-check-circle-fill"></i>Picked':'<i class="bi bi-check-lg"></i>Select';   // the cat you are playing says Picked
+  $('#chL').hidden=$('#chR').hidden=selList.length<2;
+  cfg=c?JSON.parse(JSON.stringify(c.cfg)):{};setCat();if(!c)blackOut(cat)}
+function renderSlots(idx){   // idx = slot to land on (default: the cat you are playing)
+  selList=[];slots.forEach((c,i)=>{if(c)selList.push(i)});const e=slots.findIndex(x=>!x);if(e>=0)selList.push(e);
+  const p=selList.indexOf(idx===undefined?curSlot:idx);selPos=p>=0?p:Math.min(selPos,selList.length-1);
+  clearAll();refill();equipIdx(0);rogue.demoReset();Object.assign(P,{x:0,z:0,camYaw:0,viewYaw:0,camPitch:0,hp:P.max,dead:false,inv:0,roll:0,rcd:0,scope:false,kick:0,dash:0});resetAir();mouse.l=false;dp.x=0;dp.z=0;   // stop the demo fight, cat stands still
+  drawSel()}
+const selMove=d=>{if(selList.length<2)return;selPos=(selPos+d+selList.length)%selList.length;drawSel();
+  ['#chName','#chSub'].forEach((q,k)=>{const e=$(q);e.animate&&e.animate([{opacity:0,scale:.7},{opacity:1,scale:1.08,offset:.6},{opacity:1,scale:1}],{duration:320,delay:k*50,easing:'ease-out',fill:'backwards'})})};
+function restoreCur(){cfg=slots[curSlot]?JSON.parse(JSON.stringify(slots[curSlot].cfg)):{};setCat();rogue.demoReset()}   // leaving without choosing: the cat you were playing comes back
+
 function selectSlot(i){curSlot=i;try{localStorage.setItem('sad.lastSlot',i)}catch(e){}cfg=JSON.parse(JSON.stringify(slots[i].cfg));best=slots[i].best||0;setCat();$('#bestT').textContent=best;$('#modeName').textContent=cfg.name||'Ming';
-  const h=headHTML(cfg),hd=$('#modeHd');hd.innerHTML=h;hd.style.cssText=h?'':dotBg(cfg);renderPill($('#rkpill'));showMenu('modes')}
+  showSil(cfg);renderPill($('#rkpill'));showMenu('modes')}
 // ---- TAP TO PLAY: tap anywhere on the title. Straight to the main menu with your last cat; with no cat yet, the "Create your own character" modal comes first.
 const hasChar=()=>slots.some(Boolean);
 function enterMain(){
@@ -552,12 +539,13 @@ $('#title').addEventListener('click',e=>{if(e.target.closest('#install'))return;
 $('#ncGo').onclick=()=>{$('#newcat').hidden=true;openCreator(0,true)};   // modal -> cat maker (slot 1); saving it lands in the main menu
 $('#ncBack').onclick=()=>{$('#newcat').hidden=true};
 $('#menuBack').addEventListener('animationend',e=>e.currentTarget.classList.remove('in'));
-$('#menuBack').onclick=()=>{if(lobby.active()){lobby.back();return}if(!$('#wnew').hidden){renderWorlds();showMenu('worlds');return}if(!$('#worlds').hidden){showMenu('modes');return}
+$('#menuBack').onclick=()=>{if(lobby.active()){lobby.back();return}if(!$('#wnew').hidden){story.renderWorlds();showMenu('worlds');return}if(!$('#worlds').hidden){showMenu('modes');return}
   if(!$('#slots').hidden){   // My Character -> back to the main menu (with the current cat, or the first one that is left after a delete)
-    if(!slots[curSlot]){const j=slots.findIndex(Boolean);if(j<0){showMenu('title');return}selectSlot(j);return}
-    showMenu('modes');return}
+    if(!slots[curSlot]){const j=slots.findIndex(Boolean);if(j<0){cfg={};setCat();rogue.demoReset();showMenu('title');return}selectSlot(j);return}
+    restoreCur();showMenu('modes');return}
   showMenu('title')};   // main menu -> TAP TO PLAY
-$('#mRogue').onclick=()=>{hideMenus();rogue.start()};          // roguelike endless = the forest map
+$('#mRogue').onclick=async()=>{if(busyRogue)return;busyRogue=true;hideMenus();loading.show('','SURVIVAL');await tick();await tick();try{rogue.start()}catch(e){console.error(e)}await loading.done();busyRogue=false};   // survival also gets the simple mode loading screen
+let busyRogue=false;          // roguelike endless = the forest map
 $('#mV5').onclick=()=>{hideMenus();start5v5()};
 // ---- PVP (custom battle): WebRTC room (host's browser = the room) + the Host / Join / lobby screens
 const net=createNet();
@@ -567,12 +555,17 @@ net.onPeer=(from,d)=>{if(lobby.onPeer(from,d))return;if(!mode5)mode5=mk5();mode5
 net.onSrv=m=>{if(m.t==='closed'&&(starting5||inPvp())){pvpClosed=true;if(inPvp()){hud.banner('HOST LEFT','back to the title');enterTitle()}return}
   if(inPvp()){if(m.t==='peer-')mode5.peerLeft(m.id);return}lobby.onSrv(m)};
 $('#mPvp').onclick=()=>lobby.open();
-$('#mStory').onclick=()=>{renderWorlds();showMenu('worlds')};          // story = generated world, 3 save slots
+$('#mStory').onclick=()=>story.openWorlds();          // story = generated world, 3 save slots (js/storyMode.js)
 ['#mRogue','#mV5','#mStory','#mPvp','#mChar','#gfxOpen','#mCoop','#mAch','#mDaily'].forEach(s=>$(s).addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();$(s).click()}}));
-$('#slotList').onclick=e=>{const el=e.target.closest(".cslot");if(!el)return;const i=+el.dataset.i,a=e.target.closest('button')?.dataset.a;
-  if(a==='del'){if(confirm('Delete '+(slots[i].cfg.name||'this cat')+'? This cannot be undone.')){slots[i]=null;if(i===curSlot)curSlot=-1;saveSlots();renderSlots()}return}
-  if(a==='edit'){openCreator(i);return}
-  if(!slots[i])openCreator(i);else selectSlot(i)};
+$('#chL').onclick=()=>selMove(-1);$('#chR').onclick=()=>selMove(1);
+$('#chSel').onclick=()=>selectSlot(selList[selPos]);
+$('#chNew').onclick=()=>openCreator(selList[selPos]);
+$('#chEdit').onclick=()=>openCreator(selList[selPos]);
+$('#chDel').onclick=()=>{const i=selList[selPos];if(confirm('Delete '+(slots[i].cfg.name||'this cat')+'? This cannot be undone.')){slots[i]=null;if(i===curSlot)curSlot=-1;saveSlots();renderSlots(i)}};
+addEventListener('keydown',e=>{   // left / right (A D) flip through the cats directly, before the menu navigation sees the key
+  if(!selOn()||e.ctrlKey||e.altKey||e.metaKey||/INPUT|TEXTAREA/.test(e.target.tagName||''))return;
+  const L=e.code==='ArrowLeft'||e.code==='KeyA',R=e.code==='ArrowRight'||e.code==='KeyD';if(!L&&!R)return;
+  e.preventDefault();e.stopImmediatePropagation();selMove(L?-1:1)},true);
 $('#mChar').onclick=()=>{renderSlots();showMenu('slots')};   // My Character = the save slots (switch / edit / create / delete)
 ['#mCoop','#mAch','#mDaily'].forEach(s=>{const el=$(s);el.onclick=()=>{el.classList.remove('nope');void el.offsetWidth;el.classList.add('nope')};el.addEventListener('animationend',ev=>{if(ev.animationName==='mmNope')el.classList.remove('nope')})});   // not available yet: just a shake
 $('#again').onclick=rogue.start;$('#home').onclick=enterTitle;$('#resume').onclick=()=>setPaused(false);$('#pgfx').onclick=()=>gfx.open();$('#gfxOpen').onclick=()=>gfx.open();$('#quit').onclick=enterTitle;
@@ -581,8 +574,11 @@ function openCreator(slotIdx,fromTitle){
   const prevCfg=cfg;cfg=slots[slotIdx]?JSON.parse(JSON.stringify(slots[slotIdx].cfg)):{};setCat();hideMenus();mkOn=true;spin=0;spinHeld=false;camAz=camTo=0;viewTo=.17;   // cat glides to the left, the panel is on the right
   const close=()=>{mkOn=false;camTo=0;spin=0;viewTo=0};   // back to the centred drone shot
   openMaker(cfg,{change:c=>{cfg=c;setCat()},view:a=>camTo=a,
-    done:()=>{cfg.name=cfg.name||'Ming';slots[slotIdx]={cfg:JSON.parse(JSON.stringify(cfg)),best:slots[slotIdx]?slots[slotIdx].best:0};saveSlots();close();selectSlot(slotIdx)},   // saved -> straight to mode select
-    cancel:()=>{cfg=prevCfg;setCat();close();if(fromTitle&&!hasChar())showMenu('title');else{renderSlots();showMenu('slots')}}})};
+    done:()=>{cfg.name=cfg.name||'Ming';slots[slotIdx]={cfg:JSON.parse(JSON.stringify(cfg)),best:slots[slotIdx]?slots[slotIdx].best:0};saveSlots();close();
+      if(fromTitle){selectSlot(slotIdx);return}   // first cat ever (tutorial modal) -> straight to the main menu
+      if(slotIdx===curSlot)selectSlot(slotIdx);   // you edited the cat that is in use: refresh it everywhere (name, look, save)...
+      renderSlots(slotIdx);showMenu('slots')},   // ...but stay in My Character
+    cancel:()=>{cfg=prevCfg;setCat();close();if(fromTitle&&!hasChar())showMenu('title');else{renderSlots(slotIdx);showMenu('slots')}}})};
 // ---- keyboard navigation for every menu screen (title, slots, worlds, modes, pause, game over, settings, cat maker):
 // W A S D / arrow keys jump to the nearest item in that direction, Enter or E accepts, Esc goes back (Left/Right also adjust a slider).
 // It only listens while one of those screens is up, so the in-game controls are never touched.
@@ -591,7 +587,7 @@ function openCreator(slotIdx,fromTitle){
   const vis=e=>{if(!e||e.hidden)return false;const s=getComputedStyle(e);return s.display!=='none'&&s.visibility!=='hidden'&&parseFloat(s.opacity)>.05};
   const touchy=()=>document.body.classList.contains('mobile')||matchMedia('(hover:none)').matches||matchMedia('(pointer:coarse)').matches||matchMedia('(max-width:900px) and (max-height:520px)').matches;   // phones / tablets: no key guide
   const UP=['KeyW','ArrowUp'],DN=['KeyS','ArrowDown'],LT=['KeyA','ArrowLeft'],RT=['KeyD','ArrowRight'],OK=['Enter','NumpadEnter','KeyE'],BACK=['Escape','Backspace'];
-  const SEL={title:'#title button',newcat:'#newcat button',slots:'#slots .cslot,#slots .cslot button',worlds:'#worlds .cslot,#worlds .cslot button',wnew:'#wnew input[type=text],#wnew .dopt,#wnew .btn',modes:'#modes .mm-t',pvp:'#pvp .mode',search:'#search input[type=text],#search .btn',lobby:'#lobby .cslot,#lobby .cslot button,#lobby .btn',over:'#over button',pause:'#pause button',
+  const SEL={title:'#title button',newcat:'#newcat button',slots:'#slots button',worlds:'#worlds .cslot,#worlds .cslot button',wnew:'#wnew input[type=text],#wnew .dopt,#wnew .btn',modes:'#modes .mm-t',pvp:'#pvp .mode',search:'#search input[type=text],#search .btn',lobby:'#lobby .cslot,#lobby .cslot button,#lobby .btn',over:'#over button',pause:'#pause button',
     settings:'#gfx button,#gfx input[type=range]',maker:'#maker button,#maker input'};
   const BACKS=new Set(['slots','worlds','wnew','modes','pvp','search','lobby','newcat','settings','maker']);
   function screen(){
