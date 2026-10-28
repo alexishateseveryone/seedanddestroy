@@ -1,25 +1,78 @@
 // In-game HUD: player card, wave/score, minimap, crosshair. (Touch controls live in js/mobile.js.)
 import * as T from 'three';
 import {WEAPONS} from './weapons/index.js';
+import {BLASTER,WEAPON_ICONS as ICONS} from './weaponIcons.js';
+import {createBigMap} from './bigMap.js';
 import * as AT from './arenaTerrain.js';                       // 5v5 arena: biomes, dirt lanes, lakes (live bindings: always the map that is loaded now)
 import {NB,FOREST,JUNGLE,SAVANNA,DESERT,STONE} from './world/biomes.js';
 
-const SWORD=`<svg viewBox="0 0 24 24" class="wi"><path d="M20.5 3.5l-.7 4.2-9.6 9.6-3.5-3.5 9.6-9.6z" fill="currentColor"/><path d="M5.2 12.6l6.2 6.2" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M8 16l-3.6 3.6" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"/><circle cx="3.9" cy="20.1" r="1.5" fill="currentColor"/></svg>`;
-const BLASTER=`<svg viewBox="0 0 24 24" class="wi"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H19a2 2 0 0 1 2 2v4.2a1.8 1.8 0 0 1-1.8 1.8H13l-.9 1.6H9.6l.4-1.6H6.6L5.6 19.4a1.6 1.6 0 0 1-1.5 1H3.2z" fill="currentColor"/><rect x="16.2" y="7.2" width="3" height="2.2" rx="1" fill="#2b2150" opacity=".55"/></svg>`;
 const PAW='<svg class="paw"><use href="#paw"/></svg>';
-const SV=d=>`<svg viewBox="0 0 24 24" class="wi">${d}</svg>`;
-const ICONS={
-  peashooter:BLASTER,woodensword:SWORD,
-  ak47:SV('<path d="M1 12.5l4.5-2.2H12l1-1.3h7.5l1.5 1.3v1.6H15l-1 1H11l-.5 5H8l.6-5H6l-2.2 1.6H1z" fill="currentColor"/>'),
-  armalite:SV('<path d="M1 12l4-2h2l1-1.6h3.2l.8 1.2h9l1 1.2v1.3H14l-1 1.2h-2.4l-.4 5H7.8L8.4 13H5.5L3 14.4H1z" fill="currentColor"/>'),
-  machinegun:SV('<path d="M1 11.5l3-1.6h8l.8-1h7.7v1.4l1.5 1v1.5H14l-1 1h-1.5v3H6v-3.2H4.5L1 14z" fill="currentColor"/><rect x="5" y="14" width="6" height="4" rx="1" fill="currentColor" opacity=".8"/>'),
-  sniper:SV('<path d="M0.5 13l4-1.6 2-1.4h9.5l2-.6H23v1.4h-5l-1.6 1.2H11l-.6 4.5H8.2l.6-4.2H6l-2.5 1.6H.5z" fill="currentColor"/><rect x="8" y="6.6" width="8" height="2.4" rx="1.2" fill="currentColor"/>'),
-  dualdagger:SV('<path d="M5 3.5l2.2 8-2.5 3.2-1.4-3.4z" fill="currentColor"/><path d="M4.8 15l-.5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><path d="M17.5 3.5l-2.2 8 2.5 3.2 1.4-3.4z" fill="currentColor"/><path d="M17.7 15l.5 5" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'),
-  spear:SV('<path d="M20.5 2.5l-1.2 5.2-2-2z" fill="currentColor"/><path d="M18 6.2L3 21.2" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>')
-};
-const slotHTML=WEAPONS.map((w,i)=>`<div class="slot${i===0?' on':''}" data-w="${i}"><kbd>${i+1}</kbd>${ICONS[w.id]||BLASTER}<span>${w.name}</span></div>`).join('');
+const BAG='<svg viewBox="0 0 24 24"><path d="M4.5 8.5h15l1 11.5h-17z" fill="currentColor"/><path d="M8.5 8.5V6.8a3.5 3.5 0 0 1 7 0v1.7" fill="none" stroke="currentColor" stroke-width="2"/><rect x="10.2" y="12.5" width="3.6" height="3" rx=".6" fill="#2b1d17"/></svg>';
+const DASH='<svg viewBox="0 0 24 24"><path d="M3 5l8 7-8 7v-4l4.5-3L3 9zM12 5l8 7-8 7v-4l4.5-3L12 9z" fill="currentColor"/></svg>';
 
-const css=document.createElement('style');css.textContent='#wpn .slot span{display:none}#wpn .slot.on span{display:inline}#wpn{gap:6px}'+`
+
+// ---- the health heart: a ragged (tattered paper) heart outline, built once. A red "water" level rises and falls inside it, two waves drift across.
+const HEART=(()=>{let q=11;const r=()=>(q=q*16807%2147483647)/2147483647,N=72,pts=[];
+  for(let i=0;i<N;i++){const t=i/N*Math.PI*2,x=16*Math.sin(t)**3,y=13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t);
+    const dx=16*3*Math.sin(t)**2*Math.cos(t),dy=-13*Math.sin(t)+10*Math.sin(2*t)+6*Math.sin(3*t)+4*Math.sin(4*t),l=Math.hypot(dx,dy)||1,nx=dy/l,ny=-dx/l;   // outward normal
+    const j=(i%5===0?r()*3.2-.4:r()*1.5-.35);                                    // every few points a bigger torn notch
+    pts.push([(50+x*2.82+nx*j).toFixed(1),(37-y*2.62+ny*-j).toFixed(1)])}
+  return'M'+pts.map(p=>p.join(',')).join('L')+'Z'})();
+const WAVE=(a,y=0)=>`M0,${y}`+Array.from({length:4},(_,i)=>`Q${i*50+25},${y+(i%2?a:-a)} ${i*50+50},${y}`).join('')+'V130H0Z';   // 4 half-waves = 2 periods (200 wide, slides 100 per loop)
+const HEART_SVG=`<svg class="hb-heart" id="hbHp" viewBox="0 0 100 92"><defs><clipPath id="hbHC"><path d="${HEART}"/></clipPath></defs>
+  <path d="${HEART}" fill="#1a0b0a"/>
+  <g clip-path="url(#hbHC)"><g class="liq" id="hpLiq" style="transform:translateY(-6px)">
+    <g class="wv wv2"><path d="${WAVE(3.2,1.5)}" fill="#9d1118" opacity=".85"/></g>
+    <g class="wv"><path d="${WAVE(3.6)}" fill="#d9232b"/></g>
+    <path d="M0,24H200V130H0Z" fill="#c4161c" opacity=".0"/>
+    <circle class="bub" cx="40" cy="80" r="2.2"/><circle class="bub" cx="58" cy="86" r="1.7"/><circle class="bub" cx="49" cy="70" r="1.4"/>
+  </g></g>
+  <path d="${HEART}" fill="none" stroke="#f1e8d2" stroke-width="2.6" stroke-linejoin="bevel" opacity=".92"/>
+  <text id="hpTxt" x="50" y="50">5/5</text></svg>`;
+
+const BAR_CSS=`
+/* ---- minimap key hint + full-screen map (M) */
+.hud-br .mini .mk{position:absolute;right:13px;bottom:11px;z-index:2;font:800 10px/1 var(--mono);color:#f1e8d2;background:rgba(58,42,28,.82);padding:3px 5px;border-radius:2px;pointer-events:none}
+body.mobile .hud-br{pointer-events:auto}
+/* ---- bottom-centre bar: [bag] [health bar] [weapon 1][weapon 2] [artifact x3] [dash]   (bag + dash are story-only) */
+.hud-tl .pcard{display:none}
+.hb{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);display:flex;align-items:center;gap:12px;padding:12px 22px;isolation:isolate;color:var(--cream);font-family:var(--font);
+  filter:drop-shadow(0 4px 0 rgba(0,0,0,.55)) drop-shadow(0 8px 14px rgba(0,0,0,.4))}
+.hb::before{content:'';position:absolute;inset:0;z-index:-1;background:linear-gradient(#2b1d17,#17100d);clip-path:var(--L2)}
+.hb-grp{display:flex;gap:8px;align-items:center}
+.hb-i,.hb-d{position:relative;width:46px;height:46px;display:grid;place-items:center;color:var(--cream)}
+.hb-i svg,.hb-d svg{width:30px;height:30px}
+#hud .hb kbd{position:absolute;font:800 10px/1 var(--mono);color:var(--k);background:none;border:0;padding:0;margin:0;opacity:.6}
+#hud .hb-i kbd{right:-2px;bottom:-3px;color:var(--cream);background:rgba(0,0,0,.55);padding:2px 4px;border-radius:2px;opacity:.9}
+.hb-heart{position:relative;flex:none;width:84px;height:78px;margin:-22px 0 -10px;overflow:visible;filter:drop-shadow(0 3px 0 rgba(0,0,0,.6))}
+.hb-heart .liq{transition:transform .45s cubic-bezier(.3,.8,.3,1)}
+.hb-heart .wv{animation:hbwave 2.6s linear infinite}.hb-heart .wv2{animation-duration:4.1s;animation-direction:reverse}
+@keyframes hbwave{to{transform:translateX(-100px)}}
+.hb-heart .bub{fill:#ffd0c4;opacity:0;animation:hbbub 3.4s ease-in infinite}.hb-heart .bub:nth-of-type(2){animation-delay:1.1s}.hb-heart .bub:nth-of-type(3){animation-delay:2.2s}
+@keyframes hbbub{0%{opacity:0;transform:translateY(0)}15%{opacity:.7}100%{opacity:0;transform:translateY(-30px)}}
+.hb-heart text{font:400 17px var(--disp);letter-spacing:.04em;fill:#fff;text-anchor:middle;paint-order:stroke;stroke:rgba(40,6,8,.85);stroke-width:3.5px;stroke-linejoin:round}
+.hb.low .hb-heart{animation:hbbeat .8s ease-in-out infinite;transform-origin:50% 55%}@keyframes hbbeat{20%{transform:scale(1.09)}40%{transform:scale(.97)}60%{transform:scale(1.05)}}
+.hb.low .hb-heart .liq{filter:brightness(1.3)}
+.hb-s{position:relative;isolation:isolate;width:54px;height:54px;display:grid;place-items:center;color:var(--k)}
+.hb-s::before{content:'';position:absolute;inset:0;z-index:-1;background:var(--grain) var(--paper);clip-path:var(--s3);transition:background-color .12s}
+.hb-grp .hb-s:nth-child(2)::before{clip-path:var(--s6)}.hb-grp .hb-s:nth-child(3)::before{clip-path:var(--s5)}
+.hb-s .ic{display:grid;place-items:center;width:30px;height:30px}.hb-s .wi{width:100%;height:100%}
+#hud .hb-s kbd{left:6px;top:4px}
+.hb-s.empty{opacity:.5}
+.hb-w .hb-s.on{color:var(--cream);opacity:1}.hb-w .hb-s.on::before{background-color:var(--blood)}
+.hb-s .nm{display:none;position:absolute;left:50%;bottom:calc(100% + 14px);transform:translateX(-50%);white-space:nowrap;font:800 13px var(--font);letter-spacing:.1em;text-transform:uppercase;text-shadow:var(--ol);color:var(--cream)}
+.hb-w .hb-s.on .nm{display:block}
+.hb-a .hb-s{width:46px;height:46px}.hb-a .hb-s .ic{width:26px;height:26px}
+.hb-d .df{position:absolute;left:5px;right:5px;bottom:1px;height:4px;border-radius:9px;background:rgba(241,232,210,.22);overflow:hidden}
+.hb-d .df i{display:block;height:100%;background:var(--cream);transform-origin:left;transform:scaleX(1)}
+.hb-d.rdy{color:#8fe3ff}.hb-d.rdy .df i{background:#8fe3ff}
+body:not(.story) .hb-i,body:not(.story) .hb-d{display:none}
+@media (max-width:900px){.hb{transform:translateX(-50%) scale(.8);transform-origin:bottom center}}
+body.mobile .hb{left:calc(8px + env(safe-area-inset-left));top:8px;bottom:auto;transform:scale(.62);transform-origin:top left}
+body.mobile .hb-s .nm{display:none!important}
+body.mobile .hud-tl{top:62px}
+`;
+const css=document.createElement('style');css.textContent=BAR_CSS+`
 .hud-ammo{position:absolute;right:26px;bottom:118px;display:none;flex-direction:column;align-items:flex-end;gap:4px;text-shadow:var(--sh)}
 .hud-ammo .amrow{display:flex;align-items:baseline;gap:6px}
 #amN{font:400 40px/1 var(--disp);color:#fff;min-width:1ch;text-align:right}#amM{font:800 16px var(--font);color:#ffffffaa;letter-spacing:.08em}
@@ -97,18 +150,21 @@ export function createHUD(root=document.body){
   const $=s=>root.querySelector(s),el=(h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
   const hud=$('#hud');
   hud.innerHTML=`
-    <div class="hud-tl"><div class="pcard"><div class="pbadge">${PAW}</div>
-      <div class="pbody"><div class="pname" id="pname">Cat</div><div class="paws" id="paws"></div>
-      <div class="tmb"><i id="tmbFill"></i><span>TUMBLE <em>SPACE</em></span></div></div></div>
-      <div class="sbox"><span class="lbl">SCORE</span><b id="score">000000</b>
+    <div class="hud-tl"><div class="sbox"><span class="lbl">SCORE</span><b id="score">000000</b>
       <div class="combo" id="combo"><span id="comboTxt">x2</span><i id="comboBar"></i></div>
       <div class="subs"><span>KOs <b id="kos">0</b></span><span>BEST <b id="bestHud">0</b></span></div></div></div>
     <div class="hud-tc"><div class="wplate"><small>WAVE</small><b id="waveN">1</b></div>
       <div class="foes"><div class="foebar"><i id="foeFill"></i></div><span id="foeTxt">&nbsp;</span></div></div>
-    <div class="hud-br"><div class="mini"><canvas id="mini" width="220" height="220"></canvas><span class="mn">N</span></div></div>
-    <div class="hud-bc" id="wpn">${slotHTML}</div>
+    <div class="hud-br"><div class="mini"><canvas id="mini" width="220" height="220"></canvas><span class="mn">N</span><span class="mk">M</span></div></div>
+    <div class="hb" id="hbar">
+      <div class="hb-i" id="hbInv">${BAG}<kbd>I</kbd></div>
+      ${HEART_SVG}
+      <div class="hb-grp hb-w" id="hbW">${[0,1].map(n=>`<div class="hb-s empty" data-n="${n}"><kbd>${n+1}</kbd><span class="ic"></span><span class="nm"></span></div>`).join('')}</div>
+      <div class="hb-grp hb-a" id="hbA">${[0,1,2].map(n=>`<div class="hb-s empty" data-n="${n}"><span class="ic"></span></div>`).join('')}</div>
+      <div class="hb-d" id="hbD">${DASH}<div class="df"><i id="hbDf"></i></div></div>
+    </div>
     <div class="hud-ammo" id="ammo"><div class="amrow"><b id="amN">0</b><small id="amM"></small></div><div class="ambar"><i id="amFill"></i></div><span id="amHint"></span></div>
-    <div class="hud-bl"><div class="hint"><kbd>LMB</kbd> shoot <kbd>RMB</kbd> scope <kbd>SPACE</kbd> tumble <kbd>1-8</kbd> / wheel weapon</div></div>`;
+    <div class="hud-bl"><div class="hint"><kbd>LMB</kbd> shoot <kbd>RMB</kbd> scope <kbd>SPACE</kbd> jump <kbd>SHIFT</kbd> roll <kbd>1-2</kbd> / wheel weapon <kbd>M</kbd> map <kbd>I</kbd> inventory</div></div>`;
   
   const extra=el(`<div id="hudx"><div id="fps-crosshair"><i class="dot"></i><i class="t t1"></i><i class="t t2"></i><i class="t t3"></i><i class="t t4"></i><div id="hitm"><i></i><i></i><i></i><i></i></div></div>
     <div id="scope-ov"></div><div id="hurt"></div><div id="lowhp"></div><div id="banner"><b id="bnT"></b><span id="bnS"></span></div><div id="ebars"></div>
@@ -118,15 +174,23 @@ export function createHUD(root=document.body){
       <div class="row"><button id="resume" class="btn green">Resume</button><button id="pgfx" class="btn pink">Settings</button><button id="quit" class="btn gold">Title</button></div></div></div></div>`);
   document.body.appendChild(extra);
   const cross=$('#fps-crosshair'),hitm=$('#hitm'),scopeEl=$('#scope-ov'),hurtEl=$('#hurt'),lowEl=$('#lowhp'),bn=$('#banner'),ebars=$('#ebars'),pauseEl=$('#pause');
-  const mini=$('#mini'),mc=mini.getContext('2d'),slots=[...root.querySelectorAll('#wpn .slot')];
+  const mini=$('#mini'),mc=mini.getContext('2d');
+  const hbar=$('#hbar'),wEls=[...root.querySelectorAll('#hbW .hb-s')],aEls=[...root.querySelectorAll('#hbA .hb-s')];
+  let slotsW=[0,1],curW=0;                                           // weapon indices shown in the two weapon slots, and the one in your hands
+  const drawW=()=>wEls.forEach((e,n)=>{const i=slotsW[n],w=i!=null?WEAPONS[i]:null;e.classList.toggle('empty',!w);e.classList.toggle('on',!!w&&i===curW);
+    e.querySelector('.ic').innerHTML=w?(ICONS[w.id]||BLASTER):'';e.querySelector('.nm').textContent=w?w.name:''});
   {const fr=mini.parentNode;if(fr)fr.style.clipPath=tornPoly()}   // tattered paper edge
+  // ---- full-screen map page (js/bigMap.js): M or a tap on the minimap opens it; main.js freezes the game while it is open
+  const bm=createBigMap({onChange:b=>{document.body.classList.toggle('bigmap',b);api.onMap&&api.onMap(b)}});
+  {const fr=mini.parentNode;if(fr)fr.addEventListener('click',()=>api.bigmap(true))}   // touch: tap the minimap
   const v=new T.Vector3(),pool=[];let last={};
   const set=(k,fn,val)=>{if(last[k]!==val){last[k]=val;fn(val)}};
   const api={
-    show(b){hud.hidden=!b;extra.style.display=b?'block':'none';if(!b){this.pause(false);bn.className='';}},
+    show(b){hud.hidden=!b;extra.style.display=b?'block':'none';if(!b){this.pause(false);bn.className='';this.bigmap(false)}},
     reset(){last={};this.banner('','');hurtEl.style.opacity=0;ebars.innerHTML='';pool.length=0},
-    name(n){$('#pname').textContent=n||'Cat'},
-    hp(hp,max){set('hp',()=>{$('#paws').innerHTML=Array.from({length:max},(_,i)=>`<span class="pw${i<hp?'':' off'}">${PAW}</span>`).join('');lowEl.classList.toggle('on',hp<=1&&hp>0)},hp+'/'+max)},
+    name(n){hbar.dataset.name=n||'Cat'},
+    hp(hp,max){set('hp',()=>{$('#hpLiq').style.transform=`translateY(${(-5+(1-(max?Math.max(0,Math.min(1,hp/max)):0))*104).toFixed(1)}px)`;$('#hpTxt').textContent=Math.max(0,hp)+'/'+max;
+      const lo=hp<=1&&hp>0;lowEl.classList.toggle('on',lo);hbar.classList.toggle('low',lo)},hp+'/'+max)},
     wave(n){set('wave',x=>{$('#waveN').textContent=x;$('#waveN').parentNode.classList.remove('pop');void $('#waveN').offsetWidth;$('#waveN').parentNode.classList.add('pop')},n)},
     foes(left,total,txt){set('foes',()=>{$('#foeFill').style.width=(total?100*(1-left/total):0)+'\%';$('#foeTxt').textContent=txt??(left>0?`${left} enemies left`:'Area clear')},left+'/'+total+txt)},
     score(s,k,b){set('score',()=>{$('#score').textContent=String(s).padStart(6,'0');$('#kos').textContent=k;$('#bestHud').textContent=b;const e=$('#score');e.classList.remove('bump');void e.offsetWidth;e.classList.add('bump')},s+'|'+k+'|'+b)},
@@ -137,16 +201,22 @@ export function createHUD(root=document.body){
       set('am',()=>{$('#amN').textContent=cur;$('#amM').textContent='/ '+max;a.classList.toggle('rl',rl);a.classList.toggle('low',low&&cur>0);a.classList.toggle('empty',!rl&&cur<=0);
         $('#amHint').textContent=rl?'RELOADING':cur<=0?(mob?'TAP R':'PRESS R'):low?(mob?'LOW':'LOW · R'):''},cur+'/'+max+'/'+rl+'/'+mob);
       if(rl)$('#amFill').style.transform=`scaleX(${Math.min(1,frac).toFixed(2)})`},
-    /** 5v5 roulette: show only these weapon slots (labelled 1, 2); null = show them all again */
-    loadout(list){slots.forEach((s,i)=>{const on=!list||list.includes(i);s.style.display=on?'':'none';const k=s.querySelector('kbd');if(k)k.textContent=list?(list.indexOf(i)+1||''):i+1})},
-    weapon(w){slots.forEach(s=>s.classList.toggle('on',+s.dataset.w===w))},
+    /** the two weapon slots: list = weapon indices (labelled 1, 2; an empty list = empty hands); null = the default pair */
+    loadout(list){slotsW=list?[list[0]??null,list[1]??null]:[0,1];drawW()},
+    weapon(w){curW=w;drawW()},
+    /** the three artifact slots: [{icon,name}|null x3] */
+    artifacts(list){aEls.forEach((e,n)=>{const a=list&&list[n];e.classList.toggle('empty',!a);e.querySelector('.ic').innerHTML=a?a.icon:'';e.title=a?a.name:''})},
     banner(t,s='',cls=''){bn.className='';$('#bnT').textContent=t;$('#bnS').textContent=s;if(!t)return;void bn.offsetWidth;bn.className='on '+cls},
     hit(kill){hitm.className='';void hitm.offsetWidth;hitm.className=kill?'kill':'hit'},
     hurt(){hurtEl.style.transition='none';hurtEl.style.opacity=.95;void hurtEl.offsetWidth;hurtEl.style.transition='opacity .7s ease-out';hurtEl.style.opacity=0},
-    pause(b){pauseEl.hidden=!b},
+    pause(b){pauseEl.hidden=!b;if(b)this.bigmap(false)},
+    onMap:null,                                       // main.js sets this: called with true / false when the map page opens / closes
+    bigmap(b){bm.set(b)},
+    bigmapOn:()=>bm.isOpen(),
+    bigradar(P,enemies,pickups,map){bm.draw(P,enemies,pickups,map)},
     scope(a){scopeEl.style.opacity=a;cross.style.opacity=1-a*.7},
     crosshair(spread,vis){cross.style.display=vis?'block':'none';cross.style.setProperty('--sp',spread.toFixed(1)+'px')},
-    tumble(frac){set('tmb',()=>{const f=$('#tmbFill');f.style.transform=`scaleX(${frac})`;f.parentNode.classList.toggle('rdy',frac>=1)},Math.round(frac*40))},
+    tumble(frac){set('tmb',()=>{$('#hbDf').style.transform=`scaleX(${Math.max(0,Math.min(1,frac))})`;$('#hbD').classList.toggle('rdy',frac>=1)},Math.round(frac*40))},
     bars(enemies,cam,time){let n=0;const w=innerWidth,h=innerHeight;
       for(const e of enemies){if(!(e.hbT>0)||e.hp<=0)continue;v.set(e.x,1.55+(e.jy||0),e.z).project(cam);if(v.z>1||v.z<-1)continue;
         let b=pool[n];if(!b){b=el('<div class="eb"><i></i></div>');ebars.appendChild(b);pool[n]=b}
@@ -180,5 +250,6 @@ export function createHUD(root=document.body){
         mc.fillStyle=INK;mc.font="900 13px Bungee,Impact,sans-serif";mc.textAlign='center';mc.textBaseline='middle';mc.fillText('N',qx,qy+1)}
       mc.restore()}
   };
+  drawW();
   api.show(false);
   return api}
