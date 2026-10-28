@@ -1,5 +1,11 @@
 // Verlet physics in world space, rebuilt as meshes in the parent's local space: Rope (tail, whiskers) and Cloth (cloak).
 import * as T from 'three';
+// "Reduce physics" (Settings > Graphics). The flag lives on globalThis so settings.js can flip it without importing this file.
+// Reduced = every Cloth (cloak, collar, scarf tail) still simulates every frame, but with 1 constraint iteration instead of 3, a single
+// collision pass, and its normals recomputed only every other frame (cats alternate so the work is spread). It still moves and drapes the
+// same way, the cloth is just a little looser. Costs about half. (Ropes: tail / whiskers / ear fur are cheap and unchanged.)
+export const PHYS=globalThis.__SAD_PHYS||(globalThis.__SAD_PHYS={reduce:false});
+let _cn=0;
 export const VM=new T.MeshStandardMaterial({vertexColors:true,roughness:1,side:T.DoubleSide});
 const _t=new T.Vector3(),_n=new T.Vector3(),_b=new T.Vector3(),_d=new T.Vector3(),_s=new T.Vector3(),_c=new T.Color(),_i=new T.Matrix4();
 const paint=(a,i,h)=>{_c.set(h);a[i*3]=_c.r;a[i*3+1]=_c.g;a[i*3+2]=_c.b};
@@ -41,11 +47,12 @@ export class Cloth{ // rest: local points, row-major [r*cols+c]; top row is pinn
     this.tl=this.links.map(()=>0);const cl=new Float32Array(N*3),idx=[];
     for(let r=0;r<rows;r++)for(let c=0;c<cols;c++){paint(cl,id(r,c),O.color(r,c));if(r<rows-1&&c<cols-1){idx.push(id(r,c),id(r+1,c),id(r,c+1),id(r,c+1),id(r+1,c),id(r+1,c+1))}}
     const g=this.geo=new T.BufferGeometry();g.setAttribute('position',new T.BufferAttribute(new Float32Array(N*3),3));g.setAttribute('color',new T.BufferAttribute(cl,3));g.setIndex(idx);
-    this.mesh=new T.Mesh(g,VM);this.mesh.frustumCulled=false;frame.add(this.mesh);this.init=false;this.write();
+    this.mesh=new T.Mesh(g,VM);this.mesh.frustumCulled=false;frame.add(this.mesh);this.init=false;this._f=(_cn++)&1;this.write();
     const C=O.coll;this.colls=C?(typeof C[0][0]==='number'?[C]:C).map(([c,r])=>({c:new T.Vector3(...c),r:new T.Vector3(...r)})):[];   // list of ellipsoid colliders (centre, radii) in the frame's local space
   }
-  write(){const a=this.geo.attributes.position.array;this.lp.forEach((v,i)=>{a[i*3]=v.x;a[i*3+1]=v.y;a[i*3+2]=v.z});this.geo.attributes.position.needsUpdate=true;this.geo.computeVertexNormals()}
+  write(noNorm){const a=this.geo.attributes.position.array;this.lp.forEach((v,i)=>{a[i*3]=v.x;a[i*3+1]=v.y;a[i*3+2]=v.z});this.geo.attributes.position.needsUpdate=true;if(!noNorm)this.geo.computeVertexNormals()}
   step(dt){dt=Math.min(dt,1/30);if(!(dt>0))return;
+    const red=PHYS.reduce;   // Settings > Graphics > Reduce physics
     const f=this.f,{rw,p,pv,rest,cols,N,o}=this;f.updateWorldMatrix(true,false);const Mx=f.matrixWorld,sc=_s.setFromMatrixScale(Mx).x;
     for(let i=0;i<N;i++)rw[i].copy(rest[i]).applyMatrix4(Mx);
     if(!this.init||p[N-1].distanceTo(rw[N-1])>3*sc){for(let i=0;i<N;i++){p[i].copy(rw[i]);pv[i].copy(rw[i])}this.init=true}
@@ -53,14 +60,14 @@ export class Cloth{ // rest: local points, row-major [r*cols+c]; top row is pinn
     const pn=this.pinned;for(let i=0;i<N;i++){if(pn[i])continue;const q=p[i],pr=pv[i],vx=(q.x-pr.x)*damp,vy=(q.y-pr.y)*damp,vz=(q.z-pr.z)*damp;pr.copy(q);q.x+=vx;q.y+=vy-o.grav*sc*dt*dt;q.z+=vz;q.lerp(rw[i],k)}
     for(let i=0;i<N;i++)if(pn[i]){p[i].copy(rw[i]);pv[i].copy(rw[i])}
     this.links.forEach(([a,b],i)=>this.tl[i]=rw[a].distanceTo(rw[b]));
-    for(let it=0;it<o.iter;it++)this.links.forEach(([a,b],i)=>{const A=p[a],B=p[b],d=_d.subVectors(B,A),l=d.length()||1e-6,df=(l-this.tl[i])/l;
+    for(let it=0,nit=red?1:o.iter;it<nit;it++)this.links.forEach(([a,b],i)=>{const A=p[a],B=p[b],d=_d.subVectors(B,A),l=d.length()||1e-6,df=(l-this.tl[i])/l;
       if(pn[a]&&pn[b])return;if(pn[a])B.addScaledVector(d,-df);else if(pn[b])A.addScaledVector(d,df);else{B.addScaledVector(d,-df*.5);A.addScaledVector(d,df*.5)}});
     _i.copy(Mx).invert();
     for(let i=0;i<N;i++){const v=this.lp[i].copy(p[i]).applyMatrix4(_i);
-      if(!pn[i]&&this.colls.length){let hit=false;for(let pass=0;pass<2;pass++)for(const e of this.colls){_n.copy(v).sub(e.c).divide(e.r);const l=_n.length();if(l<1&&l>1e-4){v.copy(_n).divideScalar(l).multiply(e.r).add(e.c);hit=true}}
+      if(!pn[i]&&this.colls.length){let hit=false;for(let pass=0;pass<(red?1:2);pass++)for(const e of this.colls){_n.copy(v).sub(e.c).divide(e.r);const l=_n.length();if(l<1&&l>1e-4){v.copy(_n).divideScalar(l).multiply(e.r).add(e.c);hit=true}}
         if(hit)p[i].copy(v).applyMatrix4(Mx)}}
     if(!isFinite(this.lp[N-1].x+this.lp[N-1].y)){this.init=false;this.lp.forEach((v,i)=>v.copy(rest[i]))}
-    this.write()}
+    this.write(red&&(this._f^=1)===1)}   // reduced: normals only every other step
 }
 // A tube that follows a list of points every frame (used for the hood's trim, which rides on the cloth's edge particles).
 export class Tube{
