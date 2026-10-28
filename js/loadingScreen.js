@@ -20,6 +20,25 @@ const CSS=`
 #loading.fail .lbar i{background:#e8453c;box-shadow:0 0 14px rgba(232,69,60,.6)}#loading.fail #lstep{color:#ff8a7a}
 body.loading #title,body.loading #hud{visibility:hidden}`;
 
+// ---- GAME MODE loading screen: plain black, just the mode name (Bungee) and a random one-line quote (Baloo 2), both fading in. No logo, bar, step text or fire.
+// loading.show(text, heading) uses it whenever `heading` is one of these keys; the boot screen (index.html) keeps its own look.
+const MODES={
+  '5V5':{t:'SPIKE',q:['Plant it. Defend it. Don\'t blink.','Five cats. One spike. No second chances.','Silence is the loudest sound before a plant.','Every round is a brand new map. Adapt or fall.','Nine lives won\'t save you here.','Hold the site. Trust your team.','The spike won\'t plant itself.','Eyes up. Somebody is always watching the corner.']},
+  'PVP':{t:'PVP',q:['Real cats. Real rivals. No mercy.','Your friends are about to become your enemies.','Out-aim them. Out-roll them. Out-last them.','Bragging rights are on the line.','No bots can predict a friend.']},
+  'ADVENTURE':{t:'ADVENTURE',q:['Every world has a story. Go find yours.','Rivers always flow downhill. Follow one.','The map is only as big as your courage.','Somewhere past those mountains, something is waiting.','No two worlds are the same.','Take the long way. It\'s prettier.']},
+  'SURVIVAL':{t:'SURVIVAL',q:['Wave after wave. How long can you last?','Dodge, shoot, repeat.','Nobody keeps all nine lives forever.','The next wave is already coming.','Pick your weapon. Trust your luck.','Stay moving. Stay alive.']}
+};
+const MODE_MIN=1500;   // ms the screen stays up at least, so the text can fade in and be read
+const MODE_CSS=`
+#loadmode{position:fixed;inset:0;z-index:5002;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(10px,2.4vh,22px);background:#000;text-align:center;padding:0 6vw;box-sizing:border-box;transition:opacity .45s ease,visibility .45s}
+#loadmode.out{opacity:0;visibility:hidden;pointer-events:none}
+#loadmode .mt{font:400 clamp(44px,11vw,120px)/1 'Bungee','Baloo 2',Impact,sans-serif;color:#f1e8d2;letter-spacing:.06em;opacity:0}
+#loadmode .mq{font:700 clamp(15px,2.4vw,24px)/1.3 'Baloo 2',system-ui,sans-serif;color:#b9ada0;max-width:34em;opacity:0}
+#loadmode.go .mt{animation:lmIn .8s ease-out .05s forwards}
+#loadmode.go .mq{animation:lmIn .9s ease-out .5s forwards}
+@keyframes lmIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+#loadmode.fail .mq{color:#ff8a7a}`;
+
 function ensure(){
   let root=document.getElementById('loading');
   if(!root){
@@ -40,16 +59,24 @@ function createLoadingScreen(){
       const cb=onGone;onGone=null;setTimeout(()=>cb&&cb(),620);return}
     paintId=requestAnimationFrame(paint)};
   const startTips=()=>{clearInterval(tipTimer);if(tip){tip.textContent=tipsList[ti%tipsList.length]}tipTimer=setInterval(()=>{if(tip)tip.textContent=tipsList[++ti%tipsList.length]},2600)};
+  let mEl=null,mT,mQ,mOn=false,mAt=0;
+  const modeEnsure=()=>{if(mEl)return;const st=document.createElement('style');st.id='loadmode-css';st.textContent=MODE_CSS;document.head.appendChild(st);
+    mEl=document.createElement('div');mEl.id='loadmode';mEl.className='out';mEl.innerHTML='<div class="mt"></div><div class="mq"></div>';document.body.appendChild(mEl);mT=mEl.querySelector('.mt');mQ=mEl.querySelector('.mq')};
+  const modeShow=M=>{modeEnsure();mT.textContent=M.t;mQ.textContent=M.q[Math.random()*M.q.length|0];
+    mEl.classList.remove('out','go','fail');void mEl.offsetWidth;mEl.classList.add('go');mAt=performance.now();mOn=true;document.body.classList.add('loading')};
   const api={
     /** the boot screen (index.html) is already visible: adopt it without resetting */
     adopt(){grab();target=shown=0;finished=failed=false;startTips();if(!paintId)paint()},
     show(text='Loading…',heading=''){
+      if(MODES[heading]){modeShow(MODES[heading]);return}
+      if(mOn){mEl.classList.add('out');mOn=false}
       grab();cancelAnimationFrame(paintId);paintId=0;target=shown=0;finished=failed=false;
       root.classList.remove('fail');void root.offsetWidth;root.classList.remove('out');document.body.classList.add('loading');
       if(title)title.textContent=heading;step.textContent=text;fill.style.width='0%';pct.textContent='0%';startTips();paint()},
-    set(p,text){if(!root)grab();target=Math.max(target,Math.min(1,p));if(text)step.textContent=text},
-    done(){if(!root)grab();failed=false;root.classList.remove('fail');step.textContent='Ready!';target=1;finished=true;if(!paintId)paint();return new Promise(res=>{onGone=res})},
-    fail(msg){if(!root)grab();failed=true;root.classList.add('fail');step.textContent=msg},
+    set(p,text){if(mOn)return;if(!root)grab();target=Math.max(target,Math.min(1,p));if(text)step.textContent=text},
+    done(){if(mOn)return new Promise(res=>setTimeout(()=>{mEl.classList.add('out');mOn=false;document.body.classList.remove('loading');setTimeout(res,460)},Math.max(0,MODE_MIN-(performance.now()-mAt))));
+      if(!root)grab();failed=false;root.classList.remove('fail');step.textContent='Ready!';target=1;finished=true;if(!paintId)paint();return new Promise(res=>{onGone=res})},
+    fail(msg){if(mOn){mQ.textContent=msg;mEl.classList.add('fail');return}if(!root)grab();failed=true;root.classList.add('fail');step.textContent=msg},
     tips(list){tipsList=list&&list.length?list:DEFAULT_TIPS;ti=0}};
   return api}
 
