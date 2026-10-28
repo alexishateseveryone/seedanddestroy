@@ -32,18 +32,19 @@ const ICO={
 const same=(a,b)=>ROWS.every(([,k])=>Math.abs(a[k]-b[k])<1e-6);
 
 export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null,getPad=()=>null,root=document.body}){
-  let st={preset:'medium',q:{...PRESETS.medium},fps:false,auto:false,blur:1,fov:70,cap:0,cam:0},tab='gfx';   // blur 0..3 (Off/Low/Medium/High) and fov are personal options: presets never change them
-  try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&j.q){st={...st,...j,q:{...PRESETS.medium,...j.q}};if(!j.av)st.auto=false}}catch(e){}   // auto-lower is OFF by default (av = saved by a version that knows this: older saves had it forced on)
+  let st={preset:'medium',q:{...PRESETS.medium},fps:false,auto:false,blur:0,rp:0,fov:70,cap:0,cam:0},tab='gfx';   // blur 0..3 (Off/Low/Medium/High, default OFF), rp (reduce physics) and fov are personal options: presets never change them
+  try{const j=JSON.parse(localStorage.getItem(KEY)||'null');if(j&&j.q){st={...st,...j,q:{...PRESETS.medium,...j.q}};if(!j.av)st.auto=false;if(!j.bv)st.blur=0;st.rp=+!!st.rp}}catch(e){}   // auto-lower is OFF by default (av = saved by a version that knows this: older saves had it forced on). bv = saved by a version where motion blur defaults to OFF: older saves still hold the old automatic "Low", so it is reset once
   st.cam=Math.max(0,Math.min(40,Math.round(+st.cam||0)));   // camera height preference: 0 (default, lowest) .. 40 (highest); main.js reads it live every frame
   const camTxt=v=>v<=0?'Default':'+'+v;
-  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({preset:st.preset,q:st.q,fps:st.fps,auto:st.auto,av:1,blur:st.blur,fov:st.fov,cap:st.cap,cam:st.cam}))}catch(e){}};
+  const save=()=>{try{localStorage.setItem(KEY,JSON.stringify({preset:st.preset,q:st.q,fps:st.fps,auto:st.auto,av:1,blur:st.blur,bv:1,rp:st.rp,fov:st.fov,cap:st.cap,cam:st.cam}))}catch(e){}};
   const presetOf=q=>ORDER.find(n=>same(PRESETS[n],q))||'custom';
   // only treat the touch controls as usable when they really expose the settings API (get/set/edit/reset)
   const mob=()=>{try{const m=getMobile();return m&&m.active&&typeof m.get==='function'&&typeof m.set==='function'&&typeof m.edit==='function'&&typeof m.reset==='function'?m:null}catch(e){return null}};
   // ---- apply
   const pr=()=>Math.max(.4,Math.min(2,Math.min(devicePixelRatio||1,1.5)*st.q.scale));
   const apply=()=>{const q=st.q;atm.setQuality({bloom:!!q.bloom,grade:!!q.grade,aa:!!q.aa,shadows:q.shadows,clouds:!!q.clouds,blur:st.blur});
-    map.setQuality({grass:q.grass,detail:!!q.detail,wind:!!q.wind,particles:!!q.particles});onResolution&&onResolution();fpsShow();settle=4};
+    map.setQuality({grass:q.grass,detail:!!q.detail,wind:!!q.wind,particles:!!q.particles});(globalThis.__SAD_PHYS||(globalThis.__SAD_PHYS={})).reduce=!!st.rp;   // read by physics.js on every cloth step
+    onResolution&&onResolution();fpsShow();settle=4};
   // ---- ui
   const css=document.createElement('style');css.textContent=`
   /* fixed-size card: the tab content scrolls inside it, so switching tabs never resizes the card */
@@ -133,6 +134,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
       <div class="gpre" id="gPre">${ORDER.map(n=>`<button data-p="${n}">${NAMES[n]}</button>`).join('')}<button data-p="custom" disabled>Custom</button></div>
       <div class="grows">${ROWS.map(([name,k,opts,hint])=>`<div class="grow" title="${hint}"><span>${name}<small>${hint}</small></span>${seg(`data-k="${k}"`,opts)}</div>`).join('')}
         <div class="grow"><span>Motion blur<small>Smears the picture when you turn the camera</small></span>${seg('data-x="blur"',[[0,'Off'],[1,'Low'],[2,'Medium'],[3,'High']])}</div>
+        <div class="grow"><span>Reduce physics<small>Cloaks, collars and scarves use a lighter simulation. They still move, but it runs faster</small></span>${seg('data-x="rp"',[[0,'Off'],[1,'On']])}</div>
         <div class="grow"><span>Field of view<small>Wider sees more around you (default 70)</small></span><div class="fovr"><input type="range" id="fovR" min="50" max="120" step="1"><b id="fovV">70°</b></div></div>
         <div class="grow"><span>Camera height<small>Raise the camera behind your cat (0 = default, up to +40)</small></span><div class="fovr"><input type="range" id="camR" min="0" max="40" step="1"><b id="camV" style="min-width:64px">Default</b><button class="kbtn" data-cam0="1" title="Back to default">Reset</button></div></div>
         <div class="grow"><span>FPS limit<small>Caps the frame rate. Lower = cooler and saves battery</small></span>${seg('data-x="cap"',[[30,'30'],[60,'60'],[120,'120'],[0,'Unlimited']])}</div>
@@ -169,7 +171,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
   const sync=()=>{const p=presetOf(st.q);syncPad();st.preset=p;showTab(tab);const m=mob(),mc=m&&m.get();
     el.querySelectorAll('#gPre button').forEach(b=>b.classList.toggle('on',b.dataset.p===p));
     el.querySelectorAll('.seg').forEach(g=>{const k=g.dataset.k,x=g.dataset.x,c=g.dataset.c;if(!k&&!x&&!c)return;
-      const cur=k?st.q[k]:c?(mc?mc[c]:0):x==='fps'?+st.fps:x==='blur'?st.blur:x==='cap'?st.cap:+st.auto;g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.v-cur)<1e-6))});
+      const cur=k?st.q[k]:c?(mc?mc[c]:0):x==='fps'?+st.fps:x==='blur'?st.blur:x==='rp'?st.rp:x==='cap'?st.cap:+st.auto;g.querySelectorAll('button').forEach(b=>b.classList.toggle('on',Math.abs(+b.dataset.v-cur)<1e-6))});
     el.querySelectorAll('[data-a]').forEach(i=>{const v=Math.round((audio?audio.get()[i.dataset.a]:0)*100);i.value=v;i.nextElementSibling.textContent=v+'%';paint(i)});
     el.querySelector('#fovR').value=st.fov;paint(el.querySelector('#fovR'));el.querySelector('#fovV').textContent=st.fov+'°';
     el.querySelector('#camR').value=st.cam;paint(el.querySelector('#camR'));el.querySelector('#camV').textContent=camTxt(st.cam)};
@@ -198,6 +200,7 @@ export function createSettings({atm,map,audio,kb,onResolution,getMobile=()=>null
     else if(b.parentNode.dataset.x==='fps')st.fps=!!+b.dataset.v;
     else if(b.parentNode.dataset.x==='auto')st.auto=!!+b.dataset.v;
     else if(b.parentNode.dataset.x==='blur')st.blur=+b.dataset.v;
+    else if(b.parentNode.dataset.x==='rp')st.rp=+b.dataset.v;
     else if(b.parentNode.dataset.x==='cap')st.cap=+b.dataset.v;
     sync();save();apply()});
   el.addEventListener('change',e=>{if(audio&&e.target.dataset&&e.target.dataset.a==='sfx')audio.play('hit')});   // let go of the sfx slider = hear the new level
