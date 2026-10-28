@@ -11,29 +11,19 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="./node_modules/bootstrap-icons/font/bootstrap-icons.min.css">
 <link rel="stylesheet" href="style.css">
 <link rel="preload" as="image" href="assets/images/sadmlogo.png">
-
-<!-- Google Fonts CDN Backup -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bungee&family=DM+Mono:wght@500&display=swap" rel="stylesheet">
-
-<!-- Bootstrap Icons CDN Backup -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/font/bootstrap-icons.min.css">
-
-<!-- Three.js Import Map using High-Speed CDN -->
-<script type="importmap">{
-  "imports": {
-    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+<script type="importmap">
+  {
+    "imports": {
+      "three": "./node_modules/three/build/three.module.js",
+      "three/addons/": "./node_modules/three/examples/jsm/",
+      "peerjs": "./node_modules/peerjs/dist/bundle.mjs"
+    }
   }
-}</script>
-<link rel="stylesheet" href="style.css">
-<link rel="preload" as="image" href="assets/images/sadmlogo.png">
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>  <!-- WebRTC (PeerJS) -> window.Peer, used by js/net.js -->
+</script>
 <style>
-
   /* Swaying & Floating Animation for the Logo */
   @keyframes logoSway {
     0% {
@@ -58,17 +48,21 @@
     transform-origin: bottom center;
   }
 
-  /* ---------- loading screen ---------- */
-  #loading{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:radial-gradient(ellipse 80% 80% at 50% 40%,#3b3e45 0,#202226 55%,#121316 100%);transition:opacity .6s ease,visibility .6s;color:#e9eaee;font-family:'Baloo 2',system-ui,sans-serif}
-  #loading.out{opacity:0;visibility:hidden;pointer-events:none}
-  #loading .lc{width:min(440px,86vw);text-align:center}
-  #loading .llogo{display:block;width:min(440px,86vw);max-height:46vh;object-fit:contain;margin:0 auto;filter:drop-shadow(0 12px 22px rgba(0,0,0,.55));image-rendering:pixelated;-webkit-user-drag:none}
-  #loading .lname{font:400 34px/1 'Bungee','Baloo 2',Impact,sans-serif;color:#ffd54a;-webkit-text-stroke:8px #3a2308;paint-order:stroke fill;text-shadow:0 6px 0 #3a2308;margin:0 0 14px}#loading .lname:empty{display:none}
-  #loading .lbar{height:8px;border-radius:9px;background:rgba(255,255,255,.12);overflow:hidden;margin:26px 0 10px}
-  #loading .lbar i{display:block;height:100%;width:0;border-radius:9px;background:linear-gradient(90deg,#f0c36a,#ffe19a);box-shadow:0 0 14px rgba(240,195,106,.6)}
-  #loading .lrow{display:flex;justify-content:space-between;font:500 13px 'DM Mono',monospace;letter-spacing:.08em;color:#aeb2bb}
-  #loading .ltip{margin-top:22px;font:700 14px 'Baloo 2',sans-serif;color:#8d919b;min-height:20px}
-  #loading.fail .lbar i{background:#e8453c;box-shadow:0 0 14px rgba(232,69,60,.6)}#loading.fail #lstep{color:#ff8a7a}
+  /* ---------- loading screen: pure black, the white cat running in the middle, texts below ---------- */
+  #loading{position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;background:#000;overflow:hidden;color:#e9eaee;font-family:'Baloo 2',system-ui,sans-serif}
+  #loading .lc{position:relative;z-index:1;width:min(440px,86vw);text-align:center}
+  #loading .lcat{height:clamp(84px,17vh,136px);width:100%;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;transform-origin:62% 42%;will-change:transform}
+  #loading .lsp{height:100%;background-repeat:no-repeat;opacity:0;transition:opacity .5s ease}
+  #loading .lsp.on{opacity:1}
+  #loading .lname{font:400 34px/1 'Bungee','Baloo 2',Impact,sans-serif;color:#fff;margin:0 0 10px}#loading .lname:empty{display:none}
+  #loading .lbar{display:none}   /* no progress bar (loadingScreen.js still writes to it, so it stays in the DOM) */
+  #loading .lrow{display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;font:500 13px 'DM Mono',monospace;letter-spacing:.08em;color:#9a9ca3}
+  #loading .ltip{text-align:center;margin-top:20px;font:700 14px 'Baloo 2',sans-serif;color:#6f7078;min-height:20px}
+  #loading.fail #lstep{color:#ff8a7a}
+  /* finished: the loader adds .out; the script below zooms into the cat, turns everything white and fades to the title, then adds .gone */
+  html body #loading{background:#000}
+  html body #loading.out{opacity:1;visibility:visible;transition:none;pointer-events:none}
+  html body #loading.gone{display:none}
   body.loading #title,body.loading #hud{visibility:hidden}
 
   /* ---------- responsive: any screen size / orientation ---------- */
@@ -85,8 +79,46 @@
 </head>
 <body class="loading"><canvas id="c"></canvas>
 <svg width="0" height="0" style="position:absolute"><symbol id="paw" viewBox="0 0 128 128"><g fill="currentColor"><ellipse cx="64" cy="82" rx="25" ry="20"/><ellipse cx="26" cy="54" rx="10" ry="13"/><ellipse cx="47" cy="34" rx="10" ry="14"/><ellipse cx="81" cy="34" rx="10" ry="14"/><ellipse cx="102" cy="54" rx="10" ry="13"/></g></symbol></svg>
-<div id="loading"><div class="lc"><div class="lname" id="ltitle"></div><img class="llogo animated-logo" src="assets/images/sadmlogo.png" alt="Seed and Destroy No Mercy!" draggable="false">
-  <div class="lbar"><i id="lfill"></i></div><div class="lrow"><span id="lstep">Loading…</span><span id="lpct">0%</span></div><div class="ltip" id="ltip"></div></div></div>
+<div id="loading"><div class="lc"><div class="lcat" id="lcat"></div><div class="lname" id="ltitle"></div>
+  <div class="lbk"><div class="lbar"><i id="lfill"></i></div><div class="lrow"><span id="lstep">Loading…</span><span id="lpct">0%</span></div><div class="ltip" id="ltip"></div></div></div></div>
+<script>
+// Boot loading screen: main.js hands over the running-cat sprite sheet (window.__loadCat) as soon as it is rendered.
+// When the loader adds .out (loading finished): the cat squashes, a cartoony circle hole pops open at the cat and grows over the black screen
+// (revealing the title), the last black rim fades out, then .gone.
+(function(){
+  const L=document.getElementById('loading'),cat=document.getElementById('lcat'),bk=L.querySelector('.lbk'),nm=document.getElementById('ltitle');
+  let sp=null,raf=0,rr=0,t0=0,F=null,state='idle',anims=[];
+  window.__loadCat=function(f){
+    F=f;sp=document.createElement('div');sp.className='lsp';sp.style.aspectRatio=f.ar;sp.style.backgroundImage='url('+f.sheet+')';sp.style.backgroundSize=(f.n*100)+'% 100%';
+    cat.textContent='';cat.appendChild(sp);void sp.offsetWidth;sp.classList.add('on');t0=performance.now();cancelAnimationFrame(raf);
+    (function tick(now){raf=requestAnimationFrame(tick);const k=Math.floor(((now-t0)/1000/f.dur*f.n)%f.n);sp.style.backgroundPosition=(f.n>1?k/(f.n-1)*100:0)+'% 0'})(t0);
+  };
+  const setHole=(x,y,r)=>{const m=`radial-gradient(circle at ${x}px ${y}px,transparent ${r}px,#000 ${r+1}px)`;L.style.webkitMaskImage=m;L.style.maskImage=m};
+  const clearMask=()=>{L.style.webkitMaskImage=L.style.maskImage=''};
+  const easeOutBack=t=>{const c1=1.2,c3=c1+1;return 1+c3*Math.pow(t-1,3)+c1*Math.pow(t-1,2)};
+  function go(){
+    state='burst';
+    const q=cat.getBoundingClientRect(),cx=q.left+q.width/2,cy=q.top+q.height/2,R=Math.hypot(Math.max(cx,innerWidth-cx),Math.max(cy,innerHeight-cy))*1.08;
+    anims=[...[bk,nm].map(e=>e.animate([{opacity:1},{opacity:0}],{duration:220,easing:'ease-out',fill:'forwards'})),
+      cat.animate([{transform:'scale(1)'},{transform:'scale(.78,1.12)',offset:.4},{transform:'scale(1.15,.85)'}],{duration:260,easing:'ease-out',fill:'forwards'})];   // cartoony squash, then the circle pops
+    const T0=performance.now()+200,DUR=850;
+    anims.push(L.animate([{opacity:1},{opacity:1,offset:.5},{opacity:0}],{duration:DUR,delay:200,easing:'ease-in',fill:'forwards'}));   // the black rim fades out while the circle grows
+    (function step(now){
+      if(state!=='burst')return;rr=requestAnimationFrame(step);
+      const u=Math.max(0,Math.min(1,(now-T0)/DUR));
+      setHole(cx,cy,Math.max(0,easeOutBack(u))*R*(u<1?1:1));   // overshoots a little, springs back = cartoony
+      if(u>=1){
+        cancelAnimationFrame(rr);state='done';cancelAnimationFrame(raf);L.classList.add('gone');   // hole covers the whole screen: hide the element in the same frame (the mask is NOT cleared here, that is what flashed)
+      }
+    })(performance.now());
+  }
+  new MutationObserver(()=>{
+    const out=L.classList.contains('out');
+    if(out&&state==='idle')go();
+    else if(!out&&state!=='idle'){state='idle';cancelAnimationFrame(rr);anims.forEach(a=>a.cancel());anims=[];clearMask();L.classList.remove('gone');if(F)window.__loadCat(F)}   // the loader was shown again
+  }).observe(L,{attributes:true,attributeFilter:['class']});
+})();
+</script>
 <script type="module" src="js/loadingScreen.js"></script>
 <div id="hud" hidden></div>
 <div id="toast"></div>
@@ -126,9 +158,24 @@
 
 <button id="menuBack" class="btn gold mback" hidden><i class="bi bi-arrow-left"></i>Back</button>
 
-<!-- Save Slots: floating cards, no container; the page behind is just dimmed -->
+<!-- My Character: same camera as the cat maker, the cat centred. Arrows flip through your cats; one empty slot (black cat) = Create Character.
+     Action buttons come first in the DOM so keyboard / controller focus starts on the main action. -->
 <div id="slots" class="menu" hidden>
-  <div class="mcard"><h2 class="mtitle">Save Slots</h2><div id="slotList" class="slist"></div></div>
+  <div class="ch">
+    <div class="ch-info">
+      <div class="ch-name" id="chName">Ming</div>
+      <div class="ch-sub" id="chSub"></div>
+      <div class="ch-dots" id="chDots"></div>
+      <div class="ch-act">
+        <button id="chSel" class="btn green" type="button"><i class="bi bi-check-lg"></i>Select</button>
+        <button id="chNew" class="btn green" type="button" hidden><i class="bi bi-plus-circle-fill"></i>Create Character</button>
+        <button id="chEdit" class="btn gold sq" type="button" title="Edit cat"><i class="bi bi-pencil-fill"></i></button>
+        <button id="chDel" class="btn red sq" type="button" title="Delete"><i class="bi bi-trash-fill"></i></button>
+      </div>
+    </div>
+    <button id="chL" class="ch-arr l" type="button" aria-label="Previous character"><i class="bi bi-chevron-left"></i></button>
+    <button id="chR" class="ch-arr r" type="button" aria-label="Next character"><i class="bi bi-chevron-right"></i></button>
+  </div>
 </div>
 
 <!-- Story worlds: 3 slots, each one remembers the world that was generated for it -->
