@@ -36,10 +36,12 @@ try{let bc=null;const ls=JSON.parse(localStorage.getItem('sad.slots')||'null'),l
   const rf=charRunFrames(bc||{});if(rf&&window.__loadCat)window.__loadCat(rf);await tick()}catch(e){console.warn('loading cat skipped',e)}
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
-const renderer=new T.WebGLRenderer({antialias:true,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
+const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);   // iOS WebKit drops the GL context sooner than Android: lighter default framebuffer
+const renderer=new T.WebGLRenderer({antialias:!IOS,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);
 const scene=new T.Scene();
 const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3(),fp=new T.Vector3();
 const atm=createAtmosphere(renderer,scene,cam);let curMode='';
+atm.onRestore=()=>{try{renderer.compile(scene,cam)}catch(e){}resize()};   // after a lost + restored WebGL context: recompile every shader, rebuild the render targets
 const hud=createHUD();
 const stage=new T.Group();stage.position.set(0,0,3);stage.visible=false;scene.add(stage);
 [[1.9,.1],[1.35,.17],[.85,.12]].forEach(([r,op],i)=>{const m=new T.Mesh(new T.CircleGeometry(r,48),new T.MeshBasicMaterial({color:'#fff',transparent:true,opacity:op,depthWrite:false}));m.rotation.x=-Math.PI/2;m.position.y=.005+i*.004;stage.add(m)});
@@ -337,10 +339,9 @@ async function start5v5(pv){   // pv = a custom battle ({slots,theme,seed,host,m
     try{lockPtr()}catch(e){}                                   // pointer lock needs the click that started us: ask for it before the first await
     loading.show('Getting the arena ready…',pv?'PVP':'5V5');await tick();await tick();
     leave5();clearAll();refill();                              // gm stays 'wave' until everything is built, so the frame loop never sees a half-made match
-    ensureArena();
     loading.set(.2,pv?'Building the host\'s map…':'Picking a random map…');await tick();
     if(pv)swapArena(pv.theme,pv.seed);                         // every player builds the SAME map from the host's theme + seed
-    else{const ids=ARENA_THEMES.map(t=>t.id).filter(id=>id!==arena.theme);
+    else{const ids=ARENA_THEMES.map(t=>t.id).filter(id=>!arena||id!==arena.theme);
       swapArena(ids[(Math.random()*ids.length)|0],(Math.random()*1e9)|0)}
     loading.set(.55,'Spawning the cats…');await tick();
     if(!mode5)mode5=mk5();
@@ -407,7 +408,7 @@ story=createStory({$,scene,atm,hud,P,keys,mouse,renderer,cam,tick,touch:TOUCH,
 hud.onMap=open=>{if(open){for(const k in keys)keys[k]=false;mouse.l=false;P.scope=false;P.mv=false;try{document.exitPointerLock&&document.exitPointerLock()}catch(e){}}else if(state==='play'&&!paused)lockPtr()};
 L.set(.5,'Dressing the cat…');await tick();
 setCat();enterTitle();
-L.set(.62,'Building the 5v5 arena…');await tick();ensureArena();
+L.set(.62,'Building the 5v5 arena…');await tick();if(!IOS)ensureArena();   // iOS: the arena is only built when a match starts (swapArena), never twice
 L.set(.8,'Compiling shaders…');await tick();warm();
 L.set(.92,'Loading fonts & images…');
 await Promise.all([document.fonts&&document.fonts.ready,...[...document.images].map(i=>i.decode?i.decode().catch(()=>{}):0)]);
