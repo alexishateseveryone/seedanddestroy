@@ -1,6 +1,12 @@
 // Atmosphere: physically based sky (Preetham, three's Sky), procedural volumetric-looking clouds, a warm sun with cascaded-style
 // follow shadows, aerial-perspective fog sampled from the real sky colour, image based lighting from the sky for the scenery,
 // and a post stack (MSAA, bloom, colour grade + vignette, ACES tone mapping).
+//
+// APPLE / iOS FIXES (dark, over-saturated screen after a hitch):
+//  1. the sky shader output is clamped at the source (the sun disc is ~19000, half-float overflows to Inf/NaN on Apple GPUs and the blur spreads it)
+//  2. on iPhone / iPad the render target never uses half-float + MSAA together (framebuffer is "complete" but renders garbage on WebKit)
+//  3. webglcontextlost / webglcontextrestored are handled: the sky environment (PMREM) is rebuilt after a restore (it comes back empty = dark scenery)
+//  4. pixel ratio capped at 2 and the shadow map at 1024 on Apple (iOS kills the GL context when memory runs out)
 import * as T from 'three';
 import {Sky} from 'three/addons/objects/Sky.js';
 import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
@@ -11,6 +17,8 @@ import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
 
 export const SUN_ELEV=30,SUN_AZ=250;      // degrees: late-morning sun, from the front-left of the arena
 const D2R=Math.PI/180;
+const APPLE=typeof navigator!=='undefined'&&(/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1));
+const SKY_MAX=24;   // sky colour cap (the sun disc would be ~19000); still above the bloom threshold so the glow stays
 
 // Global scale for every standard material's envMapIntensity, so the sky-based ambient light can fade out at night (story mode day/night cycle)
 // without touching the materials one by one. At 1 (everywhere except story nights) nothing changes.
@@ -77,7 +85,12 @@ const MB_LEVEL=[0,.35,.65,1.1];   // Off / Low / Medium / High: fraction of a 1/
 export function createAtmosphere(renderer,scene,cam){
   const sunDir=new T.Vector3().setFromSphericalCoords(1,(90-SUN_ELEV)*D2R,SUN_AZ*D2R),FIXED_SUN=sunDir.clone(),lightDir=sunDir.clone();
   // ---------------------------------------------------------------- sky + clouds (one builder so the environment probe gets its own copy)
-  const mkSky=()=>{const s=new Sky();s.scale.setScalar(2000);const u=s.material.uniforms;
+  const mkSky=()=>{const s=new Sky();s.scale.setScalar(2000);
+    // FIX 1: cap the sky colour in the shader itself. Without this the sun disc (~19000) overflows half-float (max 65504) on Apple GPUs.
+    const fs=s.material.fragmentShader,capped=fs.replace(/gl_FragColor\s*=\s*vec4\(\s*retColor\s*,\s*1\.0\s*\)\s*;/,`gl_FragColor=vec4(min(retColor,vec3(${SKY_MAX.toFixed(1)})),1.0);`);
+    if(capped!==fs){s.material.fragmentShader=capped;s.material.needsUpdate=true}
+    else console.warn('atmosphere: could not clamp the sky shader (Sky.js changed?). Sky colour is not capped.');
+    const u=s.material.uniforms;
     u.turbidity.value=3.2;u.rayleigh.value=1.35;u.mieCoefficient.value=.0042;u.mieDirectionalG.value=.82;u.sunPosition.value.copy(sunDir);return s};
   const cloudMat=()=>new T.ShaderMaterial({vertexShader:CLOUD_VS,fragmentShader:CLOUD_FS,transparent:true,depthWrite:false,depthTest:true,side:T.BackSide,fog:false,
     uniforms:{uTime:{value:0},uCover:{value:.5},uSun:{value:sunDir.clone()},uLit:{value:new T.Color('#fff4e4').multiplyScalar(1.5)},uShade:{value:new T.Color('#7f93b3').multiplyScalar(.9)},uRim:{value:new T.Color().setRGB(1,.82,.55)}}});
@@ -85,7 +98,7 @@ export function createAtmosphere(renderer,scene,cam){
   const sky=mkSky(),clouds=mkClouds();sky.renderOrder=-2;scene.add(sky,clouds);
   // ---------------------------------------------------------------- environment probe (sky -> PMREM) for the scenery's ambient + reflections
   const pm=new T.PMREMGenerator(renderer),envScene=new T.Scene(),eSky=mkSky(),eClouds=mkClouds();envScene.add(eSky,eClouds);
-  const envMap=pm.fromScene(envScene,0,.1,1000).texture;
+  let envRT=pm.fromScene(envScene,0,.1,1000),envMap=envRT.texture;
   // fog colour = the sky's real horizon colour, so distant things melt into the sky.
   // It is read back from a tiny render. That render MUST be 8-bit: float read-back is not supported on most phones, where three silently returns
   // zeros -> the old code got a BLACK fog colour, which turned everything in the distance (and the whole 5v5 arena edge) dark. The result is also
@@ -101,7 +114,7 @@ export function createAtmosphere(renderer,scene,cam){
   const fogDay=fogColor.clone().lerp(new T.Color('#ffe9cf'),.12),fogHaze=fogDay.clone();
   // ---------------------------------------------------------------- lights
   const hemi=new T.HemisphereLight('#a9ccff','#6d8a4e',1.35),sun=new T.DirectionalLight('#ffe7c2',3.1);
-  sun.castShadow=true;sun.shadow.mapSize.set(2048,2048);const sc=sun.shadow.camera;sc.left=-26;sc.right=26;sc.top=26;sc.bottom=-26;sc.near=1;sc.far=140;
+  sun.castShadow=true;sun.shadow.mapSize.set(APPLE?1024:2048,APPLE?1024:2048);const sc=sun.shadow.camera;sc.left=-26;sc.right=26;sc.top=26;sc.bottom=-26;sc.near=1;sc.far=140;
   sun.shadow.bias=-.0004;sun.shadow.normalBias=.035;sun.shadow.radius=3;
   scene.add(hemi,sun,sun.target);
   // ---------------------------------------------------------------- post stack
@@ -111,6 +124,9 @@ export function createAtmosphere(renderer,scene,cam){
       half=renderer.capabilities.isWebGL2!==false&&(ex.has('EXT_color_buffer_float')||ex.has('EXT_color_buffer_half_float')),tries=[];
     if(half){tries.push([T.HalfFloatType,Math.min(4,ms)]);tries.push([T.HalfFloatType,0])}
     tries.push([T.UnsignedByteType,Math.min(4,ms)],[T.UnsignedByteType,0]);
+    // FIX 2: on Apple devices half-float + MSAA reports a complete framebuffer but renders broken (dark, over-saturated) colours.
+    // Use plain 8-bit targets there (MSAA still allowed): no float overflow is possible, and it uses far less memory.
+    if(APPLE){tries.length=0;tries.push([T.UnsignedByteType,Math.min(4,ms)],[T.UnsignedByteType,0])}
     for(const [type,samples] of tries){let t=null;
       try{gl.getError();t=new T.WebGLRenderTarget(16,16,{type,samples});renderer.setRenderTarget(t);renderer.clear();
         const ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE&&gl.getError()===gl.NO_ERROR;
@@ -123,7 +139,7 @@ export function createAtmosphere(renderer,scene,cam){
   const prevQ=new T.Quaternion().copy(cam.quaternion),relQ=new T.Quaternion(),relE=new T.Euler(),mbVel=mblur.uniforms.uVel.value;
   composer.addPass(new RenderPass(scene,cam));if(pick.type===T.HalfFloatType)composer.addPass(new ShaderPass(SANITIZE));
   composer.addPass(mblur);composer.addPass(bloom);composer.addPass(grade);composer.addPass(new OutputPass());
-  let mode='maker',postFail=false;const Q={bloom:true,grade:true,aa:true,shadows:2,clouds:true,blur:0};const fog=new T.Fog(fogHaze,45,240);
+  let mode='maker',postFail=false,ctxLost=false;const Q={bloom:true,grade:true,aa:true,shadows:2,clouds:true,blur:0};const fog=new T.Fog(fogHaze,45,240);
 
   // ---------------------------------------------------------------- night sky: stars + moon
   const maxPt=(()=>{try{const gl=renderer.getContext();return gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1]||64}catch(e){return 64}})();
@@ -167,7 +183,24 @@ export function createAtmosphere(renderer,scene,cam){
     const cu=clouds.material.uniforms;cu.uSun.value.copy(sunDir);cu.uLit.value.copy(L.litD);cu.uShade.value.copy(L.shD);cu.uRim.value.copy(L.rimD);
     stars.visible=false;moon.visible=false}
 
-  const api={sunDir,lightDir,sun,hemi,envMap,fogColor:fogHaze,sky,clouds,composer,bloom,grade,dayLength:720,hold:false,
+  // ---------------------------------------------------------------- FIX 3: WebGL context loss (iOS drops the context when memory runs low)
+  // A lost context comes back with EMPTY render targets: the PMREM sky environment is blank, which turns all the scenery dark and harsh.
+  // On restore the environment is rebuilt and handed to whoever uses it (scene.environment is re-pointed here, main.js can also listen to api.onEnv).
+  const cv=renderer.domElement;
+  cv.addEventListener('webglcontextlost',e=>{e.preventDefault();ctxLost=true;console.warn('WebGL context lost')},false);
+  cv.addEventListener('webglcontextrestored',()=>{
+    try{
+      const old=envMap;
+      envRT=pm.fromScene(envScene,0,.1,1000);envMap=envRT.texture;
+      if(scene.environment===old)scene.environment=envMap;
+      scene.traverse(o=>{const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];for(const m of ms){if(m.envMap===old)m.envMap=envMap;m.needsUpdate=true}});
+      rt.dispose();composer.renderTarget1.dispose();composer.renderTarget2.dispose();
+      composer.setPixelRatio(renderer.getPixelRatio());renderer.getSize(size);composer.setSize(size.x,size.y);
+      postFail=false;if(api.onEnv)api.onEnv(envMap);if(api.onRestore)api.onRestore();
+    }catch(err){console.warn('WebGL restore failed',err)}
+    ctxLost=false;console.warn('WebGL context restored')},false);
+
+  const api={sunDir,lightDir,sun,hemi,get envMap(){return envMap},onEnv:null,onRestore:null,fogColor:fogHaze,sky,clouds,composer,bloom,grade,dayLength:720,hold:false,
     /** story mode clock: on=true starts the cycle at startHour (0-24); on=false goes back to the fixed sun */
     setCycle(on,startHour){on=!!on;if(typeof startHour==='number'&&isFinite(startHour))hour=((startHour%24)+24)%24;
       if(on===cycOn&&!(on&&typeof startHour==='number'))return;
@@ -183,7 +216,8 @@ export function createAtmosphere(renderer,scene,cam){
       hemi.color.set(play?'#a9ccff':'#fff6d8');hemi.groundColor.set(play?'#6d8a4e':'#7aa86a');
       scene.fog=play?fog:null;scene.background=null;
       if(cycOn&&play)applyTime(hour);else{stars.visible=false;moon.visible=false;if(!play)ENV.k=1}},
-    resize(w,h,pr){composer.setPixelRatio(pr);composer.setSize(w,h);bloom.resolution.set(w,h)},
+    // FIX 4: Apple devices get a 3x pixel ratio by default, which is 9x the pixels of 1x and a lot of GPU memory with the post stack. Cap it at 2.
+    resize(w,h,pr){if(APPLE)pr=Math.min(pr,2);composer.setPixelRatio(pr);composer.setSize(w,h);bloom.resolution.set(w,h)},
     update(dt,t,focus){
       sky.position.copy(cam.position);clouds.position.copy(cam.position);clouds.material.uniforms.uTime.value=t;grade.uniforms.uTime.value=t;
       if(cycOn&&mode==='play'){if(!api.hold)hour=(hour+dt*24/api.dayLength)%24;applyTime(hour);
@@ -202,10 +236,11 @@ export function createAtmosphere(renderer,scene,cam){
      *  With bloom AND grade off the whole post stack is skipped and the scene goes straight to the screen (cheapest path). */
     setQuality(q){Object.assign(Q,q);bloom.enabled=!!Q.bloom;grade.enabled=!!Q.grade;mblur.enabled=Q.blur>0;
       const n=Q.aa?pick.samples:0;if(rt.samples!==n){[composer.renderTarget1,composer.renderTarget2].forEach(t=>{t.samples=n;t.dispose()})}
-      const ms=Q.shadows>=2?2048:1024;if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}
+      const ms=(Q.shadows>=2&&!APPLE)?2048:1024;if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}   // Apple: 1024 max (memory)
       const ext=Q.shadows>=2?26:20;if(sc.right!==ext){sc.left=-ext;sc.right=ext;sc.top=ext;sc.bottom=-ext;sc.updateProjectionMatrix()}
       api.setMode(mode)},
-    render(){if(mode==='play'&&!postFail&&(Q.bloom||Q.grade||Q.blur>0)){
+    render(){if(ctxLost)return;   // the context is gone: drawing now would only throw, wait for webglcontextrestored
+      if(mode==='play'&&!postFail&&(Q.bloom||Q.grade||Q.blur>0)){
         try{composer.render()}catch(e){postFail=true;console.warn('Post-processing disabled (GPU could not run it):',e);try{renderer.setRenderTarget(null)}catch(_){}renderer.render(scene,cam)}}
       else renderer.render(scene,cam)}};
   api.setMode('maker');return api;
