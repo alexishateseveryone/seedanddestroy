@@ -20,8 +20,8 @@ float h31(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.
 float vn(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
   return mix(mix(mix(h31(i),h31(i+vec3(1.,0.,0.)),f.x),mix(h31(i+vec3(0.,1.,0.)),h31(i+vec3(1.,1.,0.)),f.x),f.y),
              mix(mix(h31(i+vec3(0.,0.,1.)),h31(i+vec3(1.,0.,1.)),f.x),mix(h31(i+vec3(0.,1.,1.)),h31(i+vec3(1.,1.,1.)),f.x),f.y),f.z);}
-// anti-aliased step: 0 -> 1 as v crosses 0, width follows the screen-space derivative
-float edg(float v){float w=clamp(fwidth(v)*1.2,.002,.06);return smoothstep(-w,w,v);}
+// hard step: 0 -> 1 as v crosses 0 (no AA, crunchy pixel-art edges)
+float edg(float v){return step(0.,v);}
 float heartSD(vec2 p){p.x=abs(p.x);
   if(p.y+p.x>1.){vec2 d=p-vec2(.25,.75);return length(d)-.35355;}
   vec2 a=p-vec2(0.,1.);vec2 b=p-.5*max(p.x+p.y,0.);
@@ -71,6 +71,12 @@ vec3 coatColor(){
 }
 `;
 
+// Shared toon ramp: light is cut into 2 flat steps (shade/lit, same as the world's CEL patch) (no smooth PBR gradient), the "A Short Hike" way. NearestFilter keeps the steps hard.
+// Every material of the cat (coat, hair, collar, noses, gold trim ...) uses toonMat() so the whole character shades the same way.
+export const TOON_RAMP=(()=>{const d=Uint8Array.from([186,255]),t=new T.DataTexture(d,d.length,1,T.RedFormat);
+  t.minFilter=t.magFilter=T.NearestFilter;t.generateMipmaps=false;t.needsUpdate=true;return t})();
+export const toonMat=(color,o={})=>{const m=new T.MeshToonMaterial(Object.assign({color,gradientMap:TOON_RAMP},o));m.defines=Object.assign(m.defines||{},{NO_OL:''});return m};   // NO_OL: the cat never gets the pixel outline
+
 export function makeCoat(o,part){
   const pattern=o.pattern in MODE?o.pattern:'classic';
   const u={
@@ -78,7 +84,7 @@ export function makeCoat(o,part){
     uFur:{value:new T.Color(o.fur)},uPat:{value:new T.Color(o.pat)},uWhite:{value:new T.Color('#fff7ee')},
     uLS:{value:new T.Vector3(1,1,1)},uKeep:{value:0},uMode:{value:MODE[pattern]},uPart:{value:part},uPaws:{value:PAWS[pattern]}
   };
-  const m=new T.MeshStandardMaterial({color:'#ffffff',roughness:.82,metalness:0});
+  const m=toonMat('#ffffff');
   m.userData.u=u;
   m.onBeforeCompile=sh=>{
     Object.assign(sh.uniforms,u);
@@ -89,7 +95,7 @@ export function makeCoat(o,part){
       .replace('#include <common>','#include <common>\n'+COMMON)
       .replace('#include <color_fragment>','#include <color_fragment>\nif(uKeep>.5){vec3 hh=vLP*uLS;float ke=pow(hh.x/.76,2.)+pow((hh.y+.12)/.52,2.);if(ke<1.&&hh.z>.25)discard;}\ndiffuseColor.rgb=coatColor();');
   };
-  m.customProgramCacheKey=()=>'catcoat-v3';
+  m.customProgramCacheKey=()=>'catcoat-toon-v2';
   return m;
 }
 
