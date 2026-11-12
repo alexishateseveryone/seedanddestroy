@@ -5,7 +5,7 @@
 import * as T from 'three';
 import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUtils.js';
 
-export const WIND={uTime:{value:0},uPlayer:{value:new T.Vector3(1e5,0,1e5)}};
+export const WIND={uTime:{value:0},uPlayer:{value:new T.Vector3(1e5,0,1e5)},uFade:{value:new T.Vector4(1e5,1e5,1e5,0)},uDim:{value:new T.Vector3(1,1,1)}};   // uDim = colour multiplier for the unlit-style scenery shaders (foliage, grass): (1,1,1) by day, a dark blue tint at night (set every frame in main.js from atm.night)   // uFade = (x,y,z of the cat's body, 1 while a match is on): scenery between the camera and the cat turns see-through
 
 export const hash=(x,y=0,z=0)=>{const h=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453;return h-Math.floor(h)};
 const sm=t=>t*t*(3-2*t);
@@ -28,6 +28,7 @@ export function windify(m,{amp=1,flutter=1}={}){
   m.customProgramCacheKey=()=>'windify'+amp+'_'+flutter;return m}
 
 export function windGrass(m,{push=.55}={}){
+  m.defines=Object.assign(m.defines||{},{NO_OL:''});   // grass never gets the pixel outline
   m.onBeforeCompile=sh=>{sh.uniforms.uTime=WIND.uTime;sh.uniforms.uPlayer=WIND.uPlayer;
     sh.vertexShader=sh.vertexShader.replace('#include <common>',`#include <common>
       uniform float uTime;uniform vec3 uPlayer;`)
@@ -47,6 +48,20 @@ export function windGrass(m,{push=.55}={}){
       mvPosition=modelViewMatrix*mvPosition;
       gl_Position=projectionMatrix*mvPosition;`)};
   m.customProgramCacheKey=()=>'windGrass'+push;return m}
+
+// SEE-THROUGH SCENERY: anything between the camera and the cat fades out with a smooth, soft-edged circle of real transparency (no dither / checker pattern), so you never lose the cat behind a trunk or canopy.
+export function seeThrough(m){const w0=m.onBeforeCompile,k0=m.customProgramCacheKey;
+  m.transparent=true;m.depthWrite=true;      // blended, but nearer pieces still hide farther ones, so a canopy does not turn into soup
+  m.onBeforeCompile=sh=>{if(w0)w0.call(m,sh);sh.uniforms.uFade=WIND.uFade;
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+      uniform vec4 uFade;`)
+    .replace('#include <clipping_planes_fragment>',`#include <clipping_planes_fragment>
+      float fadeA=1.;
+      if(uFade.w>.5){vec4 pv=viewMatrix*vec4(uFade.xyz,1.);vec3 fv=-vViewPosition;
+        if(pv.z<-.5&&fv.z<-.5){float d=length(fv.xy/-fv.z-pv.xy/-pv.z)*(-pv.z),front=smoothstep(.1,1.2,fv.z-pv.z);   // d = sideways distance from the cat (at the cat's depth), front = how far this piece is in front of it
+          fadeA=1.-front*(1.-smoothstep(1.1,2.9,d))*.82;}}`)
+    .replace('vec4 diffuseColor = vec4( diffuse, opacity );','vec4 diffuseColor = vec4( diffuse, opacity*fadeA );')};
+  m.customProgramCacheKey=()=>(k0?k0.call(m):'')+'seeThru2';return m}
 
 // ------------------------------------------------------------------------------------------------ batch
 const _c=new T.Color(),_p=new T.Vector3(),_n=new T.Vector3(),_nm=new T.Matrix3();
@@ -71,9 +86,19 @@ export class Batch{
   /** build merged meshes. env: PMREM texture for ambient/reflection on the scenery. */
   build(env){const grp=new T.Group(),R={foliage:.82,bark:.95,rock:.88,prop:.8};
     for(const kind in this.k){const g=mergeGeometries(this.k[kind],false);this.k[kind].forEach(x=>x.dispose());
-      const m=new T.MeshStandardMaterial({vertexColors:true,side:kind==='foliage'?T.DoubleSide:T.FrontSide,roughness:R[kind]??.9,metalness:0,envMap:env||null,envMapIntensity:kind==='foliage'?.7:.55});
-      if(kind==='foliage')windify(m,{amp:1,flutter:1});else if(kind==='bark')windify(m,{amp:.35,flutter:0});
-      const mesh=new T.Mesh(g,m);mesh.castShadow=true;mesh.receiveShadow=true;mesh.matrixAutoUpdate=false;mesh.name='batch-'+kind;grp.add(mesh)}
+      const m=new T.MeshStandardMaterial({vertexColors:true,side:kind==='foliage'?T.DoubleSide:T.FrontSide,roughness:R[kind]??.9,metalness:0,envMap:env||null,envMapIntensity:kind==='foliage'?.35:.3,flatShading:kind!=='foliage'});
+      if(kind==='foliage'){windify(m,{amp:1,flutter:1});const w0=m.onBeforeCompile;      // FLAT PAINTED FOLIAGE: 3 hard tones by how much the surface faces the sky, no facets
+        m.onBeforeCompile=sh=>{w0(sh);const k=sh.fragmentShader.includes('#include <opaque_fragment>')?'#include <opaque_fragment>':'#include <output_fragment>';
+          sh.uniforms.uDim=WIND.uDim;
+          sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+            uniform vec3 uDim;`).replace(k,`{vec3 up=normalize((viewMatrix*vec4(0.,1.,0.,0.)).xyz);float u=dot(normalize(normal),up);
+            float tn=u>.2?1.1:.8;outgoingLight=mix(diffuseColor.rgb*tn,outgoingLight,.12);}
+            outgoingLight*=uDim;   // the flat paint ignores the scene lights, so the night has to dim it explicitly
+            `+k)};
+        m.customProgramCacheKey=()=>'windifyFlatFoliage2'}else if(kind==='bark')windify(m,{amp:.35,flutter:0});
+      if(kind==='foliage'||kind==='bark'||kind==='rock')seeThrough(m);
+      const mesh=new T.Mesh(g,m);mesh.castShadow=true;mesh.receiveShadow=(kind==='rock'||kind==='prop');   // trees do NOT receive shadows: only the ground shows one soft shadow
+      mesh.matrixAutoUpdate=false;mesh.name='batch-'+kind;grp.add(mesh)}
     this.k={};return grp}
 }
 export const mat4=(px,py,pz,sx=1,sy=sx,sz=sx,rx=0,ry=0,rz=0)=>new T.Matrix4().compose(_p.set(px,py,pz).clone(),new T.Quaternion().setFromEuler(new T.Euler(rx,ry,rz)),new T.Vector3(sx,sy,sz));
