@@ -6,7 +6,7 @@ import {buildArena,ARENA_THEMES} from './js/arenaMap.js';
 import {spinRoulette} from './js/weaponRoulette.js';
 import {buildEnemy,STATS} from './js/enemies/index.js';
 import {openMaker,createShowcase,bakeMakerIcons} from './js/catMaker.js';
-import {useIconRenderer} from './js/iconRender.js';
+import * as IconR from './js/iconRender.js';   // namespace import: an older iconRender.js without useIconRenderer no longer stops the whole game from loading
 import {createFX} from './js/effects.js';
 import {createAtmosphere} from './js/atmosphere.js';
 import {createHUD} from './js/hud.js';
@@ -40,7 +40,7 @@ try{let bc=null;const ls=JSON.parse(localStorage.getItem('sad.slots')||'null'),l
 
 const lerp2=(a,b,t)=>a+(b-a)*t,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));const $=s=>document.querySelector(s),rnd=(a,b)=>a+Math.random()*(b-a);
 const IOS=/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);   // iOS WebKit drops the GL context sooner than Android: lighter default framebuffer
-const renderer=new T.WebGLRenderer({antialias:false,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);useIconRenderer(renderer);   // cat maker tiles are rendered with this same renderer
+const renderer=new T.WebGLRenderer({antialias:false,alpha:true,canvas:$('#c')});renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setClearColor(0,0);if(IconR.useIconRenderer)IconR.useIconRenderer(renderer);   // cat maker tiles are rendered with this same renderer
 const scene=new T.Scene();
 const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vector3(),fp=new T.Vector3();
 import {addPixelSlider} from './js/pixelSlider.js';
