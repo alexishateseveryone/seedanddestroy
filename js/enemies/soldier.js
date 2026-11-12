@@ -5,7 +5,7 @@ import * as T from 'three';
 import {LUMP2,G,mat,BM,M,lumpy,shadow,mix} from '../blocks.js';
 import {Rope,Cloth} from '../physics.js';
 import {createHood} from '../hood.js';
-import {makeCoat,bindCoat} from '../coatShader.js';
+import {makeCoat,bindCoat} from './world/coatShader.js';
 import {buildEar} from '../wearables.js';
 import {dressSoldier} from '../foliage.js';
 
