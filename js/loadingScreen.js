@@ -25,7 +25,7 @@ body.loading #title,body.loading #hud{visibility:hidden}`;
 const MODES={
   '5V5':{t:'SPIKE',q:['Plant it. Defend it. Don\'t blink.','Five cats. One spike. No second chances.','Silence is the loudest sound before a plant.','Every round is a brand new map. Adapt or fall.','Nine lives won\'t save you here.','Hold the site. Trust your team.','The spike won\'t plant itself.','Eyes up. Somebody is always watching the corner.']},
   'PVP':{t:'PVP',q:['Real cats. Real rivals. No mercy.','Your friends are about to become your enemies.','Out-aim them. Out-roll them. Out-last them.','Bragging rights are on the line.','No bots can predict a friend.']},
-  'ADVENTURE':{t:'ADVENTURE',q:['Every world has a story. Go find yours.','Rivers always flow downhill. Follow one.','The map is only as big as your courage.','Somewhere past those mountains, something is waiting.','No two worlds are the same.','Take the long way. It\'s prettier.']},
+  'ADVENTURE':{bar:1,t:'ADVENTURE',q:['Every world has a story. Go find yours.','Rivers always flow downhill. Follow one.','The map is only as big as your courage.','Somewhere past those mountains, something is waiting.','No two worlds are the same.','Take the long way. It\'s prettier.']},
   'SURVIVAL':{t:'SURVIVAL',q:['Wave after wave. How long can you last?','Dodge, shoot, repeat.','Nobody keeps all nine lives forever.','The next wave is already coming.','Pick your weapon. Trust your luck.','Stay moving. Stay alive.']}
 };
 const MODE_MIN=1500;   // ms the screen stays up at least, so the text can fade in and be read
@@ -38,6 +38,15 @@ const MODE_CSS=`
 #loadmode.go .mq{animation:lmIn .9s ease-out .5s forwards}
 @keyframes lmIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 #loadmode.fail .mq{color:#ff8a7a}`;
+
+// ---- BAR-ONLY loading screen (ADVENTURE / Play): nothing covers the scene - the main menu texts are hidden and only a slim progress bar sits at the bottom.
+const BAR_CSS=`
+#loadbar{position:fixed;left:0;right:0;bottom:0;z-index:5002;padding:0 max(7vw,env(safe-area-inset-right)) max(26px,env(safe-area-inset-bottom)) max(7vw,env(safe-area-inset-left));box-sizing:border-box;pointer-events:none;font-family:'Baloo 2',system-ui,sans-serif;transition:opacity .45s ease,visibility .45s}
+#loadbar.out{opacity:0;visibility:hidden}
+#loadbar .bt{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px;font:800 clamp(13px,2vh,17px)/1 'Baloo 2',system-ui,sans-serif;letter-spacing:.05em;color:#f1e8d2;text-shadow:2px 0 0 #17100e,-2px 0 0 #17100e,0 2px 0 #17100e,0 -2px 0 #17100e}
+#loadbar .bb{height:9px;border-radius:9px;background:rgba(14,8,8,.55);overflow:hidden;box-shadow:0 0 0 2px #17100e}
+#loadbar .bb i{display:block;height:100%;width:0;border-radius:9px;background:linear-gradient(90deg,#c4161c,#ff4a40)}
+#loadbar.fail .bb i{background:#e8453c}#loadbar.fail .bs{color:#ff8a7a}`;
 
 function ensure(){
   let root=document.getElementById('loading');
@@ -64,19 +73,29 @@ function createLoadingScreen(){
     mEl=document.createElement('div');mEl.id='loadmode';mEl.className='out';mEl.innerHTML='<div class="mt"></div><div class="mq"></div>';document.body.appendChild(mEl);mT=mEl.querySelector('.mt');mQ=mEl.querySelector('.mq')};
   const modeShow=M=>{modeEnsure();mT.textContent=M.t;mQ.textContent=M.q[Math.random()*M.q.length|0];
     mEl.classList.remove('out','go','fail');void mEl.offsetWidth;mEl.classList.add('go');mAt=performance.now();mOn=true;document.body.classList.add('loading')};
+  let bEl=null,bFill,bStep,bPct,bOn=false,bTarget=0,bShown=0,bRaf=0;
+  const barEnsure=()=>{if(bEl)return;const st=document.createElement('style');st.id='loadbar-css';st.textContent=BAR_CSS;document.head.appendChild(st);
+    bEl=document.createElement('div');bEl.id='loadbar';bEl.className='out';bEl.innerHTML='<div class="bt"><span class="bs">Loading\u2026</span><span class="bp">0%</span></div><div class="bb"><i></i></div>';document.body.appendChild(bEl);
+    bFill=bEl.querySelector('i');bStep=bEl.querySelector('.bs');bPct=bEl.querySelector('.bp')};
+  const barPaint=()=>{bShown+=(bTarget-bShown)*.14;if(bTarget-bShown<.002)bShown=bTarget;bFill.style.width=(bShown*100).toFixed(1)+'%';bPct.textContent=Math.round(bShown*100)+'%';bRaf=bOn?requestAnimationFrame(barPaint):0};
+  const barShow=text=>{barEnsure();cancelAnimationFrame(bRaf);bTarget=bShown=0;bStep.textContent=text||'Loading\u2026';bEl.classList.remove('fail');void bEl.offsetWidth;bEl.classList.remove('out');bOn=true;document.body.classList.add('loading');barPaint()};
+  const barHide=()=>{bOn=false;cancelAnimationFrame(bRaf);bRaf=0;bEl.classList.add('out');document.body.classList.remove('loading')};
   const api={
     /** the boot screen (index.html) is already visible: adopt it without resetting */
     adopt(){grab();target=shown=0;finished=failed=false;startTips();if(!paintId)paint()},
     show(text='Loading…',heading=''){
-      if(MODES[heading]){modeShow(MODES[heading]);return}
-      if(mOn){mEl.classList.add('out');mOn=false}
+      const M=MODES[heading];
+      if(bOn&&!(M&&M.bar))barHide();
+      if(mOn&&!(M&&!M.bar)){mEl.classList.add('out');mOn=false}
+      if(M){M.bar?barShow(text):modeShow(M);return}
       grab();cancelAnimationFrame(paintId);paintId=0;target=shown=0;finished=failed=false;
       root.classList.remove('fail');void root.offsetWidth;root.classList.remove('out');document.body.classList.add('loading');
       if(title)title.textContent=heading;step.textContent=text;fill.style.width='0%';pct.textContent='0%';startTips();paint()},
-    set(p,text){if(mOn)return;if(!root)grab();target=Math.max(target,Math.min(1,p));if(text)step.textContent=text},
-    done(){if(mOn)return new Promise(res=>setTimeout(()=>{mEl.classList.add('out');mOn=false;document.body.classList.remove('loading');setTimeout(res,460)},Math.max(0,MODE_MIN-(performance.now()-mAt))));
+    set(p,text){if(bOn){bTarget=Math.max(bTarget,Math.min(1,p));if(text)bStep.textContent=text;return}if(mOn)return;if(!root)grab();target=Math.max(target,Math.min(1,p));if(text)step.textContent=text},
+    done(){if(bOn)return new Promise(res=>{bTarget=1;const t0=performance.now(),iv=setInterval(()=>{if(bShown>=.999||performance.now()-t0>3000){clearInterval(iv);bStep.textContent='Ready!';setTimeout(()=>{barHide();setTimeout(res,460)},250)}},40)});
+      if(mOn)return new Promise(res=>setTimeout(()=>{mEl.classList.add('out');mOn=false;document.body.classList.remove('loading');setTimeout(res,460)},Math.max(0,MODE_MIN-(performance.now()-mAt))));
       if(!root)grab();failed=false;root.classList.remove('fail');step.textContent='Ready!';target=1;finished=true;if(!paintId)paint();return new Promise(res=>{onGone=res})},
-    fail(msg){if(mOn){mQ.textContent=msg;mEl.classList.add('fail');return}if(!root)grab();failed=true;root.classList.add('fail');step.textContent=msg},
+    fail(msg){if(bOn){bStep.textContent=msg;bEl.classList.add('fail');return}if(mOn){mQ.textContent=msg;mEl.classList.add('fail');return}if(!root)grab();failed=true;root.classList.add('fail');step.textContent=msg},
     tips(list){tipsList=list&&list.length?list:DEFAULT_TIPS;ti=0}};
   return api}
 
