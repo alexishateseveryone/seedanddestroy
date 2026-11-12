@@ -1,6 +1,7 @@
-// Atmosphere: physically based sky (Preetham, three's Sky), procedural volumetric-looking clouds, a warm sun with cascaded-style
-// follow shadows, aerial-perspective fog sampled from the real sky colour, image based lighting from the sky for the scenery,
-// and a post stack (MSAA, bloom, colour grade + vignette, ACES tone mapping).
+// Atmosphere, "A Short Hike" look: a stylised gradient sky with a flat sun disc, flat two-tone pixel clouds, a warm sun with follow shadows,
+// fog sampled from the sky's horizon colour, sky-based ambient light for the scenery, and a post stack that renders the WHOLE game at low
+// resolution (about 300 lines tall), upscales it with nearest-neighbour filtering (chunky pixels) and snaps the colours to a dithered palette.
+// No MSAA, no chromatic aberration, no grain, gentle neutral tone mapping instead of cinematic ACES.
 //
 // APPLE / iOS FIXES (dark, over-saturated screen after a hitch):
 //  1. the sky shader output is clamped at the source (the sun disc is ~19000, half-float overflows to Inf/NaN on Apple GPUs and the blur spreads it)
@@ -8,9 +9,8 @@
 //  3. webglcontextlost / webglcontextrestored are handled: the sky environment (PMREM) is rebuilt after a restore (it comes back empty = dark scenery)
 //  4. pixel ratio capped at 2 and the shadow map at 1024 on Apple (iOS kills the GL context when memory runs out)
 import * as T from 'three';
-import {Sky} from 'three/addons/objects/Sky.js';
 import {EffectComposer} from 'three/addons/postprocessing/EffectComposer.js';
-import {RenderPass} from 'three/addons/postprocessing/RenderPass.js';
+import {Pass,FullScreenQuad} from 'three/addons/postprocessing/Pass.js';
 import {UnrealBloomPass} from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {ShaderPass} from 'three/addons/postprocessing/ShaderPass.js';
 import {OutputPass} from 'three/addons/postprocessing/OutputPass.js';
@@ -22,28 +22,100 @@ const SKY_MAX=24;   // sky colour cap (the sun disc would be ~19000); still abov
 
 // Global scale for every standard material's envMapIntensity, so the sky-based ambient light can fade out at night (story mode day/night cycle)
 // without touching the materials one by one. At 1 (everywhere except story nights) nothing changes.
-const ENV={k:1};
+export const ENV={k:1};
 (()=>{const P=T.MeshStandardMaterial.prototype;if(Object.getOwnPropertyDescriptor(P,'envMapIntensity'))return;
   Object.defineProperty(P,'envMapIntensity',{get(){return(this._ei===undefined?1:this._ei)*ENV.k},set(v){this._ei=v},configurable:true});
   const cp=P.copy;P.copy=function(s){const r=cp.call(this,s);this._ei=s._ei;return r}})();
 
+// ---------------------------------------------------------------- CEL LIGHTING: ONE lit tone + ONE shadow tone
+// Before: smooth N.L gradient + hemisphere gradient + toon bands + shadow map = 3-4 stacked layers of "shadow" on every surface.
+// Now every Standard / Lambert / Phong material gets a hard two-state sun term (lit or not) and a CONSTANT sky ambient. The cast shadow from the
+// shadow map and the shaded side of a surface are therefore the very same flat tone (the ambient colour), so they merge instead of stacking.
+// Per material, a define picks the mode:  (none) = hard step,  CEL_FLAT = always lit (only the cast shadow darkens it: the ground uses this),  CEL_SMOOTH = original smooth lighting.
+// This runs at import time, before any material has been compiled.
+export const CEL={lit:.85,cut:.12,amb:.68};
+(()=>{const SC=T.ShaderChunk,NL='float dotNL = saturate( dot( geometryNormal, directLight.direction ) );';
+  const rep=(k,a,b)=>{if(!SC[k]||!SC[k].includes(a)){console.warn('[cel] lighting patch skipped for '+k+' (three.js chunk text differs in this version)');return}SC[k]=SC[k].replace(a,b)};
+  ['lights_physical_pars_fragment','lights_lambert_pars_fragment','lights_phong_pars_fragment'].forEach(k=>rep(k,NL,NL+`
+	#if defined( CEL_FLAT )
+		dotNL = ${CEL.lit.toFixed(3)};
+	#elif !defined( CEL_SMOOTH )
+		dotNL = dotNL > ${CEL.cut.toFixed(3)} ? ${CEL.lit.toFixed(3)} : 0.;
+	#endif`));
+  rep('lights_pars_begin','float hemiDiffuseWeight = 0.5 * dotNL + 0.5;',`float hemiDiffuseWeight = 0.5 * dotNL + 0.5;
+	#if !defined( CEL_SMOOTH )
+		hemiDiffuseWeight = ${CEL.amb.toFixed(3)};
+	#endif`)})();
+
+// ---------------------------------------------------------------- SOFT OUTLINE (depth based, drawn on the LOW-RES image => exactly 1 art pixel wide, aliased on purpose)
+// The scene is rendered into its own low-res target with a depth texture. A pixel gets the outline when a neighbour is clearly NEARER than it is AND the
+// opposite neighbour does not continue the same slope (so flat ground seen at a grazing angle never outlines itself). The outline is the pixel's own
+// colour darkened and pulled towards a deep indigo: a soft coloured line, never pure black. Sky is never outlined; far things fade out.
+// Materials with the define NO_OL (the cat, the grass) write alpha 0 into the scene target; the outline pass reads that as "never outline this".
+(()=>{const SC=T.ShaderChunk,add=`
+	#ifdef NO_OL
+		gl_FragColor.a = 0.;
+	#endif`;let ok=false;for(const k of['opaque_fragment','output_fragment'])if(SC[k]&&SC[k].includes('gl_FragColor')){SC[k]+=add;ok=true;break}
+  if(!ok)console.warn('[outline] NO_OL patch skipped (three.js chunk differs)')})();
+const OL_VS=`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`;
+const OL_FS=`uniform sampler2D tColor,tDepth;uniform vec2 uTexel;uniform float uNear,uFar,uStr,uFade;uniform vec3 uTint;varying vec2 vUv;
+float lin(vec2 uv){float d=texture2D(tDepth,uv).x;return 2.*uNear*uFar/(uFar+uNear-(d*2.-1.)*(uFar-uNear));}
+// nearer neighbour flagged NO_OL (alpha 0) = no outline is drawn because of it; a flagged pixel itself is never outlined either
+bool edge(vec2 uv,vec2 o,float zc,float t){float zn=lin(uv+o),zo=min(lin(uv-o),zc*1.1);float d1=zc-zn,d2=zo-zc;return d1>t&&(d1-d2)>t&&texture2D(tColor,uv+o).a>.5;}
+void main(){vec4 c=texture2D(tColor,vUv);
+  if(uStr>0.&&c.a>.5&&texture2D(tDepth,vUv).x<.99999){
+    float zc=lin(vUv),t=.035*zc+.02;
+    if(zc<uFade&&(edge(vUv,vec2(uTexel.x,0.),zc,t)||edge(vUv,vec2(-uTexel.x,0.),zc,t)||edge(vUv,vec2(0.,uTexel.y),zc,t)||edge(vUv,vec2(0.,-uTexel.y),zc,t)))
+      c.rgb=mix(c.rgb*.5,uTint,.22);}
+  gl_FragColor=vec4(c.rgb,1.);}`;
+// replaces RenderPass: renders the scene into an own target (with depth), then composites the outline into the composer's read buffer
+// Finds everything that must not be outlined and gives its materials the NO_OL define: the whole cat (any object whose userData has setAim = the avatar root,
+// so hair, ears, tail, whiskers, collar, wearables, weapons all count), wind grass, and instanced scatter (grass / flowers / pebbles). Runs a few times a second.
+const NOOL=m=>{for(const x of Array.isArray(m)?m:[m]){if(x&&!(x.defines&&x.defines.NO_OL!==undefined)){x.defines=Object.assign(x.defines||{},{NO_OL:''});x.needsUpdate=true}}};
+function markNoOutline(o,inCat){const cat=inCat||!!(o.userData&&o.userData.setAim);
+  if(o.material&&(cat||o.isInstancedMesh||(o.material.customProgramCacheKey&&String(o.material.customProgramCacheKey()).startsWith('windGrass'))))NOOL(o.material);
+  for(const c of o.children)markNoOutline(c,cat)}
+class ScenePass extends Pass{
+  constructor(scene,cam,type){super();this.scene=scene;this.cam=cam;this.needsSwap=false;
+    this.rt=new T.WebGLRenderTarget(16,16,{type,minFilter:T.NearestFilter,magFilter:T.NearestFilter,depthTexture:new T.DepthTexture(16,16)});
+    this.mat=new T.ShaderMaterial({vertexShader:OL_VS,fragmentShader:OL_FS,depthTest:false,depthWrite:false,
+      uniforms:{tColor:{value:null},tDepth:{value:null},uTexel:{value:new T.Vector2(1/16,1/16)},uNear:{value:.1},uFar:{value:480},uStr:{value:1},uFade:{value:120},uTint:{value:new T.Color('#0b0a28')}}});
+    this.fsq=new FullScreenQuad(this.mat)}
+  setSize(w,h){this.rt.setSize(w,h);this.mat.uniforms.uTexel.value.set(1/w,1/h)}
+  render(renderer,writeBuffer,readBuffer){
+    if((this.sw=(this.sw||0)+1)%15===1)markNoOutline(this.scene,false);
+    const ac=renderer.autoClear,u=this.mat.uniforms;renderer.autoClear=false;
+    renderer.setRenderTarget(this.rt);renderer.clear();renderer.render(this.scene,this.cam);renderer.autoClear=ac;
+    u.tColor.value=this.rt.texture;u.tDepth.value=this.rt.depthTexture;u.uNear.value=this.cam.near;u.uFar.value=this.cam.far;
+    renderer.setRenderTarget(this.renderToScreen?null:readBuffer);this.fsq.render(renderer)}
+  dispose(){this.rt.dispose();this.mat.dispose();this.fsq.dispose()}
+}
+
 const CLOUD_VS=`varying vec3 vDir;void main(){vDir=normalize(position);vec4 p=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_Position=p.xyww;}`;
+// flat cartoon clouds: a hard edge and only TWO tones (lit top, shaded belly), so after the pixelation they read as pixel-art puffs
 const CLOUD_FS=`varying vec3 vDir;uniform float uTime,uCover;uniform vec3 uSun,uLit,uShade,uRim;
 float hash(vec2 p){p=fract(p*vec2(123.34,456.21));p+=dot(p,p+45.32);return fract(p.x*p.y);}
 float noise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),f.x),f.y);}
-float fbm(vec2 p){float a=.5,s=0.;mat2 r=mat2(1.6,1.2,-1.2,1.6);for(int i=0;i<6;i++){s+=a*noise(p);p=r*p;a*=.5;}return s;}
-void main(){vec3 d=normalize(vDir);float h=d.y;if(h<.015)discard;
-  vec2 uv=d.xz/(h*.9+.16)*1.25+vec2(uTime*.012,uTime*.005);
-  vec2 warp=vec2(fbm(uv*.6+3.1),fbm(uv*.6+7.7))-.5;uv+=warp*.9;
-  float n=fbm(uv),dens=smoothstep(uCover,uCover+.3,n);
-  if(dens<.003)discard;
-  vec2 sd=normalize(uSun.xz+1e-4)*.07;float n2=fbm(uv+sd);                      // density towards the sun: thicker = darker
-  float lit=clamp(.62+(n-n2)*4.2,0.,1.);
-  float core=smoothstep(uCover,uCover+.6,n);                                    // thick centres are greyer underneath
-  vec3 col=mix(uShade,uLit,lit);col=mix(col,uShade*.85,core*.35*(1.-lit));
-  float sunA=pow(max(dot(d,uSun),0.),6.);col+=uRim*sunA*.55*(1.-dens*.6);   // silver lining near the sun
-  float fade=smoothstep(.015,.2,h);
-  gl_FragColor=vec4(col,dens*fade*.96);}`;
+float fbm(vec2 p){float a=.5,s=0.;mat2 r=mat2(1.6,1.2,-1.2,1.6);for(int i=0;i<4;i++){s+=a*noise(p);p=r*p;a*=.5;}return s;}
+void main(){vec3 d=normalize(vDir);float h=d.y;if(h<.03)discard;
+  vec2 uv=d.xz/(h*.9+.16)*.9+vec2(uTime*.012,uTime*.005);
+  float n=fbm(uv),edge=uCover+.09;
+  if(n<edge)discard;                                                            // hard cloud edge
+  vec2 sd=normalize(uSun.xz+1e-4)*.09;float n2=fbm(uv+sd);                      // density towards the sun: thicker = in shade
+  float band=step(.5,.62+(n-n2)*4.2);                                           // 1 = lit top, 0 = shaded belly
+  vec3 col=mix(uShade,uLit,band);
+  col+=uRim*pow(max(dot(d,uSun),0.),8.)*.25*band;                               // tiny warm glow towards the sun
+  gl_FragColor=vec4(col,smoothstep(.03,.14,h));}`;
+
+// stylised sky: a soft vertical gradient (horizon -> zenith), a warm glow and a flat sun disc. Pinned to the far plane like the clouds.
+const SKY_VS=`varying vec3 vDir;void main(){vDir=normalize(position);vec4 p=projectionMatrix*modelViewMatrix*vec4(position,1.);gl_Position=p.xyww;}`;
+const SKY_FS=`varying vec3 vDir;uniform vec3 uSun,uZen,uHor,uGlow,uSunCol;
+void main(){vec3 d=normalize(vDir);float h=max(d.y,0.);
+  vec3 col=mix(uHor,uZen,pow(smoothstep(0.,.9,h),.7));
+  float sd=max(dot(d,normalize(uSun)),0.);
+  col+=uGlow*pow(sd,6.)*.5;
+  col=mix(col,uSunCol,smoothstep(.9968,.9974,sd));
+  gl_FragColor=vec4(min(col,vec3(4.)),1.);}`;
 
 // Half-float targets can hold values far above 1 (the sky's sun disc is ~19000). Some phone GPUs turn that into Inf/NaN, and the bloom blur
 // spreads it into dark blotches / a darkened screen. This pass removes NaN / Inf and caps the range before anything else reads the image.
@@ -61,17 +133,20 @@ const MOON_FS=`uniform float uOp;void main(){vec2 c=gl_PointCoord-.5;float r=len
   vec3 col=vec3(.93,.95,1.)*(1.-.08*sin(c.x*41.)*sin(c.y*37.+1.))*disc+vec3(.5,.62,1.)*glow;
   gl_FragColor=vec4(col,clamp(disc+glow,0.,1.)*uOp);}`;
 
-const GRADE={uniforms:{tDiffuse:{value:null},uTime:{value:0},uVig:{value:.34},uGrain:{value:.012},uSat:{value:1.1},uAb:{value:.004}},
+// colour grade for the pixel look: punchy saturation, a soft vignette, then the colours are snapped to uLv steps per channel with a 4x4 ordered
+// (Bayer) dither. This pass runs on the LOW-RES image, so gl_FragCoord is one art pixel and the dither pattern is chunky too.
+const GRADE={uniforms:{tDiffuse:{value:null},uTime:{value:0},uVig:{value:.07},uSat:{value:1.14},uNight:{value:0},uLv:{value:26}},   // fewer colour steps = crunchier flat colour; no dither, no grain; barely any vignette
   vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-  fragmentShader:`uniform sampler2D tDiffuse;uniform float uTime,uVig,uGrain,uSat,uAb;varying vec2 vUv;
-  float hash(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233)))*43758.5453);}
-  void main(){vec2 c=vUv-.5;float r=dot(c,c);vec2 off=c*r*uAb;
-    vec3 col=vec3(texture2D(tDiffuse,vUv+off).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-off).b);
-    float l=dot(col,vec3(.2126,.7152,.0722));col=mix(vec3(l),col,uSat);
-    col*=1.-uVig*smoothstep(.12,.62,r*1.7);
-    col*=vec3(1.02,1.0,.97+.03*smoothstep(.0,.4,r));                                  // faint warm centre, cool edges
-    col+=(hash(vUv*vec2(1731.,911.)+fract(uTime))-.5)*uGrain;
-    gl_FragColor=vec4(max(col,0.),1.);}`};
+  fragmentShader:`uniform sampler2D tDiffuse;uniform float uTime,uVig,uSat,uNight,uLv;varying vec2 vUv;
+  float b2(vec2 p){p=mod(floor(p),2.);return fract(p.x*.5+p.y*p.y*.75);}
+  float b4(vec2 p){return (b2(p)*4.+b2(p*.5))/4.;}
+  void main(){vec2 c=vUv-.5;float r=dot(c,c);
+    vec3 col=texture2D(tDiffuse,vUv).rgb;
+    float l=dot(col,vec3(.2126,.7152,.0722));col=mix(vec3(l),col,uSat*mix(1.,.7,uNight));   // night: calmer colours
+    col*=1.-uVig*smoothstep(.15,.65,r*1.7);
+    vec3 g=pow(clamp(col,0.,1.),vec3(1./2.2));                                       // snap in a perceptual space so the steps look even
+    g=floor(g*uLv+.5)/uLv;   // soft dither (30%) + more steps = smooth flat colour, not grainy
+    gl_FragColor=vec4(pow(g,vec3(2.2)),1.);}`};
 
 // Camera motion blur: the screen-space shift caused by the camera turning this frame (uVel, in uv units) is smeared symmetrically over a few taps.
 const MBLUR={uniforms:{tDiffuse:{value:null},uVel:{value:new T.Vector2()}},
@@ -85,15 +160,12 @@ const MB_LEVEL=[0,.35,.65,1.1];   // Off / Low / Medium / High: fraction of a 1/
 export function createAtmosphere(renderer,scene,cam){
   const sunDir=new T.Vector3().setFromSphericalCoords(1,(90-SUN_ELEV)*D2R,SUN_AZ*D2R),FIXED_SUN=sunDir.clone(),lightDir=sunDir.clone();
   // ---------------------------------------------------------------- sky + clouds (one builder so the environment probe gets its own copy)
-  const mkSky=()=>{const s=new Sky();s.scale.setScalar(2000);
-    // FIX 1: cap the sky colour in the shader itself. Without this the sun disc (~19000) overflows half-float (max 65504) on Apple GPUs.
-    const fs=s.material.fragmentShader,capped=fs.replace(/gl_FragColor\s*=\s*vec4\(\s*retColor\s*,\s*1\.0\s*\)\s*;/,`gl_FragColor=vec4(min(retColor,vec3(${SKY_MAX.toFixed(1)})),1.0);`);
-    if(capped!==fs){s.material.fragmentShader=capped;s.material.needsUpdate=true}
-    else console.warn('atmosphere: could not clamp the sky shader (Sky.js changed?). Sky colour is not capped.');
-    const u=s.material.uniforms;
-    u.turbidity.value=3.2;u.rayleigh.value=1.35;u.mieCoefficient.value=.0042;u.mieDirectionalG.value=.82;u.sunPosition.value.copy(sunDir);return s};
+  // (FIX 1 of the old version, capping the sun disc, is no longer needed: this sky never goes above ~4, far below the half-float limit)
+  const mkSky=()=>{const s=new T.Mesh(new T.SphereGeometry(100,24,12),new T.ShaderMaterial({vertexShader:SKY_VS,fragmentShader:SKY_FS,side:T.BackSide,depthWrite:false,fog:false,
+      uniforms:{uSun:{value:sunDir.clone()},uZen:{value:new T.Color('#4aa3f2')},uHor:{value:new T.Color('#cdeefa')},uGlow:{value:new T.Color('#ffd9a0')},uSunCol:{value:new T.Color('#fff6d8').multiplyScalar(2.5)}}}));
+    s.frustumCulled=false;return s};
   const cloudMat=()=>new T.ShaderMaterial({vertexShader:CLOUD_VS,fragmentShader:CLOUD_FS,transparent:true,depthWrite:false,depthTest:true,side:T.BackSide,fog:false,
-    uniforms:{uTime:{value:0},uCover:{value:.5},uSun:{value:sunDir.clone()},uLit:{value:new T.Color('#fff4e4').multiplyScalar(1.5)},uShade:{value:new T.Color('#7f93b3').multiplyScalar(.9)},uRim:{value:new T.Color().setRGB(1,.82,.55)}}});
+    uniforms:{uTime:{value:0},uCover:{value:.5},uSun:{value:sunDir.clone()},uLit:{value:new T.Color('#fff4e4').multiplyScalar(1.5)},uShade:{value:new T.Color('#aebfe6').multiplyScalar(.95)},uRim:{value:new T.Color().setRGB(1,.82,.55)}}});
   const mkClouds=()=>{const m=new T.Mesh(new T.SphereGeometry(300,32,16),cloudMat());m.renderOrder=-1;m.frustumCulled=false;return m};
   const sky=mkSky(),clouds=mkClouds();sky.renderOrder=-2;scene.add(sky,clouds);
   // ---------------------------------------------------------------- environment probe (sky -> PMREM) for the scenery's ambient + reflections
@@ -113,9 +185,10 @@ export function createAtmosphere(renderer,scene,cam){
     rt.dispose()}catch(e){try{renderer.setRenderTarget(null)}catch(_){}}
   const fogDay=fogColor.clone().lerp(new T.Color('#ffe9cf'),.12),fogHaze=fogDay.clone();
   // ---------------------------------------------------------------- lights
-  const hemi=new T.HemisphereLight('#a9ccff','#6d8a4e',1.35),sun=new T.DirectionalLight('#ffe7c2',3.1);
+  const SUN_I=1.7,HEMI_P=1.9;   // a bit lower than before: neutral tone mapping keeps colours brighter than ACES did
+  const hemi=new T.HemisphereLight('#bfe0ff','#7fae5a',HEMI_P),sun=new T.DirectionalLight('#fff0cc',SUN_I);
   sun.castShadow=true;sun.shadow.mapSize.set(APPLE?1024:2048,APPLE?1024:2048);const sc=sun.shadow.camera;sc.left=-26;sc.right=26;sc.top=26;sc.bottom=-26;sc.near=1;sc.far=140;
-  sun.shadow.bias=-.0004;sun.shadow.normalBias=.035;sun.shadow.radius=3;
+  sun.shadow.bias=-.0004;sun.shadow.normalBias=.035;sun.shadow.radius=0;
   scene.add(hemi,sun,sun.target);
   // ---------------------------------------------------------------- post stack
   // Pick a render target the GPU can really draw to: half-float + MSAA where supported, then fall back step by step (phones often lack one of them;
@@ -134,12 +207,16 @@ export function createAtmosphere(renderer,scene,cam){
       catch(e){try{renderer.setRenderTarget(null);t&&t.dispose()}catch(_){}}}
     return{type:T.UnsignedByteType,samples:0}})();
   const size=new T.Vector2();renderer.getSize(size);
-  const rt=new T.WebGLRenderTarget(size.x,size.y,{type:pick.type,samples:pick.samples});
-  const composer=new EffectComposer(renderer,rt),bloom=new UnrealBloomPass(new T.Vector2(size.x,size.y),.22,.6,1.5),grade=new ShaderPass(GRADE),mblur=new ShaderPass(MBLUR);mblur.enabled=false;
+  const rt=new T.WebGLRenderTarget(size.x,size.y,{type:pick.type,samples:0});   // no MSAA: hard pixel edges are the point
+  const composer=new EffectComposer(renderer,rt),bloom=new UnrealBloomPass(new T.Vector2(size.x,size.y),.1,.5,1.2),grade=new ShaderPass(GRADE),mblur=new ShaderPass(MBLUR);mblur.enabled=false;
+  // nearest-neighbour filtering: the final pass stretches the low-res image over the screen WITHOUT smoothing it
+  [composer.renderTarget1,composer.renderTarget2].forEach(t=>{t.texture.minFilter=t.texture.magFilter=T.NearestFilter});
+  let ART_H=270;let rw=size.x,rh=size.y,rpr=1,pixOn=true;   // ART_H = how many pixel rows the picture has (about); pixOn = pixel look on / off
+  const applyRes=()=>{const ps=pixOn?Math.max(2,Math.round(rh/ART_H)):0;composer.setPixelRatio(ps?1/ps:rpr);composer.setSize(rw,rh)};
   const prevQ=new T.Quaternion().copy(cam.quaternion),relQ=new T.Quaternion(),relE=new T.Euler(),mbVel=mblur.uniforms.uVel.value;
-  composer.addPass(new RenderPass(scene,cam));if(pick.type===T.HalfFloatType)composer.addPass(new ShaderPass(SANITIZE));
+  const scenePass=new ScenePass(scene,cam,pick.type);composer.addPass(scenePass);if(pick.type===T.HalfFloatType)composer.addPass(new ShaderPass(SANITIZE));
   composer.addPass(mblur);composer.addPass(bloom);composer.addPass(grade);composer.addPass(new OutputPass());
-  let mode='maker',postFail=false,ctxLost=false;const Q={bloom:true,grade:true,aa:true,shadows:2,clouds:true,blur:0};const fog=new T.Fog(fogHaze,45,240);
+  let mode='maker',postFail=false,ctxLost=false;const Q={bloom:false,grade:true,aa:false,shadows:2,clouds:true,blur:0,pixel:true,outline:true};const fog=new T.Fog(fogHaze,45,240);
 
   // ---------------------------------------------------------------- night sky: stars + moon
   const maxPt=(()=>{try{const gl=renderer.getContext();return gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)[1]||64}catch(e){return 64}})();
@@ -154,22 +231,25 @@ export function createAtmosphere(renderer,scene,cam){
   moon.frustumCulled=false;moon.renderOrder=-1.4;moon.visible=false;scene.add(stars,moon);
 
   // ---------------------------------------------------------------- day / night cycle (story mode). Off = the old fixed late-morning sun, byte for byte.
-  const L={skyD:new T.Color('#a9ccff'),skyN:new T.Color('#3b5296'),grdD:new T.Color('#6d8a4e'),grdN:new T.Color('#18221c'),
-    sunD:new T.Color('#ffe7c2'),sunLow:new T.Color('#ff9a55'),moon:new T.Color('#9db4ff'),fogN:new T.Color('#080d1c'),fogDusk:new T.Color('#ff9c66'),
-    litD:new T.Color('#fff4e4').multiplyScalar(1.5),litN:new T.Color('#7f90c8').multiplyScalar(.28),litDusk:new T.Color('#ffb48a').multiplyScalar(1.25),
-    shD:new T.Color('#7f93b3').multiplyScalar(.9),shN:new T.Color('#0a1022'),shDusk:new T.Color('#8c6f90').multiplyScalar(.9),
-    rimD:new T.Color().setRGB(1,.82,.55),rimN:new T.Color().setRGB(.3,.4,.8)};
+  const L={skyD:new T.Color('#a9ccff'),skyN:new T.Color('#434f78'),grdD:new T.Color('#6d8a4e'),grdN:new T.Color('#18221c'),
+    sunD:new T.Color('#ffe7c2'),sunLow:new T.Color('#f2ab78'),moon:new T.Color('#aab8dc'),fogN:new T.Color('#0a0e18'),fogDusk:new T.Color('#e6a585'),
+    litD:new T.Color('#fff4e4').multiplyScalar(1.5),litN:new T.Color('#838daf').multiplyScalar(.28),litDusk:new T.Color('#eab8a0').multiplyScalar(1.25),
+    shD:new T.Color('#aebfe6').multiplyScalar(.95),shN:new T.Color('#0a1022'),shDusk:new T.Color('#80708a').multiplyScalar(.9),
+    rimD:new T.Color().setRGB(1,.82,.55),rimN:new T.Color().setRGB(.35,.4,.6)};
+  const SK={zD:new T.Color('#4aa3f2'),zN:new T.Color('#0b1030'),zDusk:new T.Color('#7a86d6'),hD:new T.Color('#cdeefa'),hN:new T.Color('#1a2448'),hDusk:new T.Color('#ffb98a'),gl:new T.Color('#ffd9a0')};
+  function skyLook(day,tw){const u=sky.material.uniforms;u.uSun.value.copy(sunDir);   // gradient colours for day / night / sunset, and the glow around the sun
+    u.uZen.value.lerpColors(SK.zN,SK.zD,day).lerp(SK.zDusk,tw*.5);u.uHor.value.lerpColors(SK.hN,SK.hD,day).lerp(SK.hDusk,tw*.75);u.uGlow.value.copy(SK.gl).multiplyScalar(day)}
   const sst=(a,b,x)=>{const t=Math.min(1,Math.max(0,(x-a)/(b-a)));return t*t*(3-2*t)},moonDir=new T.Vector3(),ld=new T.Vector3();
   let cycOn=false,hour=9,night=0;
   function applyTime(h){
     const a=(h-6)/24*Math.PI*2,elev=Math.asin(Math.sin(a)*Math.sin(72*D2R)),az=(90+(h-6)*15)*D2R;      // 6:00 sunrise in the east, 12:00 high in the south, 18:00 sunset
     sunDir.setFromSphericalCoords(1,Math.PI/2-elev,az);moonDir.copy(sunDir).negate();
-    const s=sunDir.y,day=sst(-.12,.25,s),tw=Math.exp(-Math.pow((s-.03)/.17,2)),sunMode=s>-.07;night=1-day;
+    const s=sunDir.y,day=sst(-.12,.25,s),tw=Math.exp(-Math.pow((s-.03)/.17,2)),sunMode=s>-.07;night=1-day;grade.uniforms.uNight.value=night;
     lightDir.copy(sunMode?sunDir:moonDir);
-    const su=sky.material.uniforms;su.sunPosition.value.copy(sunDir);su.turbidity.value=3.2+tw*3.5;su.rayleigh.value=1.35+tw*1.1;su.mieCoefficient.value=.0042+tw*.004;
-    hemi.color.lerpColors(L.skyN,L.skyD,day);hemi.groundColor.lerpColors(L.grdN,L.grdD,day);hemi.intensity=.8+.55*day;
-    if(sunMode){sun.intensity=3.1*sst(-.07,.22,s);sun.color.lerpColors(L.sunLow,L.sunD,sst(.05,.5,s))}     // the sun / moon swap happens while both are at ~0 intensity: no pop
-    else{sun.intensity=.65*sst(.07,.3,-s);sun.color.copy(L.moon)}
+    skyLook(day,tw);
+    hemi.color.lerpColors(L.skyN,L.skyD,day);hemi.groundColor.lerpColors(L.grdN,L.grdD,day);hemi.intensity=.7+(HEMI_P-.7)*day;
+    if(sunMode){sun.intensity=SUN_I*sst(-.07,.22,s);sun.color.lerpColors(L.sunLow,L.sunD,sst(.05,.5,s))}     // the sun / moon swap happens while both are at ~0 intensity: no pop
+    else{sun.intensity=.65*sst(.07,.3,-s);sun.color.copy(L.moon)}   // (moon light)
     ENV.k=.1+.9*day;
     fogHaze.lerpColors(L.fogN,fogDay,day);if(tw>.01)fogHaze.lerp(L.fogDusk,tw*.6*(.35+.65*day));fog.color.copy(fogHaze);
     const cu=clouds.material.uniforms;cu.uSun.value.copy(lightDir);
@@ -178,8 +258,8 @@ export function createAtmosphere(renderer,scene,cam){
     const pl=mode==='play';stars.visible=pl&&so>.01;moon.visible=pl&&mo>.01}
   function resetLook(){
     sunDir.copy(FIXED_SUN);lightDir.copy(FIXED_SUN);night=0;ENV.k=1;
-    const su=sky.material.uniforms;su.sunPosition.value.copy(sunDir);su.turbidity.value=3.2;su.rayleigh.value=1.35;su.mieCoefficient.value=.0042;
-    fogHaze.copy(fogDay);fog.color.copy(fogHaze);
+    skyLook(1,0);
+    fogHaze.copy(fogDay);fog.color.copy(fogHaze);grade.uniforms.uNight.value=0;
     const cu=clouds.material.uniforms;cu.uSun.value.copy(sunDir);cu.uLit.value.copy(L.litD);cu.uShade.value.copy(L.shD);cu.uRim.value.copy(L.rimD);
     stars.visible=false;moon.visible=false}
 
@@ -194,12 +274,13 @@ export function createAtmosphere(renderer,scene,cam){
       envRT=pm.fromScene(envScene,0,.1,1000);envMap=envRT.texture;
       if(scene.environment===old)scene.environment=envMap;
       scene.traverse(o=>{const ms=o.material?(Array.isArray(o.material)?o.material:[o.material]):[];for(const m of ms){if(m.envMap===old)m.envMap=envMap;m.needsUpdate=true}});
-      rt.dispose();composer.renderTarget1.dispose();composer.renderTarget2.dispose();
-      composer.setPixelRatio(renderer.getPixelRatio());renderer.getSize(size);composer.setSize(size.x,size.y);
+      rt.dispose();scenePass.rt.dispose();composer.renderTarget1.dispose();composer.renderTarget2.dispose();
+      renderer.getSize(size);rw=size.x;rh=size.y;rpr=renderer.getPixelRatio();applyRes();
       postFail=false;if(api.onEnv)api.onEnv(envMap);if(api.onRestore)api.onRestore();
     }catch(err){console.warn('WebGL restore failed',err)}
     ctxLost=false;console.warn('WebGL context restored')},false);
 
+  const SNP={f:new T.Vector3(),r:new T.Vector3(),u:new T.Vector3(),up:new T.Vector3(0,1,0),p:new T.Vector3()};
   const api={sunDir,lightDir,sun,hemi,get envMap(){return envMap},onEnv:null,onRestore:null,fogColor:fogHaze,sky,clouds,composer,bloom,grade,dayLength:720,hold:false,
     /** story mode clock: on=true starts the cycle at startHour (0-24); on=false goes back to the fixed sun */
     setCycle(on,startHour){on=!!on;if(typeof startHour==='number'&&isFinite(startHour))hour=((startHour%24)+24)%24;
@@ -209,15 +290,17 @@ export function createAtmosphere(renderer,scene,cam){
     get night(){return night},get cycling(){return cycOn},
     setMode(m){mode=m;const play=m==='play';
       sky.visible=play;clouds.visible=play&&Q.clouds;
-      renderer.toneMapping=play?T.ACESFilmicToneMapping:T.NoToneMapping;renderer.toneMappingExposure=play?.82:1;
-      renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.PCFSoftShadowMap;
-      sun.castShadow=play&&Q.shadows>0;hemi.intensity=play?1.35:2.1;sun.intensity=play?3.1:2.3;sun.color.set(play?'#ffe7c2':'#fff0c8');
+      renderer.toneMapping=play?(T.NeutralToneMapping||T.LinearToneMapping):T.NoToneMapping;renderer.toneMappingExposure=1;   // neutral = keeps the bright cartoon colours (ACES made them dull and contrasty)
+      renderer.shadowMap.enabled=true;renderer.shadowMap.type=T.BasicShadowMap;                                          // plain PCF: crisper, blockier shadow edges that match the pixels
+      sun.castShadow=play&&Q.shadows>0;hemi.intensity=play?HEMI_P:2.1;sun.intensity=play?SUN_I:2.3;sun.color.set(play?'#fff0cc':'#fff0c8');
       if(!play){sun.position.set(-8,16,10);sun.target.position.set(0,0,0)}
-      hemi.color.set(play?'#a9ccff':'#fff6d8');hemi.groundColor.set(play?'#6d8a4e':'#7aa86a');
+      hemi.color.set(play?'#bfe0ff':'#fff6d8');hemi.groundColor.set(play?'#7fae5a':'#7aa86a');
       scene.fog=play?fog:null;scene.background=null;
       if(cycOn&&play)applyTime(hour);else{stars.visible=false;moon.visible=false;if(!play)ENV.k=1}},
     // FIX 4: Apple devices get a 3x pixel ratio by default, which is 9x the pixels of 1x and a lot of GPU memory with the post stack. Cap it at 2.
-    resize(w,h,pr){if(APPLE)pr=Math.min(pr,2);composer.setPixelRatio(pr);composer.setSize(w,h);bloom.resolution.set(w,h)},
+    // w, h = CSS size of the screen. In pixel mode the image is rendered about 300 rows tall (every art pixel = several screen pixels).
+    resize(w,h,pr){if(APPLE)pr=Math.min(pr,2);rw=w;rh=h;rpr=pr;applyRes()},
+    setPixel(on){pixOn=!!on;applyRes()},setArtRows(n){ART_H=Math.max(40,Math.min(720,n|0));applyRes()},get pixelRows(){return pixOn?Math.round(rh/Math.max(2,Math.round(rh/ART_H))):rh*rpr},
     update(dt,t,focus){
       sky.position.copy(cam.position);clouds.position.copy(cam.position);clouds.material.uniforms.uTime.value=t;grade.uniforms.uTime.value=t;
       if(cycOn&&mode==='play'){if(!api.hold)hour=(hour+dt*24/api.dayLength)%24;applyTime(hour);
@@ -230,17 +313,21 @@ export function createAtmosphere(renderer,scene,cam){
         let vx=Math.tan(relE.y)*sx*k,vy=-Math.tan(relE.x)*sy*k;const l=Math.hypot(vx,vy),mx=.05;if(l>mx){vx*=mx/l;vy*=mx/l}
         if(l<.0004){vx=0;vy=0}   // ignore sub-pixel jitter
         mbVel.set(vx,vy)}
-      if(mode==='play'&&focus){const d=cycOn?lightDir:sunDir;ld.copy(d);if(ld.y<.22){ld.y=.22;ld.normalize()}      // shadow light never gets lower than ~13 degrees (long shadows would sink into the hills)
-        sun.target.position.set(focus.x,0,focus.z);sun.position.set(focus.x+ld.x*70,ld.y*70,focus.z+ld.z*70);sun.target.updateMatrixWorld()}},
+      if(mode==='play'&&focus){const d=cycOn?lightDir:sunDir;ld.copy(d);if(ld.y<.62){ld.y=.62;ld.normalize()}      // shadow light never gets lower than ~13 degrees (long shadows would sink into the hills)
+        {const S=SNP,tx=2*sc.right/sun.shadow.mapSize.x;S.f.copy(ld).negate();S.r.crossVectors(S.f,S.up).normalize();S.u.crossVectors(S.r,S.f);   // snap the shadow camera to whole shadow texels (in light space): the shadow no longer swims / shimmers when the cat moves
+          const ra=Math.round((focus.x*S.r.x+focus.z*S.r.z)/tx)*tx,ua=Math.round((focus.x*S.u.x+focus.z*S.u.z)/tx)*tx,fa=focus.x*S.f.x+focus.z*S.f.z;
+          S.p.set(0,0,0).addScaledVector(S.r,ra).addScaledVector(S.u,ua).addScaledVector(S.f,fa);
+          sun.target.position.copy(S.p);sun.position.copy(S.p).addScaledVector(ld,70);sun.target.updateMatrixWorld()}}},
     /** graphics options: bloom, grade (vignette/grain/colour), aa (MSAA in the post path), shadows 0|1|2, clouds.
      *  With bloom AND grade off the whole post stack is skipped and the scene goes straight to the screen (cheapest path). */
-    setQuality(q){Object.assign(Q,q);bloom.enabled=!!Q.bloom;grade.enabled=!!Q.grade;mblur.enabled=Q.blur>0;
-      const n=Q.aa?pick.samples:0;if(rt.samples!==n){[composer.renderTarget1,composer.renderTarget2].forEach(t=>{t.samples=n;t.dispose()})}
+    setOutline(on){Q.outline=!!on;scenePass.mat.uniforms.uStr.value=Q.outline?1:0},
+    setQuality(q){Object.assign(Q,q);scenePass.mat.uniforms.uStr.value=Q.outline?1:0;bloom.enabled=!!Q.bloom;grade.enabled=!!Q.grade;mblur.enabled=Q.blur>0;
+      if(!!Q.pixel!==pixOn){pixOn=!!Q.pixel;applyRes()}   // Q.aa is ignored: the pixel look never uses MSAA
       const ms=(Q.shadows>=2&&!APPLE)?2048:1024;if(sun.shadow.mapSize.x!==ms){sun.shadow.mapSize.set(ms,ms);if(sun.shadow.map){sun.shadow.map.dispose();sun.shadow.map=null}}   // Apple: 1024 max (memory)
       const ext=Q.shadows>=2?26:20;if(sc.right!==ext){sc.left=-ext;sc.right=ext;sc.top=ext;sc.bottom=-ext;sc.updateProjectionMatrix()}
       api.setMode(mode)},
     render(){if(ctxLost)return;   // the context is gone: drawing now would only throw, wait for webglcontextrestored
-      if(mode==='play'&&!postFail&&(Q.bloom||Q.grade||Q.blur>0)){
+      if(!postFail){   // always through the post stack (also in the cat maker): it is what makes the picture low-res and pixelated
         try{composer.render()}catch(e){postFail=true;console.warn('Post-processing disabled (GPU could not run it):',e);try{renderer.setRenderTarget(null)}catch(_){}renderer.render(scene,cam)}}
       else renderer.render(scene,cam)}};
   api.setMode('maker');return api;
