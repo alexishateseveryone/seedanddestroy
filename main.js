@@ -46,7 +46,7 @@ const cam=new T.PerspectiveCamera(70,1,.1,480),fx=createFX(scene),tmp=new T.Vect
 import {addPixelSlider} from './js/pixelSlider.js';
 const atm=createAtmosphere(renderer,scene,cam);addPixelSlider(atm);let curMode='';
 {const lock3=()=>{try{const hit=[...document.querySelectorAll('body *')].filter(e=>/^\s*Pixel size/.test(e.textContent||'')&&e.querySelector&&e.querySelector('input[type=range]'));const box=hit[hit.length-1];
-    if(box){const r=box.querySelector('input[type=range]');r.value=3;r.dispatchEvent(new Event('input',{bubbles:true}));r.dispatchEvent(new Event('change',{bubbles:true}));box.style.display='none';return true}}catch(e){}return false};   // pixel size is fixed at 3: set it, then hide the slider
+    if(box){const r=box.querySelector('input[type=range]');r.value=2;r.dispatchEvent(new Event('input',{bubbles:true}));r.dispatchEvent(new Event('change',{bubbles:true}));box.style.display='none';return true}}catch(e){}return false};   // pixel size is fixed at 3: set it, then hide the slider
  if(!lock3()){setTimeout(lock3,0);setTimeout(lock3,500)}}
 atm.onRestore=()=>{try{renderer.compile(scene,cam)}catch(e){}resize()};   // after a lost + restored WebGL context: recompile every shader, rebuild the render targets
 const hud=createHUD();
