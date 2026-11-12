@@ -5,6 +5,7 @@
 // belt.anchor(v) gives the point at the bottom-centre of the collar so the name plate can hang from it.
 import * as T from 'three';
 import {Cloth} from './physics.js';
+import {toonMat} from './world/coatShader.js';
 
 export const COLLAR_COLS=25,COLLAR_ROWS=4;
 export const COLLAR_TYPES=[['normal','Normal'],['furry','Furry'],['scarf','Scarf']];
@@ -74,12 +75,12 @@ function knitTex(){                                      // knitted V stitches +
 }
 const TEXF={normal:leatherTex,furry:furTex,scarf:knitTex},BUMP={normal:2.4,furry:1.8,scarf:2.0};
 const strapMat=(type,color,dark)=>{const t=(TEXF[type]||leatherTex)();
-  return new T.MeshStandardMaterial({color:new T.Color(color).lerp(new T.Color('#120c1c'),dark),map:t,bumpMap:t,bumpScale:BUMP[type]||2.4,roughness:type==='normal'?.96:1,metalness:0,side:T.DoubleSide})};
+  return toonMat(new T.Color(color).lerp(new T.Color('#120c1c'),dark),{map:t,bumpMap:t,bumpScale:BUMP[type]||2.4,side:T.DoubleSide})};
 const hex=(a,b,t)=>'#'+new T.Color(a).lerp(new T.Color(b),t).getHexString();
 
 // ---------- trim that follows the cloth ----------
-const GOLD=new T.MeshStandardMaterial({color:'#e8b83a',roughness:.35,metalness:.85});
-const GOLD_D=new T.MeshStandardMaterial({color:'#b8892a',roughness:.45,metalness:.8});
+const GOLD=toonMat('#f0c040');
+const GOLD_D=toonMat('#c0922e');
 const HOLE=new T.MeshBasicMaterial({color:'#120a05'});
 const PUFF=new T.IcosahedronGeometry(1,1);
 const CM=(COLLAR_COLS-1)/2;
@@ -87,7 +88,7 @@ function buildTrim(type,color){
   const items=[],grp=new T.Group();
   const add=(obj,c,kind,extra)=>{grp.add(obj);items.push(Object.assign({obj,c,kind},extra))};
   if(type==='furry'){                                    // fluffy puffs on every row, slightly randomised
-    const rnd=seeded(99),ml=new T.MeshStandardMaterial({color:hex(color,'#ffffff',.18),roughness:1}),md=new T.MeshStandardMaterial({color:hex(color,'#000000',.1),roughness:1});
+    const rnd=seeded(99),ml=toonMat(hex(color,'#ffffff',.18)),md=toonMat(hex(color,'#000000',.1));
     for(let r=0;r<COLLAR_ROWS;r++)for(let c=0;c<COLLAR_COLS;c++){
       const m=new T.Mesh(PUFF,rnd()<.55?ml:md),s=(r===0||r===COLLAR_ROWS-1?.1:.085)*(.8+rnd()*.5);m.scale.set(s,s*.85,s);
       add(m,c,'puff',{r,j:new T.Vector3((rnd()-.5)*.03,(rnd()-.5)*.03,(rnd()-.5)*.03)})}
@@ -175,7 +176,7 @@ export function buildCollarStatic(color,type='normal'){
     tr.forEach((v,i)=>{pos.push(v.x,v.y,v.z);cc.set(tc(Math.floor(i/TAIL_C),i%TAIL_C));col.push(cc.r,cc.g,cc.b)});
     for(let r=0;r<TAIL_R-1;r++)for(let c=0;c<TAIL_C-1;c++){const a=r*TAIL_C+c,b=a+1,d=a+TAIL_C,e=d+1;idx.push(a,d,b,b,d,e)}
     const geo=new T.BufferGeometry();geo.setAttribute('position',new T.Float32BufferAttribute(pos,3));geo.setAttribute('color',new T.Float32BufferAttribute(col,3));geo.setIndex(idx);geo.computeVertexNormals();
-    g.add(new T.Mesh(geo,new T.MeshStandardMaterial({vertexColors:true,side:T.DoubleSide,roughness:1})));
+    g.add(new T.Mesh(geo,toonMat('#ffffff',{vertexColors:true,side:T.DoubleSide})));
   }
   return g;
 }
