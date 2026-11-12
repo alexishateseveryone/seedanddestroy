@@ -68,7 +68,8 @@ body.mobile .hud-br{pointer-events:auto}
 .hb-d.rdy{color:#8fe3ff}.hb-d.rdy .df i{background:#8fe3ff}
 body:not(.story) .hb-i,body:not(.story) .hb-d{display:none}
 @media (max-width:900px){.hb{transform:translateX(-50%) scale(.8);transform-origin:bottom center}}
-body.mobile .hb{left:calc(8px + env(safe-area-inset-left));top:8px;bottom:auto;transform:scale(.62);transform-origin:top left}
+body.mobile .hb{left:50%;top:auto;bottom:calc(4px + env(safe-area-inset-bottom));transform:translateX(-50%) scale(.62);transform-origin:bottom center}   /* bottom-centre like on PC (the bag lives in the touch layer, just left of the bar) */
+body.mobile .hb-i{display:none}
 body.mobile .hb-s .nm{display:none!important}
 body.mobile .hud-tl{top:62px}
 `;
@@ -82,7 +83,7 @@ const css=document.createElement('style');css.textContent=BAR_CSS+`
 #amHint{font:800 12px var(--font);letter-spacing:.16em;color:#fff;min-height:14px}
 .hud-ammo.low #amN{color:var(--lemon)}.hud-ammo.empty #amN{color:#ff5a4d}
 .hud-ammo.low #amHint,.hud-ammo.empty #amHint{animation:amb 1s ease-in-out infinite}@keyframes amb{50%{opacity:.35}}
-body.mobile .hud-ammo{right:auto;left:var(--wpn-x,50%);transform:translateX(-50%);bottom:72px;align-items:center}   /* just above the weapon switch (the paws now live top-left) */
+body.mobile .hud-ammo{right:auto;left:var(--wpn-x,50%);transform:translateX(-50%);bottom:108px;align-items:center}   /* just above the weapon switch, which sits above the bottom bar */
 `+`
 /* ---- paper minimap frame: torn paper, no outline (the ragged edge is a clip-path set in createHUD) */
 .hud-br{filter:drop-shadow(0 5px 5px rgba(40,28,14,.42))}
@@ -91,7 +92,13 @@ body.mobile .hud-ammo{right:auto;left:var(--wpn-x,50%);transform:translateX(-50%
 .hud-br .mini canvas{display:block;width:100%!important;height:100%!important;border:none;border-radius:2px;background:#d9c9a0}
 .hud-br .mini::after{content:'';position:absolute;inset:9px;pointer-events:none;background:linear-gradient(90deg,transparent calc(50% - 1px),rgba(58,42,28,.09) 50%,transparent calc(50% + 1px)),linear-gradient(0deg,transparent calc(50% - 1px),rgba(58,42,28,.08) 50%,transparent calc(50% + 1px))}
 .hud-br .mini .mn{display:none!important}
+/* touch devices (iOS especially): the drop-shadow filters and the endless SVG animations each need their own GPU layer, and under memory pressure iOS drops those layers = the minimap / bar flash black */
+.hudlite .hud-br,.hudlite .hb,.hudlite .hb-heart{filter:none!important}
+.hudlite .hb-heart .wv,.hudlite .hb-heart .bub{animation:none!important}
+.hudlite .hud-br .mini{transform:none}
 `;document.head.appendChild(css);
+const LITE=typeof matchMedia!=='undefined'&&(matchMedia('(pointer:coarse)').matches||/iPhone|iPad|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1));
+if(LITE)document.body.classList.add('hudlite');
 
 
 // ---------------------------------------------------------------- PAPER MINIMAP
@@ -144,7 +151,8 @@ function buildPaperMap(map){
   // paper: grain + sepia vignette + ink border
   g.globalAlpha=.07;for(let i=0;i<900;i++){g.fillStyle=i%2?'#fff':'#5a4326';g.fillRect(Math.random()*w,Math.random()*h,1.5,1.5)}g.globalAlpha=1;
   const vg=g.createRadialGradient(w/2,h/2,Math.min(w,h)*.35,w/2,h/2,Math.max(w,h)*.72);vg.addColorStop(0,'rgba(120,80,30,0)');vg.addColorStop(1,'rgba(120,80,30,.28)');g.fillStyle=vg;g.fillRect(0,0,w,h);
-  return{map,key:AT.THEME,cv,x0:-hw,z0:-hh}}
+  let snap=null;try{snap=g.getImageData(0,0,w,h)}catch(e){}   // a copy of the finished picture in plain memory: iOS can drop a canvas's pixels under memory pressure, this lets radar() put them back without repainting (no hitch)
+  return{map,key:AT.THEME,cv,snap,chk:0,x0:-hw,z0:-hh}}
 
 export function createHUD(root=document.body){
   const $=s=>root.querySelector(s),el=(h)=>{const d=document.createElement('div');d.innerHTML=h.trim();return d.firstChild};
@@ -159,12 +167,10 @@ export function createHUD(root=document.body){
     <div class="hb" id="hbar">
       <div class="hb-i" id="hbInv">${BAG}<kbd>I</kbd></div>
       ${HEART_SVG}
-      <div class="hb-grp hb-w" id="hbW">${[0,1].map(n=>`<div class="hb-s empty" data-n="${n}"><kbd>${n+1}</kbd><span class="ic"></span><span class="nm"></span></div>`).join('')}</div>
-      <div class="hb-grp hb-a" id="hbA">${[0,1,2].map(n=>`<div class="hb-s empty" data-n="${n}"><span class="ic"></span></div>`).join('')}</div>
       <div class="hb-d" id="hbD">${DASH}<div class="df"><i id="hbDf"></i></div></div>
     </div>
     <div class="hud-ammo" id="ammo"><div class="amrow"><b id="amN">0</b><small id="amM"></small></div><div class="ambar"><i id="amFill"></i></div><span id="amHint"></span></div>
-    <div class="hud-bl"><div class="hint"><kbd>LMB</kbd> shoot <kbd>RMB</kbd> scope <kbd>SPACE</kbd> jump <kbd>SHIFT</kbd> roll <kbd>1-2</kbd> / wheel weapon <kbd>M</kbd> map <kbd>I</kbd> inventory</div></div>`;
+    <div class="hud-bl"><div class="hint"><kbd>LMB</kbd> shoot <kbd>RMB</kbd> scope <kbd>SPACE</kbd> jump <kbd>SHIFT</kbd> roll / glide (hold in air) <kbd>1-2</kbd> / wheel weapon <kbd>M</kbd> map <kbd>I</kbd> inventory <kbd>V</kbd> top-down view</div></div>`;
   
   const extra=el(`<div id="hudx"><div id="fps-crosshair"><i class="dot"></i><i class="t t1"></i><i class="t t2"></i><i class="t t3"></i><i class="t t4"></i><div id="hitm"><i></i><i></i><i></i><i></i></div></div>
     <div id="scope-ov"></div><div id="hurt"></div><div id="lowhp"></div><div id="banner"><b id="bnT"></b><span id="bnS"></span></div><div id="ebars"></div>
@@ -175,11 +181,12 @@ export function createHUD(root=document.body){
   document.body.appendChild(extra);
   const cross=$('#fps-crosshair'),hitm=$('#hitm'),scopeEl=$('#scope-ov'),hurtEl=$('#hurt'),lowEl=$('#lowhp'),bn=$('#banner'),ebars=$('#ebars'),pauseEl=$('#pause');
   const mini=$('#mini'),mc=mini.getContext('2d');
-  const hbar=$('#hbar'),wEls=[...root.querySelectorAll('#hbW .hb-s')],aEls=[...root.querySelectorAll('#hbA .hb-s')];
+  const hbar=$('#hbar');hbar.style.display='none';   // bottom-centre bar (heart, dash, bag, slots) is hidden: only the minimap stays
+  const wEls=[...root.querySelectorAll('#hbW .hb-s')],aEls=[...root.querySelectorAll('#hbA .hb-s')];
   let slotsW=[0,1],curW=0;                                           // weapon indices shown in the two weapon slots, and the one in your hands
   const drawW=()=>wEls.forEach((e,n)=>{const i=slotsW[n],w=i!=null?WEAPONS[i]:null;e.classList.toggle('empty',!w);e.classList.toggle('on',!!w&&i===curW);
     e.querySelector('.ic').innerHTML=w?(ICONS[w.id]||BLASTER):'';e.querySelector('.nm').textContent=w?w.name:''});
-  {const fr=mini.parentNode;if(fr)fr.style.clipPath=tornPoly()}   // tattered paper edge
+  {const fr=mini.parentNode;if(fr&&!LITE)fr.style.clipPath=tornPoly()}   // tattered paper edge (skipped on touch devices: a 140-point clip mask is one more GPU layer iOS can drop)
   // ---- full-screen map page (js/bigMap.js): M or a tap on the minimap opens it; main.js freezes the game while it is open
   const bm=createBigMap({onChange:b=>{document.body.classList.toggle('bigmap',b);api.onMap&&api.onMap(b)}});
   {const fr=mini.parentNode;if(fr)fr.addEventListener('click',()=>api.bigmap(true))}   // touch: tap the minimap
@@ -196,7 +203,8 @@ export function createHUD(root=document.body){
     score(s,k,b){set('score',()=>{$('#score').textContent=String(s).padStart(6,'0');$('#kos').textContent=k;$('#bestHud').textContent=b;const e=$('#score');e.classList.remove('bump');void e.offsetWidth;e.classList.add('bump')},s+'|'+k+'|'+b)},
     combo(mult,chain,frac){const c=$('#combo');c.classList.toggle('on',chain>1&&frac>0);if(chain>1){set('cmb',()=>{$('#comboTxt').textContent=`x${mult}  ·  ${chain} chain`},mult+'/'+chain);$('#comboBar').style.transform=`scaleX(${Math.max(0,frac)})`}},
     // ammo(cur,max,frac): max=0 hides it (unlimited ammo); frac = reload progress 0..1, or -1 when not reloading
-    ammo(cur,max,frac){const a=$('#ammo');if(!max){a.style.display='none';last.am=null;return}
+    ammo(cur,max,frac){const a=$('#ammo');a.style.display='none';last.am=null;return;   // ammo text is hidden
+      if(!max){a.style.display='none';last.am=null;return}
       a.style.display='flex';const rl=frac>=0,low=!rl&&cur<=Math.ceil(max*.25),mob=document.body.classList.contains('mobile');
       set('am',()=>{$('#amN').textContent=cur;$('#amM').textContent='/ '+max;a.classList.toggle('rl',rl);a.classList.toggle('low',low&&cur>0);a.classList.toggle('empty',!rl&&cur<=0);
         $('#amHint').textContent=rl?'RELOADING':cur<=0?(mob?'TAP R':'PRESS R'):low?(mob?'LOW':'LOW · R'):''},cur+'/'+max+'/'+rl+'/'+mob);
@@ -224,9 +232,13 @@ export function createHUD(root=document.body){
       for(let i=n;i<pool.length;i++)pool[i].style.display='none'},
     /** build the painted paper map ahead of time (call it right after a new map is loaded so the first frame does not hitch) */
     prepMap(map){pm=buildPaperMap(map)},
-    radar(P,enemies,pickups,map,yaw){const S=mini.width,c=S/2,R=24,k=c/R,fx=Math.sin(yaw),fz=Math.cos(yaw),rx=-Math.cos(yaw),rz=Math.sin(yaw);
+    radar(P,enemies,pickups,map,yaw){
+      if(LITE&&((api._rf=(api._rf||0)+1)&1))return;   // touch devices: the minimap redraws every 2nd frame (half the canvas work, nobody sees it)
+      const S=mini.width,c=S/2,R=24,k=c/R,fx=Math.sin(yaw),fz=Math.cos(yaw),rx=-Math.cos(yaw),rz=Math.sin(yaw);
       const X=(x,z)=>c+((x-P.x)*rx+(z-P.z)*rz)*k,Y=(x,z)=>c-((x-P.x)*fx+(z-P.z)*fz)*k;
       if(pm.map!==map||pm.key!==AT.THEME)pm=buildPaperMap(map);
+      // self-heal: about once a second look at one pixel of the painted map. A purged canvas reads back fully transparent -> put the saved picture back
+      if(pm.snap&&++pm.chk%30===0){try{const g2=pm.cv.getContext('2d');if(g2.getImageData(pm.cv.width>>1,pm.cv.height>>1,1,1).data[3]===0)g2.putImageData(pm.snap,0,0)}catch(e){}}
       mc.setTransform(1,0,0,1,0,0);mc.clearRect(0,0,S,S);mc.fillStyle=DESK;mc.fillRect(0,0,S,S);
       // the painted map: rotate it with the camera and scroll it under the player
       const dx0=pm.x0-P.x,dz0=pm.z0-P.z;
@@ -239,7 +251,7 @@ export function createHUD(root=document.body){
           mc.beginPath();mc.arc(X(o.x,o.z),Y(o.x,o.z),Math.max(rock?2.2:3,o.r*k*(rock?.95:2.2)),0,6.283);mc.fill()}}
       // view cone
       const g=mc.createRadialGradient(c,c,0,c,c,c*.75);g.addColorStop(0,'rgba(58,42,28,.22)');g.addColorStop(1,'rgba(58,42,28,0)');mc.fillStyle=g;mc.beginPath();mc.moveTo(c,c);mc.arc(c,c,c*.75,-Math.PI/2-.55,-Math.PI/2+.55);mc.closePath();mc.fill();
-      mc.shadowColor='rgba(40,28,14,.45)';mc.shadowBlur=4;           // a soft shadow lifts the dots off the paper (no outlines)
+      mc.shadowColor='rgba(40,28,14,.45)';mc.shadowBlur=LITE?0:4;           // a soft shadow lifts the dots off the paper (no outlines)
       mc.fillStyle='#e8658c';for(const p of pickups){mc.beginPath();mc.arc(X(p.x,p.z),Y(p.x,p.z),4.5,0,6.283);mc.fill()}
       for(const e of enemies){const x=X(e.x,e.z),y=Y(e.x,e.z);mc.fillStyle=e.team?(e.team==='A'?'#2f7fe0':'#e0443a'):e.k==='ranged'?'#f2a43a':'#e0443a';
         if(e.k==='ranged'){mc.beginPath();mc.moveTo(x,y-7);mc.lineTo(x+6.5,y+5);mc.lineTo(x-6.5,y+5);mc.closePath()}else{mc.beginPath();mc.arc(x,y,5.5,0,6.283)}mc.fill()}
