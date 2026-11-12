@@ -49,6 +49,24 @@ const spikeTex=[4,6].map(w=>cv(128,16,g=>{g.fillStyle='#fff';g.beginPath();g.mov
 const stm={},STM=(c,i)=>{const k=c+i;return stm[k]||(stm[k]=new T.SpriteMaterial({map:starTex[i],color:c,depthWrite:false,transparent:true}))},
   skm={},SKM=(c,i)=>{const k=c+i;return skm[k]||(skm[k]=new T.SpriteMaterial({map:spikeTex[i],color:c,depthWrite:false,transparent:true}))},
   dropG=new T.SphereGeometry(1,10,8);
+
+// ---- ANIME HIT textures (Naruto Ultimate Ninja Storm 4 look): flat, hard-edged shapes, no soft gradients
+const R_=Math.random;
+// irregular splat like the reference: a few long jagged spikes, medium and short ones, an uneven dark hole in the middle (full = silhouette without the hole, used for the outline)
+const splatP=[0,1,2].map(()=>{const n=18,pts=[],base=R_()*6.283,longs=new Set();while(longs.size<4)longs.add((R_()*n)|0);
+  for(let i=0;i<n;i++){const a=base+(i+(R_()-.5)*.5)/n*6.283,L=longs.has(i)?104+R_()*20:R_()<.45?66+R_()*24:42+R_()*18,half=3.1416/n*(.55+R_()*.3),vr=34+R_()*10,
+      va=a-3.1416/n;pts.push([Math.cos(va)*vr,Math.sin(va)*vr],[Math.cos(a-half*.9)*L*.5,Math.sin(a-half*.9)*L*.5],[Math.cos(a+(R_()-.5)*.07)*L,Math.sin(a+(R_()-.5)*.07)*L],[Math.cos(a+half*.9)*L*.55,Math.sin(a+half*.9)*L*.55])}
+  const hole=[];for(let i=0;i<11;i++){const a=i/11*6.283,r=(i%2?20:30)+R_()*7;hole.push([Math.cos(a)*r,Math.sin(a)*r])}return{pts,hole}});
+const mkSplat=(P,hole)=>cv(256,256,g=>{g.translate(128,128);g.fillStyle='#fff';g.beginPath();P.pts.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y));g.closePath();g.fill();
+  if(hole){g.globalCompositeOperation='destination-out';g.beginPath();P.hole.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y));g.closePath();g.fill()}});
+const splatFull=splatP.map(P=>mkSplat(P,false)),splatHole=splatP.map(P=>mkSplat(P,true));
+const animeRing=cv(256,256,g=>{g.strokeStyle='#fff';g.lineWidth=7;g.beginPath();g.arc(128,128,110,0,6.283);g.stroke()});   // thin crisp ring
+const dropLine=cv(192,24,g=>{g.fillStyle='#fff';g.beginPath();g.moveTo(0,11);g.lineTo(104,10.2);g.quadraticCurveTo(124,2,150,2.5);g.quadraticCurveTo(174,5,191,12);
+  g.quadraticCurveTo(174,19,150,21.5);g.quadraticCurveTo(124,22,104,13.8);g.lineTo(0,13);g.closePath();g.fill()});   // thin line ending in a pointed teardrop (head points along +x)
+const dotTex=cv(32,32,g=>{g.fillStyle='#fff';g.beginPath();g.arc(16,16,14,0,6.283);g.fill()});
+const glintTex=cv(128,128,g=>{g.fillStyle='#fff';g.translate(64,64);g.beginPath();g.moveTo(0,-62);g.quadraticCurveTo(5,-5,62,0);g.quadraticCurveTo(5,5,0,62);g.quadraticCurveTo(-5,5,-62,0);g.quadraticCurveTo(-5,-5,0,-62);g.fill()});   // 4-point anime glint
+const anm={},ANM=(t,c)=>{const k=t.uuid+c;return anm[k]||(anm[k]=new T.SpriteMaterial({map:t,color:c,transparent:true,depthWrite:false,depthTest:false}))};   // always drawn on top of the creature it hits
+
 const sc={},ac={},gm={},
   SA=(c,tx=glowTex)=>{const k=c+tx.uuid;return sc[k]||(sc[k]=new T.SpriteMaterial({map:tx,color:c,blending:T.AdditiveBlending,depthWrite:false,transparent:true}))},
   SN=(c,o=.55)=>{const k='n'+c+o;return sc[k]||(sc[k]=new T.SpriteMaterial({map:glowTex,color:c,depthWrite:false,transparent:true,opacity:o}))},
@@ -83,12 +101,16 @@ export function createFX(scene){
   // a ring standing perpendicular to a direction (shock / supersonic crack ring)
   const diskRing=(p,dir,c,s0,grow,life,op=.7)=>{const m=new T.Mesh(ringG,new T.MeshBasicMaterial({color:c,blending:T.AdditiveBlending,depthWrite:false,transparent:true,side:T.DoubleSide}));
     m.position.copy(p);m.quaternion.setFromUnitVectors(Z,dir);add(m,{s0,grow,life,fade:op,ringFade:1})};
+  const sm=t=>t<=0?0:t>=1?1:t*t*(3-2*t);   // smoothstep
   const crowd=()=>list.length>640?.25:list.length>420?.45:list.length>260?.7:1;
   // one smooth dust puff: eased fade in/out (soft), ease-out growth, drag, slow buoyant rise, lazy spin
-  const puffDust=(x,y,z,vx,vy,vz,s0,grow,life,op=.4)=>{const m=new T.Sprite(DM(Math.random()<.5?'#d6caa8':'#bfb292',(Math.random()*3)|0));m.position.set(x,y,z);
-    const q=add(m,{s0,grow,vx,vy,vz,drag:3.2,g:-.4,life,fade:op,soft:1,spin:rnd(-.9,.9)});m.material.rotation=rnd(0,6.283);return q};
-  let trailT=0,atT=0;
-  const sm=t=>t<=0?0:t>=1?1:t*t*(3-2*t);   // smoothstep
+  // CARTOON 3D DUST: a little cluster of 3 flat white lumps (unlit, so they stay pure white), that pops up with a bouncy overshoot, drifts out, then shrinks away. Used by every dust effect (run / jump / roll / landing / hits).
+  const dustG=new T.IcosahedronGeometry(1,1),dustM=new T.MeshBasicMaterial({color:'#ffffff'}),easeBack=t=>{const c=2.2;return 1+(c+1)*Math.pow(t-1,3)+c*Math.pow(t-1,2)};
+  const puffDust=(x,y,z,vx,vy,vz,s0,grow,life,op=.4)=>{const g=new T.Group(),peak=s0*(1+grow)*.42;
+    for(let i=0;i<3;i++){const b=new T.Mesh(dustG,dustM),r=i?rnd(.5,.75):1;b.scale.setScalar(r);b.position.set(i?rnd(-.7,.7):0,i?rnd(-.1,.45):0,i?rnd(-.7,.7):0);g.add(b)}
+    g.position.set(x,y,z);g.rotation.y=rnd(0,6.283);
+    return add(g,{vx,vy,vz,drag:3.4,g:-.5,life:life*.9,anim:(q,u)=>{const pop=easeBack(Math.min(1,u*3.2)),out=u>.5?1-sm((u-.5)/.5):1;g.scale.setScalar(Math.max(.001,peak*pop*out));g.rotation.y+=.01}})};
+  let trailT=0,atT=0,runT=0;
   // ---- flame + smoke puffs: lumpy sprites that billow out, slow down fast, and change colour with age (heat = [young, mid, old])
   const HOT=['#fffdf0','#ffc24a','#9a4512'].map(c=>new T.Color(c)),ORANGE=['#ffd27a','#ff7a1a','#5e2a0c'].map(c=>new T.Color(c)),
     SMOKE=['#4d3e30','#6c655d','#8c8984'].map(c=>new T.Color(c)),SMOKE2=['#7a756f','#9a9894','#b4b3b0'].map(c=>new T.Color(c));
@@ -148,10 +170,90 @@ export function createFX(scene){
       streak(p,c,Math.sin(g)*sp,rnd(-.5,4.5),Math.cos(g)*sp,{len:rnd(.3,.8)*pw,w:1.1,g:14,life:rnd(.2,.5),drag:1.8,bounce:1})}
     for(let i=0,m=Math.round(n*.8*k);i<m;i++){const g=base+rnd(-.8,.8),sp=rnd(2,9)*pw;dot(p,i%2?'#ffd070':'#ff8a24',rnd(.014,.03),0,{vx:Math.sin(g)*sp,vy:rnd(.5,4.5),vz:Math.cos(g)*sp,g:14,drag:.9,life:rnd(.35,.8),bounce:1})}
     for(let i=0,m=Math.round(n*.25*k);i<m;i++){const g=base+rnd(-.9,.9),sp=rnd(1.5,5);sprite(SA(i%3?'#ff9a40':'#ffd070'),p,{s0:rnd(.04,.08)*pw,vx:Math.sin(g)*sp,vy:rnd(.8,3.5),vz:Math.cos(g)*sp,g:9,drag:1.3,life:rnd(.5,1),bounce:1,keep:1})}};
+
+  // ================================================================= ANIME HIT (Naruto Ultimate Ninja Storm 4 style)
+  // CENTRE: one irregular jagged splat (dark outline, coloured fringe, bright body, dark uneven hole in the middle) + a thin ring + a very short white flash.
+  // SCATTER: small shards, teardrop lines and dots fly out in random directions, ease-out (fast, then slowing down) while they shrink away.
+  // HITLAG: a few frames of near-freeze so the hit has weight (see timeScale()).
+  const E3=t=>{const u=t-1;return 1+2.70158*u*u*u+1.70158*u*u};   // ease-out-back (the "pop")
+  let lagUntil=0,hitlagOn=true;
+  const hitlag=ms=>{if(!ms||!hitlagOn)return;lagUntil=Math.max(lagUntil,performance.now()+ms)};
+  const a8=(tex,c,p,o)=>{const s=new T.Sprite(ANM(tex,c));s.position.copy(p);s.renderOrder=o.ro||12;s.scale.setScalar(.001);
+    const pop=o.pop||.16,hold=o.hold??.7,gr=o.grow||0,r0=o.rot||0,shr=o.shrink??.3;
+    return add(s,{life:o.life||.25,delay:o.delay||0,fade:1,s0:1,anim:(q,a)=>{
+      const e=E3(Math.min(1,a/pop)),sh=o.eo!==undefined?Math.pow(1-Math.min(1,Math.max(0,(a-o.eo)/(1-o.eo))),3):(a<.45?1:1-(a-.45)*shr),gg=1+gr*(1-(1-a)*(1-a)),k=Math.max(.001,o.size*e*sh*gg);
+      s.scale.set(k,k,1);s.material.rotation=r0+(o.spin||0)*a;s.material.opacity=o.flat||a<hold?1:Math.max(0,1-(a-hold)/(1-hold))}})};
+  // scattered piece: starts at the centre, travels dist along its own direction (ang) with ease-out while its size shrinks to nothing.
+  // The travel uses the sprite's pivot (center.x), so it follows the on-screen direction whatever the camera angle is.
+  const scat=(tex,c,at,o)=>{const s=new T.Sprite(ANM(tex,c));s.position.copy(at);s.renderOrder=o.ro||13;s.scale.setScalar(.001);const sx=o.sx??1,sy=o.sy??1,ang=o.ang||0;
+    return add(s,{life:o.life||.3,delay:o.delay||0,fade:1,s0:1,anim:(q,a)=>{
+      const out=1-Math.pow(1-a,3),k=Math.max(.001,o.size*Math.pow(1-a,1.1)*Math.min(1,a/.06+.3)),w=Math.max(k*sx,.02);
+      s.scale.set(w,Math.max(k*sy,.001),1);s.center.set(.5-o.dist*out/w,.5);s.material.rotation=ang+(o.spin||0)*a;s.material.opacity=a<.75?1:Math.max(0,1-(a-.75)/.25)}})};
+  // pw = power (light ~.7, normal 1, heavy ~1.3, finisher ~1.8), lag = hitlag in ms (0 = none)
+  const animeHit=(p,vx=0,vz=0,pw=1,mid='#ffe45c',out='#ff6a1a',lag=0)=>{
+    const at=new T.Vector3(p.x,p.y+.08,p.z),k=crowd(),S=pw,small=pw<.9,v=(R_()*3)|0,r0=R_()*6.283,TAU=6.283;
+    hitlag(lag);
+        // centre: ONE flat-colour splat (no outline, no fade): holds its size, then shrinks to nothing with ease-out (fast at first, slow tail)
+    a8(splatHole[v],mid,at,{size:2.4*S,rot:r0,life:.34,pop:.09,ro:12,eo:.3,flat:true});
+    a8(glintTex,'#ffffff',at,{size:2.6*S,rot:r0,life:.07,pop:.3,hold:.2,ro:15});            // ~50 ms core flash
+    a8(animeRing,'#ffffff',at,{size:1.2*S,life:.26,pop:.18,grow:2.2,hold:.35,ro:12});         // thin ring
+    if(!small)a8(animeRing,out,at,{size:1.0*S,life:.3,pop:.18,grow:1.8,hold:.3,delay:.04,ro:12});
+    // 2) random scatter, ease-out + shrinking
+    for(let i=0,n=Math.round((small?3:6)*k);i<n;i++)scat(splatFull[(v+1+i)%3],i%2?'#ffffff':mid,at,{size:rnd(.4,.75)*S,dist:rnd(1.5,3.4)*S,ang:rnd(0,TAU),life:rnd(.26,.42),spin:rnd(-2,2),delay:rnd(0,.03)});
+    for(let i=0,n=Math.round((small?3:6)*k);i<n;i++){const L=rnd(1.1,2.1)*S;scat(dropLine,i%2?'#ffffff':mid,at,{size:1,sx:L,sy:L*.125,dist:rnd(1.2,2.8)*S,ang:rnd(0,TAU),life:rnd(.24,.4),delay:rnd(0,.03)})}
+    for(let i=0,n=Math.round((small?6:12)*k);i<n;i++)scat(dotTex,i%3?'#ffffff':mid,at,{size:rnd(.08,.2)*S,dist:rnd(1.8,4.4)*S,ang:rnd(0,TAU),life:rnd(.2,.4),delay:rnd(0,.05)});
+    for(let i=0,n=Math.round((small?1:3)*k);i<n;i++)scat(glintTex,'#fff6b0',at,{size:rnd(.4,.8)*S,dist:rnd(.6,1.6)*S,ang:0,life:.24,spin:rnd(-3,3),delay:rnd(0,.08)});
+    // 3) a few flat debris chips + thin sparks
+    const l=Math.hypot(vx,vz)||1,rx=vx||vz?-vx/l:0,rz=vx||vz?-vz/l:0;
+    for(let i=0,n=Math.round((small?2:5)*k);i<n;i++){const m=new T.Mesh(chip,GM([mid,'#ffffff',out][i%3])),b=rnd(2,6);m.position.copy(at);
+      add(m,{s0:rnd(.03,.07)*Math.sqrt(S),vx:rx*b+rnd(-3,3),vy:rnd(1.5,5),vz:rz*b+rnd(-3,3),g:15,spin:rnd(8,20),life:rnd(.3,.5),bounce:1})}
+    sparkCone(at,vx||Math.cos(r0),vz||Math.sin(r0),Math.round((small?5:10)*pw),pw*.85,['#ffffff',mid,out]);
+    light.position.copy(at);ltMax=.1;ltI=2.4*Math.min(2,pw);lt=ltMax};
+
+  // ================================================================= WATER SPLASHES (jump landing, dash, walking, bullets)
+  // waterFn(x,z) -> surface height or null, set by water.link(fx). Drops are thrown up and vanish when they fall back to the surface; the surface gets rings.
+  let waterFn=null,ripFn=null,lightFn=null,wtT=0;
+  const wLv=(x,z,fy)=>{if(!waterFn)return null;const v=waterFn(x,z);if(v===null||v===undefined||v===false)return null;return typeof v==='number'&&isFinite(v)?v:fy};
+  const wTint=(c,kk=1)=>'#'+new T.Color(c).multiplyScalar((.22+.78*Math.round((lightFn?lightFn():1)*8)/8)*kk).getHexString();   // splash colours follow the day / night light
+  const wmC={},WM=c=>wmC[c]||(wmC[c]=new T.MeshBasicMaterial({color:c,transparent:true,opacity:.88,depthWrite:false}));
+  const wDrop=(x,y,z,vx,vy,vz,s,life)=>{const m=new T.Mesh(dropG,WM(wTint('#e6f6ff')));m.position.set(x,y+.03,z);add(m,{s0:s,vx,vy,vz,g:16,drop:1,floor:y,life})};
+  const wRing=(x,y,z,s0,grow,life,op=.8)=>diskRing(new T.Vector3(x,y+.025,z),new T.Vector3(0,1,0),wTint('#ffffff'),s0,grow,life,op);
+  const wMist=(x,y,z,vx,vy,vz,s0,grow,life,op)=>{const h=new T.Color(wTint('#f4fbff'));smokeP(x,y,z,vx,vy,vz,s0,grow,life,op,[h,h,h])};
+  // landing from a jump / end of a tumble / ground smash: crown of drops, central column, two rings, mist
+  const splashLand=(p,pw=1,dx=0,dz=0)=>{const y=wLv(p.x,p.z,p.y);if(y===null||p.y>y+.9)return false;const k=crowd(),n=Math.round(22*pw*k),x=p.x,z=p.z;
+    if(ripFn)ripFn(x,z,1.5*pw);wRing(x,y,z,.3*pw,5.2*pw,.75,.9);wRing(x,y,z,.15*pw,3.2*pw,.55,.8);
+    for(let i=0;i<n;i++){const a=i/n*6.283+rnd(-.15,.15),sp=rnd(1.2,3.4)*pw,c=Math.cos(a),s=Math.sin(a);wDrop(x+c*.2*pw,y,z+s*.2*pw,c*sp+dx*1.8,rnd(3,6.5)*Math.sqrt(pw),s*sp+dz*1.8,rnd(.045,.09),rnd(.6,1))}
+    for(let i=0,m=Math.round(7*k);i<m;i++)wDrop(x+rnd(-.1,.1),y,z+rnd(-.1,.1),rnd(-.6,.6)+dx,rnd(6,10)*pw,rnd(-.6,.6)+dz,rnd(.06,.11),rnd(.8,1.2));
+    for(let i=0,m=Math.round(6*k);i<m;i++){const a=rnd(0,6.283),sp=rnd(.4,1.4);wMist(x,y+.1,z,Math.cos(a)*sp,rnd(.5,1.4),Math.sin(a)*sp,rnd(.3,.45)*pw,rnd(1.2,1.9),rnd(.5,.8),.33)}
+    return true};
+  // start of a dash / tumble / lunge: a fan of spray thrown back and to the sides
+  const splashDash=(p,dx,dz,pw=1)=>{const y=wLv(p.x,p.z,p.y);if(y===null)return false;const k=crowd(),sx=-dz,sz=dx,x=p.x,z=p.z;
+    if(ripFn)ripFn(x,z,1.2*pw);wRing(x,y,z,.3,4*pw,.5,.8);
+    for(let i=0,n=Math.round(20*pw*k);i<n;i++){const sd=rnd(-1,1),b=rnd(1,4.5),side=Math.sign(sd||1)*(.6+Math.abs(sd)*3);wDrop(x+sx*sd*.25,y,z+sz*sd*.25,-dx*b+sx*side,rnd(2.5,5.5),-dz*b+sz*side,rnd(.045,.09),rnd(.5,.9))}
+    for(let i=0,n=Math.round(5*k);i<n;i++)wMist(x,y+.1,z,-dx*rnd(.5,1.8)+sx*rnd(-1,1),rnd(.4,1),-dz*rnd(.5,1.8)+sz*rnd(-1,1),rnd(.3,.45),rnd(1.3,1.9),rnd(.5,.8),.3);
+    return true};
+  // every frame while dashing through water: a V-shaped wake of spray + rings (time-throttled)
+  const splashTrail=(p,dx,dz)=>{const y=wLv(p.x,p.z,p.y);if(y===null)return false;const now=performance.now();if(now-wtT<30)return true;wtT=now;const sx=-dz,sz=dx;
+    if(ripFn&&Math.random()<.5)ripFn(p.x,p.z,.9);wRing(p.x,y,p.z,.25,2.6,.45,.55);
+    for(const sd of[-1,1])for(let i=0;i<3;i++)wDrop(p.x+sx*sd*.3,y,p.z+sz*sd*.3,sx*sd*rnd(1.5,3.5)-dx*rnd(.5,2),rnd(2,4.5),sz*sd*rnd(1.5,3.5)-dz*rnd(.5,2),rnd(.035,.07),rnd(.35,.6));
+    wMist(p.x,y+.1,p.z,-dx*rnd(.3,1),rnd(.4,.9),-dz*rnd(.3,1),rnd(.25,.35),1.5,rnd(.4,.6),.25);return true};
+  // a footstep: small ring + a few little drops
+  const splashStep=(x,z,py=0)=>{const y=wLv(x,z,py);if(y===null)return false;wRing(x,y,z,.12,1.7,.5,.65);
+    for(let i=0,n=Math.round(5*crowd());i<n;i++)wDrop(x+rnd(-.1,.1),y,z+rnd(-.1,.1),rnd(-.8,.8),rnd(1.4,3),rnd(-.8,.8),rnd(.03,.055),rnd(.3,.5));return true};
+  // bullet hits the water: a thin jet straight up, a ring of drops, a ring on the surface (sniper = much bigger)
+  const splashBullet=(p,heavy=false)=>{const y=wLv(p.x,p.z,p.y);if(y===null||p.y>y+.4)return false;const k=crowd(),S=heavy?1.8:1,x=p.x,z=p.z;
+    if(ripFn)ripFn(x,z,1.1*S);wRing(x,y,z,.2*S,3.2*S,.5,.85);
+    for(let i=0,n=Math.round(4*S*k);i<n;i++)wDrop(x+rnd(-.05,.05),y,z+rnd(-.05,.05),rnd(-.4,.4),rnd(7,11)*S,rnd(-.4,.4),rnd(.04,.07)*S,rnd(.7,1.1));
+    for(let i=0,n=Math.round(12*S*k);i<n;i++){const a=rnd(0,6.283),sp=rnd(.8,2.6)*S;wDrop(x,y,z,Math.cos(a)*sp,rnd(3,6.5),Math.sin(a)*sp,rnd(.035,.065),rnd(.4,.8))}
+    for(let i=0,n=Math.round(2*S*k);i<n;i++)wMist(x,y+.15,z,rnd(-.5,.5),rnd(.8,1.8),rnd(-.5,.5),.22*S,1.4,rnd(.4,.6),.3);return true};
   return{
     setGround(fn){ground=fn},
+    /** HITLAG: multiply your game dt by fx.timeScale() (1 normally, ~0.03 for a few frames after a melee / sniper hit). fx.hitlagEnabled=false turns it off. */
+    timeScale(){return hitlagOn&&performance.now()<lagUntil?.03:1},hitlag,get hitlagEnabled(){return hitlagOn},set hitlagEnabled(v){hitlagOn=!!v},
+    setWater(fn,rip,light){waterFn=fn;ripFn=rip;lightFn=light},splashLand,splashDash,splashStep,splashBullet,animeHit,
     // ---- bullet marks: a scorched, cracked hole left where a bullet hits the ground (lies flat) or a tree / rock / wall (faces back at the shooter). Oldest marks vanish past the cap.
-    mark(p,vx=0,vy=0,vz=0,onGround=false){
+    mark(p,vx=0,vy=0,vz=0,onGround=false){if(onGround&&wLv(p.x,p.z,p.y)!==null)return;   // no scorch marks on water
+     
       const m=new T.Mesh(markGeo,markMat),sz=rnd(.22,.36);
       if(onGround){const gy=(ground?ground(p.x,p.z):p.y)+.035;m.position.set(p.x,gy,p.z);m.rotation.set(-Math.PI/2,0,rnd(0,6.283))}
       else{const l=Math.hypot(vx,vy,vz)||1,nx=-vx/l,ny=-vy/l,nz=-vz/l;m.position.set(p.x+nx*.1,p.y+ny*.1,p.z+nz*.1);m.quaternion.setFromUnitVectors(Z,new T.Vector3(nx,ny,nz));m.rotateZ(rnd(0,6.283))}
@@ -203,27 +305,19 @@ export function createFX(scene){
     // vx,vz = the hit direction, pw = power (bigger for kills / heavy hits), ang0 = screen angle of the burst's long axis (random if left out).
     // Drawn in the plane facing the camera (which looks along the hit direction): a jagged pale core pops open, fine red / orange / yellow spikes shoot out
     // (denser along the long axis), a few long thin yellow lines streak away, and little glowing sparks fly off.
-    splat(p,vx=0,vz=0,pw=1){const at=new T.Vector3(p.x,p.y+.05,p.z);
-      // 3D particles like the tumble: soft dust puffs plus little solid chunks that fly back opposite the hit, fall and bounce
-      {const l=Math.hypot(vx,vz)||1,rx=-vx/l,rz=-vz/l,k=crowd();
-       for(let i=0,n=Math.round(5*pw*k);i<n;i++){const b=rnd(.6,2.6),sd=rnd(-1.2,1.2);puffDust(at.x,at.y,at.z,rx*b-rz*sd,rnd(.2,1),rz*b+rx*sd,rnd(.22,.34)*pw,rnd(1.4,2.1),rnd(.45,.75),.38)}
-       for(let i=0,n=Math.round(8*pw*k);i<n;i++){const m=new T.Mesh(i%3?chip:dropG,GM(['#d9c9a8','#bfae82','#8a7a62','#ffd9a0'][i%4])),b=rnd(1.5,5.5),sd=rnd(-2,2);m.position.copy(at);
-         add(m,{s0:rnd(.03,.08),vx:rx*b-rz*sd,vy:rnd(1.5,4.5),vz:rz*b+rx*sd,g:15,spin:rnd(8,20),life:rnd(.45,.8),bounce:1})}}
-      for(let i=0;i<3;i++)sprite(SA(i%2?'#ffd84a':'#ffffff'),at,{life:.06,s0:(.7+.3*i%2)*pw,delay:i*.07});   // quick flicker of flashes
-      sparkCone(at,vx,vz,Math.round(22*pw),pw);
-      for(let i=0,n=Math.round(4*pw);i<n;i++){const m=new T.Mesh(chip,GM('#ffd9a0'));m.position.copy(at);add(m,{s0:rnd(.02,.04),vx:rnd(-2,2)-vx*.08,vy:rnd(1,3.5),vz:rnd(-2,2)-vz*.08,g:14,spin:rnd(8,20),life:rnd(.3,.5),bounce:1})}},
+    splat(p,vx=0,vz=0,pw=1,mid,out,lag=0){animeHit(p,vx,vz,pw,mid,out,lag)},
     // ================================================================= impacts
     hit(p,c='#ffe066',n=6){
       for(let i=0;i<n*2;i++){const a=rnd(0,6.283),sp=rnd(3,9);streak(p,i%2?c:'#fff3c0',Math.cos(a)*sp,rnd(1,6),Math.sin(a)*sp,{len:rnd(.14,.32),g:12,life:rnd(.15,.32)})}
       for(let i=0;i<Math.ceil(n/2);i++){const m=new T.Mesh(chip,GM(c));m.position.copy(p);add(m,{s0:rnd(.03,.06),vx:rnd(-3,3),vy:rnd(1,4),vz:rnd(-3,3),g:14,spin:rnd(8,20),life:rnd(.3,.5),bounce:1})}
       for(let i=0;i<2;i++)puffDust(p.x,p.y,p.z,rnd(-.8,.8),rnd(.3,.9),rnd(-.8,.8),rnd(.12,.18),rnd(1.2,1.8),rnd(.3,.5),.25)},
     // bullet / blade hits a wall, tree or the ground: small cloudy dust + a few chips of debris + a couple of sparks. heavy = sniper round (a bit more, still no rings)
-    wall(p,c='#ffe066',heavy=false){const k=crowd(),n=Math.round((heavy?9:5)*k);
+    wall(p,c='#ffe066',heavy=false){if(splashBullet(p,heavy))return;const k=crowd(),n=Math.round((heavy?9:5)*k);
       for(let i=0;i<n;i++){const a=rnd(0,6.283),sp=rnd(.8,2.4);puffDust(p.x,p.y,p.z,Math.cos(a)*sp,rnd(.4,1.4),Math.sin(a)*sp,rnd(.14,.24)*(heavy?1.3:1),rnd(1.4,2.2),rnd(.4,.7),.4)}
       for(let i=0,m=Math.round((heavy?9:5)*k);i<m;i++){const ch=new T.Mesh(chip,GM(i%2?'#8a7a62':'#5d5144'));ch.position.copy(p);add(ch,{s0:rnd(.025,.055),vx:rnd(-3.5,3.5),vy:rnd(1.5,5),vz:rnd(-3.5,3.5),g:15,spin:rnd(8,20),life:rnd(.4,.7),bounce:1})}
       for(let i=0,m=heavy?5:3;i<m;i++){const a=rnd(0,6.283),sp=rnd(4,9);streak(p,i%2?c:'#fff3c0',Math.cos(a)*sp,rnd(1,5),Math.sin(a)*sp,{len:rnd(.12,.26),g:12,life:rnd(.12,.22)})}},
     // soldier ground smash: a burst of rock / dirt debris that flies out, falls and bounces, with soft dust clouds rolling outward (no rings)
-    smash(p,pw=1){const k=crowd(),gy=(ground?ground(p.x,p.z):p.y)+.08;
+    smash(p,pw=1){if(splashLand(p,1.4*pw))return;const k=crowd(),gy=(ground?ground(p.x,p.z):p.y)+.08;
       for(let i=0,n=Math.round(18*pw*k);i<n;i++){const a=rnd(0,6.283),sp=rnd(2,6.5)*pw,ch=new T.Mesh(chip,GM(['#7a6a52','#5d5144','#8f8068','#4a4036'][i%4]));ch.position.set(p.x+Math.cos(a)*.3,gy,p.z+Math.sin(a)*.3);
         add(ch,{s0:rnd(.05,.14),vx:Math.cos(a)*sp,vy:rnd(3,8)*pw,vz:Math.sin(a)*sp,g:20,spin:rnd(6,16),life:rnd(.6,1.1),bounce:1})}
       for(let i=0,n=Math.round(14*k);i<n;i++){const a=rnd(0,6.283),sp=rnd(.5,2);ch2(p.x,gy,p.z,a,sp)}
@@ -232,8 +326,8 @@ export function createFX(scene){
       function ch2(x,y,z,a,sp){const m=new T.Mesh(chip,GM('#9b8b70'));m.position.set(x,y,z);add(m,{s0:rnd(.02,.04),vx:Math.cos(a)*sp*3,vy:rnd(2,5),vz:Math.sin(a)*sp*3,g:16,spin:rnd(8,20),life:rnd(.4,.8),bounce:1})}},
     // weapon-aware bullet impact (flesh = hit a creature)
     impact(p,st,c='#ffe066',flesh=false){const P=prof(st);
-      if(flesh)this.hit(p,c,P.after?10:P.fast?8:6);else this.wall(p,c,!!P.after)},
-    dust(p,c='#bfae82'){const k=crowd();for(let i=0,n=Math.round(4*k);i<n;i++)puffDust(p.x,p.y,p.z,rnd(-1.4,1.4),rnd(.5,1.4),rnd(-1.4,1.4),rnd(.16,.26),rnd(1.5,2.3),rnd(.4,.7),.4);
+      if(flesh)animeHit(p,0,0,P.after?1.5:P.fast?.8:.7,'#fff1a0',c,P.after?60:0);else this.wall(p,c,!!P.after)},
+    dust(p,c='#bfae82'){if(splashLand(p,.8))return;const k=crowd();for(let i=0,n=Math.round(4*k);i<n;i++)puffDust(p.x,p.y,p.z,rnd(-1.4,1.4),rnd(.5,1.4),rnd(-1.4,1.4),rnd(.16,.26),rnd(1.5,2.3),rnd(.4,.7),.4);
       for(let i=0;i<4;i++){const m=new T.Mesh(chip,GM('#8a7a62'));m.position.copy(p);add(m,{s0:rnd(.025,.05),vx:rnd(-3,3),vy:rnd(1.5,4),vz:rnd(-3,3),g:15,spin:rnd(8,20),life:rnd(.35,.6),bounce:1})}},
     shock(p,c='#ffe0a0'){ring(p,c,.7,11,.4);ring(p,'#ffffff',.4,7,.25);for(let i=0;i<14;i++){const a=i/14*6.283;sprite(SN('#bfae82',.6),p,{s0:rnd(.2,.32),grow:2.6,vx:Math.cos(a)*rnd(3,5),vy:rnd(.3,1),vz:Math.sin(a)*rnd(3,5),drag:2.4,life:rnd(.5,.8)});
         streak(p,'#e8dcb0',Math.cos(a)*rnd(5,9),rnd(1,4),Math.sin(a)*rnd(5,9),{len:.2,g:12,life:.3})}},
@@ -267,15 +361,18 @@ export function createFX(scene){
       light.position.copy(at);ltMax=.16;ltI=4+3*D;lt=ltMax;
       // sparks fly back the way the blade came from (opposite the slash direction)
       const sx=Math.sin(yaw),sz=Math.cos(yaw);
-      this.splat(p,sx,sz,1.15*pw*(1+.3*D));
+      this.splat(p,sx,sz,1.15*pw*(1+.3*D),'#fff1b0',col,vert?110:dual?75:pw>1.2?70:45);
       sparkCone(at,sx,sz,Math.round((22+20*D)*pw),1.15*pw,['#ffffff',col,'#ffb040']);
       if(dual)sparkCone(at,sx,sz,18,pw,['#ffffff',col2,'#ffb040']);
       for(let i=0,n=Math.round((8+8*D)*k);i<n;i++){const ang=Math.atan2(-sx,-sz)+rnd(-.5,.5),v=rnd(1.5,4.5);
         fireP(p.x,p.y+rnd(-.1,.3),p.z,Math.sin(ang)*v,rnd(.1,.9),Math.cos(ang)*v,rnd(.2,.34)*pw,rnd(1,1.6),rnd(.25,.4),.5,heat)}
       for(let i=0;i<8;i++){const m=new T.Mesh(chip,GM(i%2?'#ffd9a0':col));m.position.copy(p);add(m,{s0:rnd(.03,.06),vx:-sx*rnd(1,5)+rnd(-2,2),vy:rnd(1.5,4.5),vz:-sz*rnd(1,5)+rnd(-2,2),g:14,spin:rnd(8,20),life:rnd(.3,.55),bounce:1})}},
     // ================================================================= jump / air dash
+    // RUNNING: every few steps two little white puffs pop up behind the feet and drift back (time-throttled: same at any frame rate)
+    run(p,dx,dz){const now=performance.now();if(now-runT<150||list.length>420)return;runT=now;if(wLv(p.x,p.z,p.y)!==null)return;const sx=-dz,sz=dx;
+      for(let i=0,n=Math.round(2*crowd());i<n;i++)puffDust(p.x-dx*rnd(.1,.4)+sx*rnd(-.22,.22),p.y+.1,p.z-dz*rnd(.1,.4)+sz*rnd(-.22,.22),-dx*rnd(.5,1.3)+sx*rnd(-.4,.4),rnd(.5,1.1),-dz*rnd(.5,1.3)+sz*rnd(-.4,.4),rnd(.16,.24),rnd(.9,1.4),rnd(.38,.55))},
     // takeoff: a small ring of dust kicked out around the feet
-    jump(p){const k=crowd(),n=Math.round(8*k);for(let i=0;i<n;i++){const a=i/n*6.283+rnd(-.2,.2),sp=rnd(1.2,2.4);puffDust(p.x,p.y+.1,p.z,Math.cos(a)*sp,rnd(.2,.6),Math.sin(a)*sp,rnd(.2,.3),rnd(1.3,1.9),rnd(.4,.65),.34)}},
+    jump(p){if(splashLand(p,.55))return;const k=crowd(),n=Math.round(8*k);for(let i=0;i<n;i++){const a=i/n*6.283+rnd(-.2,.2),sp=rnd(1.2,2.4);puffDust(p.x,p.y+.1,p.z,Math.cos(a)*sp,rnd(.2,.6),Math.sin(a)*sp,rnd(.2,.3),rnd(1.3,1.9),rnd(.4,.65),.34)}},
     // start of an air dash: a shock ring across the dash direction, a white pop and speed streaks flying backwards
     airDash(p,dx,dz){const d=new T.Vector3(dx,0,dz);diskRing(p,d,'#cfeaff',.5,7,.32,.85);diskRing(p,d,'#ffffff',.3,5,.22,.9);
       sprite(SA('#ffffff'),p,{life:.12,s0:1.5});sprite(SA('#9fd4ff'),p,{life:.3,s0:1.9,grow:.8});
@@ -286,19 +383,19 @@ export function createFX(scene){
       streak(p,'#ffffff',-dx*rnd(6,10)+rnd(-1,1),rnd(-1,1),-dz*rnd(6,10)+rnd(-1,1),{len:rnd(.6,1.2),w:1.2,g:0,life:.18,drag:3})},
     // ================================================================= tumble / dash dust (smooth soft puffs)
     // start of a tumble: dust kicked up behind and to the sides
-    dash(p,dx,dz){const k=crowd(),sx=-dz,sz=dx;
+    dash(p,dx,dz){if(splashDash(p,dx,dz,1))return;const k=crowd(),sx=-dz,sz=dx;
       for(let i=0,n=Math.round(9*k);i<n;i++){const b=rnd(.8,3.2),sd=rnd(-1.7,1.7);
         puffDust(p.x-dx*rnd(0,.3)+sx*rnd(-.2,.2),p.y+.22,p.z-dz*rnd(0,.3)+sz*rnd(-.2,.2),-dx*b+sx*sd,rnd(.25,.9),-dz*b+sz*sd,rnd(.3,.44),rnd(1.5,2.3),rnd(.55,.85),.42)}},
     // every frame while rolling: a thin continuous wake (time-throttled so it looks the same at any frame rate)
-    dashTrail(p,dx,dz,u=1){const now=performance.now();if(now-trailT<26||list.length>460)return;trailT=now;
+    dashTrail(p,dx,dz,u=1){const now=performance.now();if(now-trailT<26||list.length>460)return;trailT=now;if(splashTrail(p,dx,dz))return;
       for(let i=0;i<2;i++)puffDust(p.x+rnd(-.18,.18),p.y+.2,p.z+rnd(-.18,.18),-dx*rnd(.4,1.4)+rnd(-.5,.5),rnd(.2,.7),-dz*rnd(.4,1.4)+rnd(-.5,.5),rnd(.2,.3),rnd(1.4,2),rnd(.5,.75),.14+.2*u)},
     // end of a tumble: a soft ring of dust that rolls outward, pushed a little further the way you were going
-    land(p,dx,dz){const k=crowd(),n=Math.round(11*k);
+    land(p,dx,dz){if(splashLand(p,.9,dx,dz))return;const k=crowd(),n=Math.round(11*k);
       for(let i=0;i<n;i++){const a=i/n*6.283+rnd(-.2,.2),sp=rnd(1.4,3);
         puffDust(p.x,p.y+.2,p.z,Math.cos(a)*sp+dx*1.4,rnd(.2,.7),Math.sin(a)*sp+dz*1.4,rnd(.26,.38),rnd(1.6,2.4),rnd(.6,.95),.36)}
       for(let i=0;i<3;i++)puffDust(p.x+dx*.3,p.y+.3,p.z+dz*.3,dx*rnd(.5,1.5)+rnd(-.3,.3),rnd(.5,1),dz*rnd(.5,1.5)+rnd(-.3,.3),rnd(.4,.55),rnd(1.4,2),rnd(.8,1.1),.3)},
     // step-dash while swinging a melee weapon: a short scuff of dust behind the feet
-    lunge(p,dx,dz){const k=crowd(),sx=-dz,sz=dx;
+    lunge(p,dx,dz){if(splashDash(p,dx,dz,.6))return;const k=crowd(),sx=-dz,sz=dx;
       for(let i=0,n=Math.round(5*k);i<n;i++){const b=rnd(.8,2.4),sd=rnd(-1,1);puffDust(p.x-dx*.1,p.y+.2,p.z-dz*.1,-dx*b+sx*sd,rnd(.2,.6),-dz*b+sz*sd,rnd(.22,.32),rnd(1.4,2),rnd(.4,.65),.34)}},
     update(dt){updRibbons(dt);lt=Math.max(0,lt-dt);light.intensity=lt>0?ltI*lt/ltMax:0;
       for(let i=list.length-1;i>=0;i--){const q=list[i],m=q.m;
