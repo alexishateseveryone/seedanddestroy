@@ -2,7 +2,7 @@
 // Add ?mobile=1 to the URL to force touch controls on (handy for testing on PC), ?mobile=0 to force them off.
 //   left side  : floating joystick (drives the same W/A/S/D keys as the keyboard)
 //   right side : drag anywhere to look around (same as the mouse)
-//   buttons    : FIRE (hold to shoot / slash, drag while holding to aim), JUMP, ROLL (= air dash in the air), SCOPE, F (plant / defuse, 5v5 only),
+//   buttons    : FIRE (hold to shoot / slash, drag while holding to aim), JUMP, ROLL (hold in the air = glide), SCOPE, F (plant / defuse, 5v5 only),
 //                < > switch weapon, BAG (story: inventory), II pause
 // Settings > Controls API (used by settings.js): get() / set(key,value) / reset() / edit(onDone)
 const MOBILE_RE=/Android|iPhone|iPad|iPod|Mobile|Silk|Opera Mini/i;
@@ -44,8 +44,8 @@ export function createMobile(o){
   #mPlant{right:218px;bottom:96px;width:64px;height:64px;display:none;background:rgba(255,213,74,.65);color:#3a2308;font-size:22px}
   #mReload{right:214px;bottom:30px;width:54px;height:54px;display:none;font-size:18px;background:rgba(31,140,200,.6)}
   #mPause{top:10px;right:calc(10px + env(safe-area-inset-right));width:46px;height:46px;font-size:16px}
-  #mBag{top:10px;right:calc(66px + env(safe-area-inset-right));width:46px;height:46px;font-size:12px;display:none}
-  #mWpn{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;pointer-events:none}
+  #mBag{left:calc(50% - 205px);bottom:6px;width:46px;height:46px;font-size:12px;display:none}   /* story: the bag sits at the bottom, just left of the HUD bar (like the bag icon of the PC bar) */
+  #mWpn{position:absolute;left:50%;bottom:56px;transform:translateX(-50%);display:flex;gap:8px;align-items:center;pointer-events:none}
   #mWpn .b{position:static;width:46px;height:46px;font-size:16px}
   #mWn{min-width:120px;text-align:center;padding:8px 12px;border-radius:999px;background:rgba(43,33,80,.6);border:2px solid rgba(255,255,255,.4);color:#fff;font-size:13px;white-space:nowrap}
   #mBg{position:absolute;inset:0;background:#9b9ba3;display:none;pointer-events:auto;touch-action:none}
@@ -65,7 +65,7 @@ export function createMobile(o){
   @media (max-height:430px){
     #mFire{width:82px;height:82px;bottom:20px;font-size:15px}#mRoll{right:116px;bottom:16px;width:54px;height:54px;font-size:12px}
     #mScope{right:26px;bottom:114px;width:50px;height:50px;font-size:19px}#mPlant{right:182px;bottom:76px;width:54px;height:54px}#mJump{right:112px;bottom:78px;width:54px;height:54px;font-size:11px}
-    #mReload{right:182px;bottom:16px;width:46px;height:46px;font-size:16px}#mPause{width:40px;height:40px;top:6px}#mBag{width:40px;height:40px;top:6px;right:calc(56px + env(safe-area-inset-right));font-size:11px}#mWpn{bottom:6px}#mWpn .b{width:38px;height:38px}#mWn{min-width:96px;font-size:11px;padding:6px 10px}
+    #mReload{right:182px;bottom:16px;width:46px;height:46px;font-size:16px}#mPause{width:40px;height:40px;top:6px}#mBag{width:40px;height:40px;left:calc(50% - 197px);bottom:4px;font-size:11px}#mWpn{bottom:50px}#mWpn .b{width:38px;height:38px}#mWn{min-width:96px;font-size:11px;padding:6px 10px}
     #mBase{width:104px;height:104px;margin:-52px 0 0 -52px}}
   @media (min-width:900px) and (min-height:700px){
     #mFire{width:118px;height:118px}#mRoll{width:76px;height:76px;right:164px}#mReload{right:252px;bottom:30px;width:64px;height:64px}#mScope{width:70px;height:70px;bottom:170px}#mPlant{width:76px;height:76px;right:250px;bottom:110px}#mJump{width:70px;height:70px;right:164px;bottom:118px}}
@@ -113,11 +113,11 @@ export function createMobile(o){
     el.addEventListener('pointerup',end);el.addEventListener('pointercancel',end);
     releasers.push(()=>{id=null;el.classList.remove('dn');up&&up()})};
   btn('#mFire',()=>{mouse.l=true},()=>{mouse.l=false},true);
-  btn('#mRoll',()=>o.tumble());   // in the air this is the air dash
+  btn('#mRoll',()=>{keys.ShiftLeft=true;o.tumble()},()=>{keys.ShiftLeft=false});   // on the ground: tumble. In the air: hold to glide
   btn('#mJump',()=>o.jump&&o.jump());
   btn('#mScope',()=>o.scope());
   btn('#mReload',()=>o.reload&&o.reload());
-  btn('#mPlant',()=>{keys.KeyF=true},()=>{keys.KeyF=false});
+  btn('#mPlant',()=>{if(lastS&&o.map)o.map();else keys.KeyF=true},()=>{keys.KeyF=false});   // 5v5: F = plant / defuse. Story: the same button opens the full map
   btn('#mPrev',()=>o.weapon(-1));btn('#mNext',()=>o.weapon(1));
   btn('#mPause',()=>o.pause());
   btn('#mBag',()=>o.inventory&&o.inventory());
@@ -165,5 +165,5 @@ export function createMobile(o){
       if(!show)return;
       const n=o.wname();if(n!==lastN){lastN=n;wn.textContent=n}
       const am=!!(o.hasAmmo&&o.hasAmmo());if(am!==lastA){lastA=am;rld.style.display=am?'flex':'none'}   // reload button only for guns with a magazine
-      const v=o.is5v5();if(v!==lastV){lastV=v;plant.style.display=v?'flex':'none'}
-      const sy=!!(o.isStory&&o.isStory());if(sy!==lastS){lastS=sy;bag.style.display=sy?'flex':'none'}}}}   // the bag button only exists in story mode
+      const v=o.is5v5(),sy=!!(o.isStory&&o.isStory());
+      if(v!==lastV||sy!==lastS){lastV=v;lastS=sy;plant.style.display=(v||sy)?'flex':'none';plant.textContent=sy?'MAP':'F';plant.style.fontSize=sy?'14px':'';bag.style.display=sy?'flex':'none'}}}}   // 5v5: the F button (plant / defuse). Story: the same button is MAP, and the bag button exists
