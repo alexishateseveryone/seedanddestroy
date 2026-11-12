@@ -11,9 +11,9 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="./node_modules/bootstrap-icons/font/bootstrap-icons.min.css">
 <link rel="stylesheet" href="style.css">
 <link rel="preload" as="image" href="assets/images/sadmlogo.png">
-
   <!-- Google Fonts CDN Backup -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -30,10 +30,6 @@
     "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
   }
 }</script>
-<link rel="stylesheet" href="style.css">
-<link rel="preload" as="image" href="assets/images/sadmlogo.png">
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>  <!-- WebRTC (PeerJS) -> window.Peer, used by js/net.js -->
-
 <style>
   /* Swaying & Floating Animation for the Logo */
   @keyframes logoSway {
@@ -86,6 +82,17 @@
   @media (max-width:640px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr{zoom:.7}}
   @media (min-height:1100px) and (min-width:1800px){#hud .hud-tl,#hud .hud-tc,#hud .hud-tr,#hud .hud-bc,#hud .hud-bl,#hud .hud-br{zoom:1.25}}
 </style>
+<style>
+  /* ---------- title screen = scenery (js/titleScene.js): logo up in the sky over the big cloud, TAP TO PLAY on the near hill ---------- */
+  #title{background:none!important}
+  /* centred: logo with TAP TO PLAY right under it, in the middle of the screen */
+  html body #title .tbox{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(8px,2.6vh,24px);width:auto;height:auto;margin:0;padding:0;pointer-events:none}
+  html body #title .tlogo{position:relative;left:auto;top:auto;width:min(520px,70vw);max-height:44vh;object-fit:contain;margin:0}
+  html body #title .best{position:relative;left:auto;top:auto}
+  html body #title .tap{position:relative;left:auto;top:auto;margin:0;pointer-events:auto;white-space:nowrap}
+  @media (max-width:700px){html body #title .tlogo{width:78vw}html body #title .tap{left:auto;top:auto}}
+</style>
+
 
 </head>
 <body class="loading"><canvas id="c"></canvas>
@@ -171,6 +178,7 @@
 
 <!-- My Character: same camera as the cat maker, the cat centred. Arrows flip through your cats; one empty slot (black cat) = Create Character.
      Action buttons come first in the DOM so keyboard / controller focus starts on the main action. -->
+<div id="chStage" hidden style="position:fixed;inset:0;z-index:1;pointer-events:none"></div>   <!-- My Character background: checkered bg + the cat in the cat maker style (js/catMaker.js createShowcase) -->
 <div id="slots" class="menu" hidden>
   <div class="ch">
     <div class="ch-info">
@@ -206,26 +214,16 @@
   </div>
 </div>
 
-<!-- main menu: grid layout. Left: Adventure (story) + Survival (roguelike) + Coop + 5v5 + PVP + Settings + Achievement. Right: My Character + Daily Task.
-     Coop / Achievement / Daily Task are placeholders (class "lock"): they only shake when pressed. -->
+<!-- main menu: plain text, nothing else. Play opens the story worlds, My Character opens the cat picker, Settings opens the graphics / controls, Exit goes back to TAP TO PLAY.
+     (The old mode cards are gone. The hidden screens below - worlds, new world, pvp, join, lobby - are no longer reachable; they stay only because
+     js/storyMode.js and js/pvpLobby.js still look their elements up at start-up.) -->
 <div id="modes" class="menu" hidden>
-  <div class="mscreen mm">
-    <div class="mm-main">
-      <div class="mm-grid" id="mList">
-        <div class="mm-t col adv" id="mStory" role="button" tabindex="0" style="--i:0"><i class="bi bi-compass-fill mm-i"></i><span class="mm-l"><b>Adventure</b><small>Explore your own world</small></span></div>
-        <div class="mm-t surv" id="mRogue" role="button" tabindex="0" style="--i:1"><i class="bi bi-tree-fill mm-i"></i><span class="mm-l"><b>Survival</b><small>Roguelike</small></span></div>
-        <div class="mm-t lock coop" id="mCoop" role="button" tabindex="0" aria-disabled="true" style="--i:2"><i class="bi bi-people-fill mm-i"></i><span class="mm-l"><b>Coop</b></span><em class="soon">Soon</em></div>
-        <div class="mm-t v5" id="mV5" role="button" tabindex="0" style="--i:3"><i class="bi bi-crosshair mm-i"></i><span class="mm-l"><b>5v5 Spike</b><span class="rkx"><span class="rkpill" id="rkpill"></span></span></span></div>
-        <div class="mm-t pvp" id="mPvp" role="button" tabindex="0" style="--i:4"><i class="bi bi-globe2 mm-i"></i><span class="mm-l"><b>PVP Local</b><small>Custom battle</small></span></div>
-        <div class="mm-t col set" id="gfxOpen" role="button" tabindex="0" style="--i:5"><i class="bi bi-gear-fill mm-i"></i><span class="mm-l"><b>Settings</b></span></div>
-        <div class="mm-t col lock ach" id="mAch" role="button" tabindex="0" aria-disabled="true" style="--i:6"><i class="bi bi-trophy-fill mm-i"></i><span class="mm-l"><b>Achievement</b></span><em class="soon">Soon</em></div>
-      </div>
-      <div class="mm-side">
-        <div class="mm-t col chr" id="mChar" role="button" tabindex="0" style="--i:7"><span class="hd" id="modeHd"></span><span class="mm-l"><b>My Character</b><small id="modeName">Ming</small></span></div>
-        <div class="mm-t lock daily" id="mDaily" role="button" tabindex="0" aria-disabled="true" style="--i:8"><i class="bi bi-calendar-check-fill mm-i"></i><span class="mm-l"><b>Daily Task</b></span><em class="soon">Soon</em></div>
-      </div>
-    </div>
-  </div>
+  <nav class="tmenu" aria-label="Main menu">
+    <button id="mPlay" class="ti" type="button" style="--i:0">Play</button>
+    <button id="mChar" class="ti" type="button" style="--i:1">My Character<small id="modeName">Ming</small></button>
+    <button id="gfxOpen" class="ti" type="button" style="--i:2">Settings</button>
+    <button id="mExit" class="ti" type="button" style="--i:3">Exit</button>
+  </nav>
 </div>
 
 <!-- PVP: Host / Join cards, the room-code card and the lobby (js/pvpLobby.js) -->
