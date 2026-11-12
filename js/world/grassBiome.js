@@ -14,16 +14,19 @@ import * as T from 'three';
 import {WIND,vnoise} from '../batch.js';
 
 export const SWAY_NEAR=14,SWAY_FAR=30;
-export const THIN_NEAR=22,THIN_FAR=62;     // grass thinning distances (world units from the player)
+export const THIN_NEAR=22,THIN_FAR=62;
+// tuning: GRASS.density multiplies every scatter's tries AND buffer size (more grass); GRASS.giant = share of tall tufts that grow tall enough to hide the cat, giantMin/Max = their size multiplier
+export const GRASS={density:2.4,giant:.16,giantMin:1.5,giantMax:2.1};     // grass thinning distances (world units from the player)
 
 function bladeTuft({blades,height,width,spread,lean,seg,seed}){
   let s=seed|0;const R=()=>{s=s+0x6D2B79F5|0;let t=Math.imul(s^s>>>15,1|s);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296};
   const pos=[],nor=[],col=[],idx=[];let o=0;
   for(let b=0;b<blades;b++){
     const a=R()*6.283,rr=Math.sqrt(R())*spread,ox=Math.cos(a)*rr,oz=Math.sin(a)*rr,w=width*(.7+R()*.6),ang=R()*6.283,ln=lean*(.35+R()*.9),
-      hh=height*(.55+R()*.45),cx=Math.cos(ang),cz=Math.sin(ang),start=o,tone=.85+R()*.3,nl=Math.hypot(cz*.45,1,cx*.45);
+      hh=height*(.55+R()*.45),cx=Math.cos(ang),cz=Math.sin(ang),start=o,tone=1,nl=Math.hypot(cz*.45,1,cx*.45);
     for(let i=0;i<=seg;i++){
-      const t=i/seg,ww=i===seg?0:w*(1-Math.pow(t,1.6)*.85),y=t*hh,f=ln*t*t,shade=(.3+.8*Math.pow(t,.8))*tone;   // tapered width, curved lean, dark root -> light tip
+      // ROUNDED CARTOON BLADE: a slightly tapering body, then the last 38% closes in a half-ellipse (sqrt profile) so the tip is a soft round cap, not a needle
+      const t=i/seg,CAP=.62,body=w*(1-t*.3),u=t<=CAP?0:(t-CAP)/(1-CAP),ww=i===seg?0:body*Math.sqrt(Math.max(0,1-u*u)),y=t*hh,f=ln*t*t,shade=1;
       for(const sx of i===seg?[0]:[-1,1]){const lx=sx*ww,lz=f;pos.push(ox+lx*cx+lz*cz,y,oz-lx*cz+lz*cx);nor.push(cz*.45/nl,1/nl,cx*.45/nl);col.push(shade,shade,shade);o++}}
     // triangulate the strip: rings of 2 verts, then the single tip vertex
     let r=start;for(let i=0;i<seg;i++){const a0=r,a1=r+1;if(i<seg-1){const b0=r+2,b1=r+3;idx.push(a0,a1,b0,b0,a1,b1);r+=2}else idx.push(a0,a1,r+2)}}
@@ -33,6 +36,7 @@ function bladeTuft({blades,height,width,spread,lean,seg,seed}){
  *  thin: enable the distance thinning (grass only - flowers keep their old behaviour) */
 export function swayMaterial({amp=1,push=.5,env=null,tall=false,rigid=false,colors=true,roughness=.9,color=undefined,thin=false}={}){
   const m=new T.MeshStandardMaterial({vertexColors:colors,roughness,side:T.DoubleSide,envMap:env,envMapIntensity:.4,...(color?{color}:{})});
+  m.defines=Object.assign(m.defines||{},{CEL_FLAT:'',NO_OL:''});   // CEL_FLAT: one flat colour (only cast shadows darken it); NO_OL: never outlined
   m.onBeforeCompile=sh=>{sh.uniforms.uTime=WIND.uTime;sh.uniforms.uPlayer=WIND.uPlayer;sh.uniforms.uSwayNear={value:SWAY_NEAR};sh.uniforms.uSwayFar={value:SWAY_FAR};sh.uniforms.uAmp={value:amp};
     sh.uniforms.uThinNear={value:THIN_NEAR};sh.uniforms.uThinFar={value:THIN_FAR};
     sh.vertexShader=sh.vertexShader.replace('#include <common>',`#include <common>
@@ -62,26 +66,35 @@ export function swayMaterial({amp=1,push=.5,env=null,tall=false,rigid=false,colo
        float pu=smoothstep(1.5,.15,l);
        mvPosition.xz+=d/(l+1e-3)*pu*w*${push.toFixed(2)};mvPosition.y-=pu*w*.28;}
       mvPosition=modelViewMatrix*mvPosition;
-      gl_Position=projectionMatrix*mvPosition;`)};
-  m.customProgramCacheKey=()=>'biomeGrass2'+amp+'_'+push+'_'+tall+'_'+rigid+'_'+thin;return m}
+      gl_Position=projectionMatrix*mvPosition;`);
+    // WHITE-SPECKLE GUARD: sun / env highlights on the thin, double-sided blades blow out to pure white. Never let a blade get brighter than its own colour.
+    {const k=sh.fragmentShader.includes('#include <opaque_fragment>')?'#include <opaque_fragment>':'#include <output_fragment>';
+     sh.uniforms.uDim=WIND.uDim;
+     sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+       uniform vec3 uDim;`).replace(k,`outgoingLight=min(outgoingLight,diffuseColor.rgb*1.04);
+       outgoingLight*=uDim;   // night: CEL_FLAT grass is always "lit", so dim it here
+       `+k)}};
+  m.customProgramCacheKey=()=>'biomeGrass4'+amp+'_'+push+'_'+tall+'_'+rigid+'_'+thin;return m}
 
 export function createBiomeGrass(env=null){
   // many thin blades per tuft = full-looking grass without fat triangles. Blade count / width are the knobs for "thickness".
   const KIND={
-    short:{geo:bladeTuft({blades:9,height:.85,width:.03,spread:.2,lean:.24,seg:3,seed:5}),mat:swayMaterial({amp:1,push:.55,env,thin:true}),
-      h:[.4,.95],w:[.8,1.15]},
-    tall:{geo:bladeTuft({blades:7,height:1.6,width:.04,spread:.24,lean:.6,seg:4,seed:11}),mat:swayMaterial({amp:1.5,push:.65,env,tall:true,thin:true}),
-      h:[.7,1.15],w:[.8,1.2]}};
+    short:{geo:bladeTuft({blades:7,height:.85,width:.075,spread:.2,lean:.24,seg:6,seed:5}),mat:swayMaterial({amp:1,push:.55,env,thin:true}),
+      h:[.35,1.35],w:[.8,1.3]},
+    tall:{geo:bladeTuft({blades:6,height:1.6,width:.095,spread:.24,lean:.6,seg:7,seed:11}),mat:swayMaterial({amp:1.5,push:.65,env,tall:true,thin:true}),
+      h:[.7,1.3],w:[.9,1.4]}};
   const d=new T.Object3D(),c=new T.Color();
   /** tries = roughly how many tufts are attempted (stratified over the rectangle); max = instance buffer size; clump 0..1 = strength of the natural patchiness */
   function scatter({kind='short',x0,z0,x1,z1,rng,at,density=()=>1,tint,tries=800,max=800,clump=.45}){
+    tries*=GRASS.density;max=Math.ceil(max*GRASS.density);
     const K=KIND[kind],m=new T.InstancedMesh(K.geo,K.mat,max),cs=Math.sqrt((x1-x0)*(z1-z0)/Math.max(1,tries)),
       nx=Math.max(1,Math.ceil((x1-x0)/cs)),nz=Math.max(1,Math.ceil((z1-z0)/cs)),sx=(x1-x0)/nx,sz=(z1-z0)/nz;let n=0;
     for(let i=0;i<nx&&n<max;i++)for(let j=0;j<nz&&n<max;j++){
       const x=x0+(i+rng())*sx,z=z0+(j+rng())*sz;let dn=density(x,z);if(dn<=0.02)continue;
       if(clump>0)dn*=1-clump+clump*Math.min(1,Math.max(0,(vnoise(x*.11+3.1,z*.11)-.25)/.5));        // slow noise: meadow patches
       if(rng()>dn)continue;
-      const s=(.65+rng()*.7)*(.35+.65*Math.min(1,dn)),hs=K.h[0]+(K.h[1]-K.h[0])*rng();                    // thinner edge => smaller tufts
+      let s=(.65+rng()*.7)*(.35+.65*Math.min(1,dn)),hs=K.h[0]+(K.h[1]-K.h[0])*rng();
+      if(kind==='tall'&&dn>.6&&rng()<GRASS.giant)hs*=GRASS.giantMin+(GRASS.giantMax-GRASS.giantMin)*rng();   // a few very tall tufts: tall enough to hide the cat                    // thinner edge => smaller tufts
       d.position.set(x,at(x,z),z);d.scale.set(s*(K.w[0]+rng()*(K.w[1]-K.w[0])),hs*s*(kind==='tall'?1.1:1),s*(K.w[0]+rng()*(K.w[1]-K.w[0])));d.rotation.set(0,rng()*6.283,0);d.updateMatrix();
       m.setMatrixAt(n,d.matrix);tint(x,z,c,rng);m.setColorAt(n,c);n++}
     if(!n){m.dispose();return null}
