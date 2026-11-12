@@ -89,7 +89,12 @@ export function createStory(c){
     inv,
     invOpen:()=>inv.isOpen(),invSpin:()=>inv.spin(),toggle:()=>inv.toggle(),
     renderWorlds,
-    openWorlds(){renderWorlds();showMenu('worlds')},
+    /** Play: no world list any more. Enter the saved world; with no world yet, a new random one is generated first */
+    play(){if(busy)return;
+      let i=worlds.findIndex(Boolean);
+      if(i<0){i=0;worlds[0]={seed:(Math.random()*4294967295)>>>0,seedText:'',name:'World 1',diff:'NORMS',created:Date.now(),played:0,time:8};saveWorlds();inv.wipe(0)}
+      enterStory(i)},
+    openWorlds(){renderWorlds();showMenu('worlds')},   // old world list (no longer reachable from the menu)
     setQuality(q){storyMap&&storyMap.setQuality(q)},
     /** called every frame of a story world (game logic, not while the inventory is open) */
     tick(dt){storyT+=dt;hud.hp(P.hp,P.max);
