@@ -1,6 +1,6 @@
 // Controller (gamepad) support: Xbox / PlayStation / Switch Pro / most "standard mapping" pads, wired or Bluetooth.
 //   In a match   : left stick move, right stick look, RT shoot / slash, LT scope (hold), A jump, B roll (air dash in the air),
-//                  X reload, Y plant / defuse (hold), LB / RB (or D-pad left / right) weapon, Start pause, Back = settings
+//                  X inventory (story; reload elsewhere), R3 reload, Y map (story; plant / defuse hold elsewhere), LB / RB (or D-pad left / right) weapon, Start pause, Back = settings
 //   In menus     : left stick / D-pad move the highlight, A accept, B back (it feeds the keyboard menu navigation in main.js)
 // Settings > Controls > Controller (settings.js) uses get() / set(key,value) / reset() / info().
 const KEY='sad.pad';
@@ -55,6 +55,7 @@ export function createGamepad(o){
       if(!dirs[k]){rep[k]=null;continue}
       if(rep[k]==null){rep[k]=.38;menuKey(k)}                  // first step, then a short delay before it repeats
       else{rep[k]-=dt;if(rep[k]<=0){rep[k]=.11;menuKey(k)}}}
+    if(o.invOpen&&o.invOpen()){if(hit(g,1)||hit(g,2)||hit(g,9)){o.inventory();return}}   // inventory open: X / B / Start close it
     if(hit(g,0))menuKey('Enter');
     const gfxOpen=(()=>{const e=document.getElementById('gfx');return e&&!e.hidden})();
     if(hit(g,1)){
@@ -81,8 +82,12 @@ export function createGamepad(o){
     const sc=bv(g,6)>.35||bp(g,6);if(sc!==scopeOn){scopeOn=sc;o.scopeSet&&o.scopeSet(sc)}
     if(hit(g,0))o.jump();
     if(hit(g,1))o.tumble();
-    if(hit(g,2))o.reload&&o.reload();
-    setKey('KeyF',bp(g,3));                                                          // plant / defuse = hold
+    setKey('ShiftLeft',bp(g,1));                                                     // keep B held: dash in the air = glide until you let go (main.js stops the glide when the roll key is up)
+    if(hit(g,2)){if(o.isStory&&o.isStory()&&o.inventory)o.inventory();else o.reload&&o.reload()}   // X = inventory in story mode, reload otherwise
+    if(hit(g,11))o.reload&&o.reload();                                               // R3 = reload (always)
+    const story=!!(o.isStory&&o.isStory());
+    setKey('KeyF',!story&&bp(g,3));                                                  // plant / defuse = hold (5v5 etc.)
+    if(story&&hit(g,3)&&o.map)o.map();                                               // Y = map in story mode
     if(hit(g,4)||hit(g,14))o.weapon(-1);
     if(hit(g,5)||hit(g,15))o.weapon(1);
     if(hit(g,9))o.pause();
@@ -107,7 +112,8 @@ export function createGamepad(o){
       if(!prev.length)prev=g.buttons.map(b=>b.pressed);
       const any=g.buttons.some(b=>b.pressed)||Math.abs(g.axes[0]||0)>.5||Math.abs(g.axes[1]||0)>.5;
       if(any)body.classList.toggle('gpad',!o.inGame());
-      if(o.inGame()){gameFrame(g,dt);hl=false}
+      if(o.inGame()&&o.mapOn&&o.mapOn()){releaseAll();if(hit(g,3)||hit(g,1)||hit(g,9))o.map()}   // map page open: Y / B / Start close it
+      else if(o.inGame()&&!(o.invOpen&&o.invOpen())){gameFrame(g,dt);hl=false}
       else{releaseAll();lastHp=null;menuFrame(g,dt)}
       prev=g.buttons.map(b=>b.pressed);
     }
