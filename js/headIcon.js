@@ -3,7 +3,7 @@
 import * as T from 'three';
 import {COATS,EYECS,EARS,GEAR_COLS} from './catAvatar.js';
 import {buildEar,buildHeadwear,buildEyewear} from './wearables.js';
-import {makeCoat} from './coatShader.js';
+import {makeCoat} from './world/coatShader.js';
 import {lumpy,LUMP2,G,mat,BM,M} from './blocks.js';
 import {iconOf} from './iconRender.js';
 
