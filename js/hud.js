@@ -170,13 +170,13 @@ export function createHUD(root=document.body){
       <div class="hb-d" id="hbD">${DASH}<div class="df"><i id="hbDf"></i></div></div>
     </div>
     <div class="hud-ammo" id="ammo"><div class="amrow"><b id="amN">0</b><small id="amM"></small></div><div class="ambar"><i id="amFill"></i></div><span id="amHint"></span></div>
-    <div class="hud-bl"><div class="hint"><kbd>LMB</kbd> shoot <kbd>RMB</kbd> scope <kbd>SPACE</kbd> jump <kbd>SHIFT</kbd> roll / glide (hold in air) <kbd>1-2</kbd> / wheel weapon <kbd>M</kbd> map <kbd>I</kbd> inventory <kbd>V</kbd> top-down view</div></div>`;
+    <div class="hud-bl"><div class="hint"><kbd>SPACE</kbd> jump <kbd>SHIFT</kbd> roll / glide (hold in air) <kbd>I</kbd> inventory</div></div>`;
   
   const extra=el(`<div id="hudx"><div id="fps-crosshair"><i class="dot"></i><i class="t t1"></i><i class="t t2"></i><i class="t t3"></i><i class="t t4"></i><div id="hitm"><i></i><i></i><i></i><i></i></div></div>
     <div id="scope-ov"></div><div id="hurt"></div><div id="lowhp"></div><div id="banner"><b id="bnT"></b><span id="bnS"></span></div><div id="ebars"></div>
     
     <div id="pause" hidden><div class="card"><h2>Paused</h2><p class="pk">Click anywhere to jump back in</p>
-      <div class="keys"><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div><div><kbd>Mouse</kbd><span>aim</span></div><div><kbd>LMB</kbd><span>shoot / slash</span></div><div><kbd>RMB</kbd><span>scope</span></div><div><kbd>SPACE</kbd><span>tumble</span></div><div><kbd>1-8</kbd><span>weapons (or mouse wheel)</span></div><div><kbd>G</kbd><span>graphics</span></div></div>
+      <div class="keys"><div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><span>move</span></div><div><kbd>Mouse</kbd><span>aim</span></div><div><kbd>LMB</kbd><span>slash</span></div><div><kbd>SPACE</kbd><span>tumble</span></div><div><kbd>1-8</kbd><span>weapons (or mouse wheel)</span></div><div><kbd>G</kbd><span>graphics</span></div></div>
       <div class="row"><button id="resume" class="btn green">Resume</button><button id="pgfx" class="btn pink">Settings</button><button id="quit" class="btn gold">Title</button></div></div></div></div>`);
   document.body.appendChild(extra);
   const cross=$('#fps-crosshair'),hitm=$('#hitm'),scopeEl=$('#scope-ov'),hurtEl=$('#hurt'),lowEl=$('#lowhp'),bn=$('#banner'),ebars=$('#ebars'),pauseEl=$('#pause');
@@ -220,6 +220,10 @@ export function createHUD(root=document.body){
     pause(b){pauseEl.hidden=!b;if(b)this.bigmap(false)},
     onMap:null,                                       // main.js sets this: called with true / false when the map page opens / closes
     bigmap(b){bm.set(b)},
+    // inventory.js (MAP tab) mounts the chart into its card with mapMount(element) and removes it with mapMount(null).
+    // This method was missing, so the map was never mounted or drawn (the empty dark box).
+    mapMount(host){const was=bm.isOpen();if(host)bm.mount(host);else bm.unmount();const now=bm.isOpen();
+      if(was!==now){document.body.classList.toggle('bigmap',now);api.onMap&&api.onMap(now)}},
     bigmapOn:()=>bm.isOpen(),
     bigradar(P,enemies,pickups,map){bm.draw(P,enemies,pickups,map)},
     scope(a){scopeEl.style.opacity=a;cross.style.opacity=1-a*.7},
