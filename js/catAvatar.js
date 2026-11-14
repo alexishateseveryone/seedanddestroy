@@ -118,6 +118,44 @@ export const EYECS=['#1e3a8a','#4bd37b','#4aa8ff','#ffc93c','#ff6fa0','#b07aff',
 export const COLLARS=['#e63946','#4aa8ff','#ff8fc0','#58c878','#ffd54a','#b07aff','#ffffff','#2a2433','#ff7a3c','#7ee6d2']; // always worn: no "none"
 export const CLOAKS=[['none','None','Off'],['tattered','Tattered','Rags'],['short','Short','Scarf'],['long','Long','Coat'],['royal','Royal','Cape'],['leaves','Leaves','Leafy']];
 export const CLOAK_COLS=['#8a5a3a','#6d4cff','#e63946','#2fa8ff','#2fbf71','#ffb300','#2a2433','#ff6fa0','#ffffff','#ff7a3c','#58d6ff','#c58aff'];
+// <PART_LAYOUT>
+// Body part layout from animation_maker.html (p = move in cat units, r = rotation in radians, s = size multiplier per axis). Re-export from the maker, do not edit by hand.
+export const PART_LAYOUT={
+  head:{"p":[0,-0.3,0],"r":[0.2618,0,0],"s":[1,1,1]},
+  earL:{"p":[0.03,0.0315,-0.0193],"r":[0,0,0],"s":[1.25,0.85,1.4]},
+  earR:{"p":[-0.03,0.0315,-0.0193],"r":[0,0,0],"s":[1.25,0.85,1.4]},
+  eyeL:{"p":[0,0,0],"r":[0,0,0],"s":[1,1.05,1]},
+  eyeR:{"p":[0,0,0],"r":[0,0,0],"s":[1,1.05,1]},
+  nose:{"p":[0.0232,-0.0228,-0.0024],"r":[0,0,0],"s":[0.75,0.6,1]},
+  mouth:{"p":[0,0,0.05],"r":[0.5236,0,0],"s":[0.7,1,1.45]},
+  body:{"p":[0,-0.3,0],"r":[0,0,0],"s":[0.8,0.75,0.6793]},
+  armL:{"p":[0.3345,-0.55,-0.05],"r":[0,0,-0.2618],"s":[1,0.9,1.75]},
+  armR:{"p":[-0.3345,-0.55,-0.05],"r":[0,0,0.2618],"s":[1,0.9,1.75]},
+  legL:{"p":[0.22,-0.25,0.0007],"r":[0,0,-0.0916],"s":[1,0.75,1.1]},
+  legR:{"p":[-0.22,-0.25,0.0007],"r":[0,0,0.0916],"s":[1,0.75,1.1]},
+  tail:{"p":[0,-0.15,0.2],"r":[0,0,0],"s":[1,0.7704,0.6927]},
+  collar:{"p":[0,-0.25,-0.1],"r":[0,0,0],"s":[0.9,1,1]},
+  cloak:{"p":[0.0001,-0.35,-0.0484],"r":[0,0,0],"s":[0.85,1,0.95]}
+};
+// </PART_LAYOUT>
+// <ANIMS>
+// Additive keyframe clips from animation_maker.html. Play one with  cat.userData.play('name',loop). Re-export from the maker.
+export const ANIMS={
+  "wave":{fps:30,frames:30,loop:false,keys:[
+    {"f":0,"ease":"smooth","pose":{}},
+  ]}
+};
+// </ANIMS>
+// pose keys of a clip (all radians, added on top of the cat's own idle / run / jump motion): <part>Rx/Ry/Rz, moveY (body bob), elbowL/R + kneeL/R (extra bend)
+export const POSE_PARTS=['head','body','armL','armR','legL','legR','tail'];
+export const POSE_KEYS=[...POSE_PARTS.flatMap(n=>['x','y','z'].map(a=>n+'R'+a)),'moveY','elbowL','elbowR','kneeL','kneeR'];
+export const EASE={linear:t=>t,smooth:t=>t*t*(3-2*t),in:t=>t*t,out:t=>1-(1-t)*(1-t),hold:()=>0};
+export function sampleClip(c,f){   // c = {fps,frames,loop,keys:[{f,ease,pose}]}  ->  {poseKey:value}
+  const ks=c.keys,o={};if(!ks.length)return o;let a=ks[0],b=null;
+  for(const k of ks){if(k.f<=f)a=k;else{b=k;break}}
+  const u=b?(f-a.f)/(b.f-a.f):0,e=(EASE[a.ease]||EASE.smooth)(Math.max(0,Math.min(1,u)));
+  for(const k of POSE_KEYS){const x=a.pose[k]||0,y=b?(b.pose[k]||0):x;o[k]=x+(y-x)*e}
+  return o}
 // legacy exports from the old animation maker (nothing in the avatar uses them any more; safe to delete once no other file imports them)
 export const BEND_PARAMS=[['wElbow','Weapon arm: elbow bend','arms',0,2.6,0],['oElbow','Off arm: elbow bend','arms',0,2.6,0],['legLk','Left leg: knee bend','legs',0,2.4,0],['legRk','Right leg: knee bend','legs',0,2.4,0]];
 export const BEND_KEYS=BEND_PARAMS.map(p=>p[0]);
@@ -128,8 +166,86 @@ function tagTex(name){const c=document.createElement('canvas');c.width=c.height=
 const ease=(dt,k)=>1-Math.exp(-dt*k);
 const clamp=(x,a,b)=>Math.max(a,Math.min(b,x)),lerp=(a,b,t)=>a+(b-a)*t,sm=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
 
+// ---- dark blue pixel outline for the IN-GAME cat (inverted hull). main.js calls addOutline(cat) for the player's cat and setOutline(px,rows) from its Outline slider.
+// Whole body (head, ears, arms, legs, tail, hair, collar, cloak...): every solid mesh gets a child copy sharing its geometry, drawn back-faces only and pushed outward by a
+// fixed number of SCREEN pixels, so the line keeps the same thickness at any camera distance. px is in GAME pixels (1 px = one pixel of the pixel-art render), rows = rows of
+// that render. The push direction is a normal averaged over vertices that share a position, so hard edges / seams of the lumpy shapes do not split open. Eyes, blob shadow and
+// transparent parts are skipped. The cat maker / My Character preview paints its own outline in catMaker.js and does not use this.
+const OL={px:1,rows:540};
+const UK={value:2*OL.px/OL.rows};   // ONE shared uniform: thickness in NDC units (2 / rows per game pixel); 0 = outline off
+// Three kinds of hull:  static = solid meshes (normal averaged once, "onrm")  ·  live = meshes whose shape changes every frame (tail ropes: the live normal is used)
+//                       sheet  = open cloth (cloak): a back-face hull is invisible on a flat sheet, so the whole sheet is pushed outward from its own centre in screen space and drawn just behind it
+// A mesh opts in with userData.olMode = 'static' | 'live' | 'liveInv' (live, but the mesh's outside faces point inward: the hood) | 'sheet' | 'skip' (this also lets shader / basic-material meshes be outlined).
+const OL_COL={value:new T.Color('#1b2a5e')},OL_DAY=new T.Color('#1b2a5e'),OL_NIGHT=new T.Color('#03050c');   // ONE shared colour for every hull
+export function setOutlineNight(n){OL_COL.value.copy(OL_DAY).lerp(OL_NIGHT,Math.min(1,Math.max(0,n||0)))}   // n = 0 day ... 1 full night: the outline darkens with it
+const hullCache={};
+const HULL_VS=`uniform float uK;ATTR
+void main(){
+  vec4 cp=projectionMatrix*modelViewMatrix*vec4(position,1.);
+  vec3 nv=normalize(normalMatrix*NRM);
+  vec2 nd=(projectionMatrix*vec4(nv,0.)).xy;
+  float l=length(nd);nd=l>1e-5?nd/l:vec2(0.);
+  float asp=projectionMatrix[1][1]/projectionMatrix[0][0];
+  cp.xy+=nd*vec2(1./asp,1.)*uK*cp.w;
+  gl_Position=cp;}`;
+const SHEET_VS=`uniform float uK;uniform vec3 uC;
+void main(){
+  mat4 mv=projectionMatrix*modelViewMatrix;
+  vec4 cp=mv*vec4(position,1.);vec4 cc=mv*vec4(uC,1.);
+  float asp=projectionMatrix[1][1]/projectionMatrix[0][0];
+  vec2 d=cp.xy/cp.w-cc.xy/cc.w;d.x*=asp;
+  float l=length(d);d=l>1e-5?d/l:vec2(0.,-1.);
+  cp.xy+=d*vec2(1./asp,1.)*uK*cp.w;
+  gl_Position=cp;}`;
+const HULL_FS='uniform vec3 uCol;uniform float uK;void main(){if(uK<=0.)discard;gl_FragColor=vec4(uCol,0.);}';   // alpha 0 like every cat material (NO_OL): the game's own outline pass leaves it alone
+const makeHull=mode=>{
+  const sheet=mode==='sheet';
+  return new T.ShaderMaterial({side:sheet?T.DoubleSide:mode==='liveInv'?T.FrontSide:T.BackSide,fog:false,defines:{NO_OL:''},
+    polygonOffset:true,polygonOffsetFactor:sheet?4:1,polygonOffsetUnits:sheet?8:1,   // sits just behind thin / double-sided parts so it never fights them
+    uniforms:{uCol:OL_COL,uK:UK,uC:{value:new T.Vector3()}},   // #1b2a5e = the maker preview's (27,42,94)
+    vertexShader:sheet?SHEET_VS:HULL_VS.replace('ATTR',mode==='static'?'attribute vec3 onrm;':'').replace('NRM',mode==='live'?'normal':mode==='liveInv'?'(-normal)':'onrm'),
+    fragmentShader:HULL_FS})};
+const getHull=mode=>mode==='sheet'?makeHull('sheet'):(hullCache[mode]||(hullCache[mode]=makeHull(mode)));   // sheets need their own material (own centre)
+export function setOutline(px,rows){if(px!=null)OL.px=px;if(rows)OL.rows=rows;UK.value=2*OL.px/OL.rows}
+// run fn with a different outline thickness (px of a render that is `rows` tall) and put the game's own setting back afterwards (the inventory preview draws its own small view)
+export function withOutline(px,rows,fn){const p=OL.px,r=OL.rows;setOutline(px,rows);try{fn()}finally{setOutline(p,r)}}
+function smoothNormals(g){
+  if(g.attributes.onrm)return;
+  if(!g.attributes.normal)g.computeVertexNormals();
+  const p=g.attributes.position,n=g.attributes.normal,acc=new Map(),key=i=>Math.round(p.getX(i)*1e4)+','+Math.round(p.getY(i)*1e4)+','+Math.round(p.getZ(i)*1e4);
+  for(let i=0;i<p.count;i++){const k=key(i);let v=acc.get(k);if(!v)acc.set(k,v=[0,0,0]);v[0]+=n.getX(i);v[1]+=n.getY(i);v[2]+=n.getZ(i)}
+  const o=new Float32Array(p.count*3);
+  for(let i=0;i<p.count;i++){const v=acc.get(key(i)),l=Math.hypot(v[0],v[1],v[2])||1;o[i*3]=v[0]/l;o[i*3+1]=v[1]/l;o[i*3+2]=v[2]/l}
+  g.setAttribute('onrm',new T.BufferAttribute(o,3))}
+// called every pose update: hulls follow a mesh whose geometry was swapped, and sheet hulls re-centre on the moving cloth
+function syncOL(list){
+  for(const e of list){const {m,h,mode}=e,g=m.geometry;if(!g)continue;
+    if(h.geometry!==g){if(mode==='static')smoothNormals(g);else if(mode!=='sheet'&&!g.attributes.normal)g.computeVertexNormals();h.geometry=g}
+    if(mode==='sheet'){g.computeBoundingBox();g.boundingBox.getCenter(h.material.uniforms.uC.value)}}}
+export function addOutline(root){
+  if(!root)return;
+  const list=[];
+  root.traverse(m=>{
+    if(!m.isMesh||m.userData.ol||!m.visible)return;
+    const mode=m.userData.olMode;
+    if(mode==='skip')return;
+    const mt=m.material;
+    if(!mt||mt.transparent||mt.colorWrite===false)return;
+    if(!mode&&(Array.isArray(mt)||mt.isShaderMaterial||mt.isMeshBasicMaterial))return;   // untagged: only plain lit solids (the old rule)
+    if(!m.geometry||!m.geometry.attributes||!m.geometry.attributes.position)return;
+    list.push({m,mode:mode||'static'})});
+  const live=[];
+  for(const e of list){
+    const {m,mode}=e,g=m.geometry;
+    if(mode==='static'){if(!g.attributes.normal)continue;smoothNormals(g)}
+    else if(mode!=='sheet'&&!g.attributes.normal)g.computeVertexNormals();
+    const h=new T.Mesh(g,getHull(mode));
+    h.userData.ol=true;h.frustumCulled=false;h.castShadow=false;h.receiveShadow=false;
+    m.add(h);e.h=h;if(mode!=='static')live.push(e)}
+  root.userData.olList=live;syncOL(live)}
 export function createCatAvatar(opt={}){
   const o=Object.assign({fur:COATS[0][0],pat:COATS[0][1],pattern:'classic',ears:'pointy',eyeColor:EYECS[0],collar:COLLARS[0],name:'Ming',cloak:'tattered',cloakC:CLOAK_COLS[0],collarType:'normal',head:'none',eyewear:'none',gearC:GEAR_COLS[0],eyeStyle:'default',nose:'button',cheeks:'none',tail:'classic',whiskers:'classic',headShape:'round',bodyShape:'plush',hair:'none',hairC:HAIR_COLS[0],eyeDot:false},opt);
+  const LAYO=Object.assign({},PART_LAYOUT,opt.layout||{});   // opt.layout = live override from the animation maker
   if(!COLLARS.includes(o.collar))o.collar=COLLARS[0];          // the collar can no longer be removed
   if(!COLLAR_TYPES.some(x=>x[0]===o.collarType))o.collarType='normal';
   if(o.cloak==='none'||!CLOAKS.some(x=>x[0]===o.cloak))o.cloak='tattered';   // the cloak can no longer be removed
@@ -154,15 +270,15 @@ export function createCatAvatar(opt={}){
 
   const eyes=buildPngEyes(o.eyeColor,head,{style:o.eyeStyle,dot:!!o.eyeDot});   // PNG eye shape (o.eyeStyle); the eyes blink and wander on their own
   
-  buildNose(o.nose,head);
+  const _n0=head.children.length;buildNose(o.nose,head);const noseKids=head.children.slice(_n0);
   const cheeks=buildCheeks(o.cheeks,o,head);   // fur locks use the head's coat shader + rope physics
   if(cheeks){cheeks.meshes.forEach(m=>coatMeshes.push(m))}
-  M(G.box,dark,[.016,.07,.016],[0,-.22,.75],head);
-  [-1,1].forEach(s=>{const m=new T.Mesh(new T.TorusGeometry(.1,.018,6,16,Math.PI),dark);m.rotation.z=Math.PI;m.position.set(s*.1,-.28,.72);head.add(m)});
+  const mouthKids=[M(G.box,dark,[.016,.07,.016],[0,-.22,.75],head)];
+  [-1,1].forEach(s=>{const m=new T.Mesh(new T.TorusGeometry(.1,.018,6,16,Math.PI),dark);m.rotation.z=Math.PI;m.position.set(s*.1,-.28,.72);head.add(m);mouthKids.push(m)});
 
   const ropes=[];
   if(cheeks)cheeks.ropes.forEach(r=>ropes.push(r));
-  buildWhiskers(o.whiskers,head).forEach(r=>ropes.push(r));      // whisker style: see catFeatures.js ('none' = no whiskers)  
+  {const w0=head.children.length;buildWhiskers(o.whiskers,head).forEach(r=>ropes.push(r));for(let i=w0;i<head.children.length;i++)head.children[i].traverse(x=>{if(x.isMesh)x.userData.olMode='skip'})}   // whiskers never get the pixel outline (game cat + inventory preview)      // whisker style: see catFeatures.js ('none' = no whiskers)  
   const ears=[],earRig=[],earMods=[];
   [-1,1].forEach(s=>{const g=new T.Group();g.position.set(s*.56,.5,.02);g.rotation.z=-s*.5;head.add(g);
     const sw=new T.Group();g.add(sw);const em=s<0?acc:mat(o.fur);
@@ -179,7 +295,9 @@ export function createCatAvatar(opt={}){
   const LEGSC=m=>[-1,1].map(s=>[[s*.32,LY-LEG_LEN/2,0],[.22+m,LEG_LEN/2+.04+m,.24+m]]);
   // ---- Leather belt collar (rough leather, stitches, holes, studs, buckle): static, sits wide under the head ----
   const HEADC=m=>[[[0,0,0],[HE[0]+m,.78*HE[1]+m,.85*HE[2]+m]]];
+  const _b0=cat.children.length;
   const belt=createBelt(cat,o.collar,{outer:[...BODY(.02),...HEADC(.03)],inner:[...BODY(-.02),...HEADC(0)]},o.collarType);   // cloth belt, same physics as the cloak
+  const beltKids=cat.children.slice(_b0);   // the collar's meshes (the animation maker can hide them)
   // cloth-physics hood in the chosen gear colour (dome pinned to the head, neck drape + curled tip free)
   const hood=o.head==='hood'?createHood(head,{outer:o.gearC,inner:mix(o.gearC,'#000000',.55),trimC:mix(o.gearC,'#ffffff',.55),seamC:mix(o.gearC,'#ffffff',.3),coll:[...BODY(.05),...HEADC(.04)]}):null;
   // hair: ONE mesh with its own physics (catHair.js). Hidden under headwear that covers the head.
@@ -196,29 +314,62 @@ export function createCatAvatar(opt={}){
 
 
   // arms and legs: soft tapered limbs with elbow / knee joints (catLimbs.js). No hands / weapons any more.
-  const arm=s=>{const p=new T.Group();p.position.set(s*.5,-.76,.05);cat.add(p);const L=createLimb(ARM,o.pat);CM(L.geo,2,[1,1,1],[0,0,0],p);
+  const arm=s=>{const p=new T.Group();p.position.set(s*.5,-.76,.05);const w=new T.Group();cat.add(w);w.add(p);p.userData.w=w;const L=createLimb(ARM,o.pat);CM(L.geo,2,[1,1,1],[0,0,0],p);
     const el=new T.Group();p.add(el);p.userData.setBend=a=>L.set(a,el);L.set(0,el);const tip=new T.Object3D();tip.position.set(0,HAND_Y,.012);el.add(tip);p.userData.tip=tip;return p};
-  const leg=s=>{const p=new T.Group();p.position.set(s*.32,LY,0);cat.add(p);const L=createLimb(LEG,o.pat);CM(L.geo,3,[1,1,1],[0,0,0],p);
+  const leg=s=>{const p=new T.Group();p.position.set(s*.32,LY,0);const w=new T.Group();cat.add(w);w.add(p);p.userData.w=w;const L=createLimb(LEG,o.pat);CM(L.geo,3,[1,1,1],[0,0,0],p);
     p.userData.setBend=a=>L.set(a,null);return p};
   const armL=arm(-1),armR=arm(1),legL=leg(-1),legR=leg(1);
 
+  const _c0=cat.children.length;
   let cloth=null,lining=null,leaves=null;
   if(o.cloak!=='none'){
     const kind=kindOf(o.cloak),{cols,rows}=cloakShape(kind),P0={grav:15,stiff:.012};
+    const c0=cat.children.length;
     cloth=new Cloth(cat,cloakRest(kind,0,0),cols,rows,{...P0,coll:[...BODY(.04),...LEGSC(.03)],color:(r,c)=>cloakColor(kind,o.cloakC,r,c,rows)});
+    const c1=cat.children.length;
     lining=new Cloth(cat,cloakRest(kind,.07,.04),cols,rows,{...P0,coll:[...BODY(0),...LEGSC(0)],color:(r,c)=>cloakLining(kind,o.cloakC,r,rows)});
+    const c2=cat.children.length,tagOL=(i0,i1,mode)=>{for(let i=i0;i<i1;i++)cat.children[i].traverse(x=>{if(x.isMesh)x.userData.olMode=mode})};
+    tagOL(c0,c1,'sheet');tagOL(c1,c2,'skip');   // outer cloak = sheet outline (the cloth's own mesh is found by diffing the cat's children), lining = none
+    [[cloth,'sheet'],[lining,'skip']].forEach(([cl,md])=>{const mm=cl&&(cl.mesh||cl.m);if(mm&&mm.isMesh)mm.userData.olMode=md});
     if(kind==='leaves'){const lv=buildLeaves(cat,cols,rows,o.cloakC),P=(c,r)=>cloth.lp[r*cols+c];lv.place(P);leaves={lv,P}}
   }
 
+  const cloakKids=cat.children.slice(_c0);   // cloak + lining + leaves
   const tail=new T.Group();tail.position.set(0,LY,-.5);cat.add(tail);
   const tailCol=tailColor(o);
   const tf=buildTail(o.tail,tail,o);tf.ropes.forEach(r=>ropes.push(r));      // tail types: see catFeatures.js
+  tail.traverse(x=>{if(x.isMesh)x.userData.olMode='live'});   // tail meshes move / reshape every frame: outlined with the live normals
 
   let time=0,walk=0,amp=0,stop=0,wasMv=false,bl=0,bt=2;
   let jumpS=0,airH=0,airV=0,airW=0,landSq=0,tumT=-1,tumF=1,tumS=0,gliding=false,glW=0,flatN=0,gBankT=0,gB=0,gHard=0,flipT=-1,flipD=1,twT=-1,twD=1,gSpin=0;
   const TUMBLE_D=.55,bs=body.scale.clone(),pivot=new T.Vector3(0,-1.0*S,0),eul=new T.Euler(),pv=new T.Vector3();
-  const U=catGroup.userData;U.move={f:0,s:0};
+  const U=catGroup.userData;U.move={f:0,s:0};U.cfg=Object.assign({},o);   // the look this cat was built from (inventory preview rebuilds the same cat from it)
 
+  // ---- body parts: head, eyeL, eyeR, nose, mouth, body, armL, armR, legL, legR, tail. Each can be moved (p), rotated (r, radians) and resized (s) from animation_maker.html.
+  //   U.parts[name] = {obj (scaled), h (holder that is moved), src (what the box is measured from), r}  ·  U.setPart(name,{p:[x,y,z],r:[x,y,z],s:[x,y,z]})
+  const partObj={};
+  const reg=(n,obj,src,w,mode)=>{const h=w||obj;partObj[n]={obj,h,src,mode:mode||'h',r:[0,0,0],b0:h.position.clone(),s0:obj.scale.clone()}};
+  const grp=(kids,def)=>{const g=new T.Group(),c=new T.Vector3();kids.forEach(k=>c.add(k.position));if(kids.length)c.divideScalar(kids.length);else c.set(...def);   // a group pivoting on the middle of its pieces
+    g.position.copy(c);head.add(g);kids.forEach(k=>{k.position.sub(c);g.add(k)});
+    if(!kids.length)g.add(new T.Mesh(new T.BoxGeometry(.1,.1,.1),new T.MeshBasicMaterial({visible:false})));return g};
+  reg('head',head,head.children[0],null,'head');reg('body',body,body,null,'body');reg('tail',tail,tail,null,'tail');
+  reg('armL',armL,armL.children[0],armL.userData.w);reg('armR',armR,armR.children[0],armR.userData.w);reg('legL',legL,legL.children[0],legL.userData.w);reg('legR',legR,legR.children[0],legR.userData.w);
+  {const g0=grp([eyes[0]],[-.37,.09,.8]),g1=grp([eyes[1]],[.37,.09,.8]),gn=grp(noseKids,[0,-.12,.78]),gm=grp(mouthKids,[0,-.25,.73]);reg('eyeL',g0,g0);reg('eyeR',g1,g1);reg('nose',gn,gn);reg('mouth',gm,gm)}
+  // ears, collar and cloak: their meshes move into a wrapper group that is moved / rotated / scaled AROUND A PIVOT (ear root, neck). Cloth physics keeps running unscaled; the drawn result is transformed.
+  const pgrp=(n,kids,parent,pv)=>{const w=new T.Group();w.matrixAutoUpdate=false;parent.add(w);kids.forEach(k=>w.add(k));const o=new T.Object3D();o.position.set(pv[0],pv[1],pv[2]);w.add(o);
+    partObj[n]={obj:w,src:w,org:o,pivot:new T.Vector3(pv[0],pv[1],pv[2]),mode:'pg',r:[0,0,0],pg:1}};
+  pgrp('earL',[ears[0]],head,ears[0].position.toArray());pgrp('earR',[ears[1]],head,ears[1].position.toArray());
+  pgrp('collar',[...beltKids,tag],cat,[0,-.75,0]);pgrp('cloak',cloakKids,cat,[0,-.8,0]);
+  const setPart=(n,l)=>{const t=partObj[n];if(!t||!l)return;const p=l.p||[0,0,0],s=l.s||[1,1,1],r=l.r||[0,0,0];t.r=r;
+    if(t.pg){const v=t.pivot;t.obj.matrix.compose(new T.Vector3(v.x+p[0],v.y+p[1],v.z+p[2]),new T.Quaternion().setFromEuler(new T.Euler(r[0],r[1],r[2])),new T.Vector3(s[0],s[1],s[2])).multiply(new T.Matrix4().makeTranslation(-v.x,-v.y,-v.z));t.obj.matrixWorldNeedsUpdate=true;return}
+    t.h.position.set(t.b0.x+p[0],t.b0.y+p[1],t.b0.z+p[2]);t.obj.scale.set(t.s0.x*s[0],t.s0.y*s[1],t.s0.z*s[2]);
+    if(t.mode==='h')t.h.rotation.set(r[0],r[1],r[2]);   // head / body / tail get their rotation added inside poseUpdate (the pose code owns their rotation)
+    else if(n==='body'){body.rotation.x=r[0];body.rotation.y=r[1]}else if(n==='tail')tail.rotation.z=r[2]};
+  for(const n in partObj)setPart(n,LAYO[n]);
+  U.parts=partObj;U.setPart=setPart;U.setVisible=(n,on)=>{const t=partObj[n];if(!t)return;if(t.kids)t.kids.forEach(k=>k.visible=on);else t.obj.visible=on};
+  U.still=false;   // true = no idle breathing / head look-around / tail + ear sway (the animation maker uses it so you can edit a still cat)U.pose=null;   // U.pose = {poseKey:value}: extra rotation / bend added on top of the procedural motion (the maker sets it; clips set it in the game)
+  let clipN=null,clipT=0,clipLoop=false;
+  U.clips=ANIMS;U.play=(name,loop)=>{const c=ANIMS[name];if(!c)return false;clipN=c;clipT=0;clipLoop=loop!=null?!!loop:!!c.loop;return true};U.stopClip=()=>{clipN=null;U.pose=null};U.isPlaying=()=>!!clipN;
   // ---- the animation set: idle, run, jump (rising / falling), tumble, glide. All procedural, driven by the game through these calls:
   //   U.update(dt,moving,rel)  U.move={f,s}  U.setAir(heightAboveGround,verticalSpeed)  U.jump()  U.land(strength)  U.tumble(f,s)  U.setGlide(bool)
   U.tumble=(f,s)=>{if(tumT>=0)return false;tumT=0;tumF=f;tumS=s;return true};
@@ -286,7 +437,7 @@ export function createCatAvatar(opt={}){
     eAs.lerp(eA,ease(dt,22));
     const n=Math.ceil(dt/.012),h=dt/n;
     earRig.forEach(r=>{
-      r.flick-=dt;if(r.flick<=0){r.flick=3+Math.random()*5;r.vz+=(Math.random()-.5)*9*r.fl;r.vx+=(Math.random()-.5)*5*r.fl}
+      if(U.still)r.flick=9;r.flick-=dt;if(r.flick<=0){r.flick=3+Math.random()*5;r.vz+=(Math.random()-.5)*9*r.fl;r.vx+=(Math.random()-.5)*5*r.fl}
       const C=.7*Math.sqrt(r.k),g=r.k*.005*r.fl;
       for(let i=0;i<n;i++){
         r.vz+=(-r.k*r.z-C*r.vz+g*(eAs.x-r.s*eAs.y*.6))*h;r.z+=r.vz*h;
@@ -306,7 +457,8 @@ export function createCatAvatar(opt={}){
   };
 
   const poseUpdate=(dt,mv,rel=1)=>{
-    time+=dt;const rolling=tumT>=0;
+    time=U.still?0:time+dt;const rolling=tumT>=0;
+    if(clipN){clipT+=dt*clipN.fps;const last=clipN.frames-1;if(clipT>=last){if(clipLoop)clipT%=Math.max(1,last);else{clipT=last}}U.pose=sampleClip(clipN,clipT);if(!clipLoop&&clipT>=last)clipN=null}
     // ---- state weights, all eased: airW = off the ground, glW = gliding, amp = running, vN = vertical speed (+ rising, - falling)
     airW+=((airH>.04?1:0)-airW)*ease(dt,airH>.04?22:16);
     const vN=clamp(airV/7.8,-1.4,1.2);jumpS=Math.max(0,jumpS-dt*4.5);
@@ -349,7 +501,7 @@ export function createCatAvatar(opt={}){
     if(airW>.001){const r=sm(-.25,.9,vN);kL=lerp(kL,.3+r,airW);kR=lerp(kR,.25+.9*r,airW);eL=lerp(eL,.35,airW);eR=lerp(eR,.35,airW)}
     if(gl>0){eL=lerp(eL,.08,gl);eR=lerp(eR,.08,gl);kL=lerp(kL,.35,gl);kR=lerp(kR,.3,gl)}
     if(tuck>0){eL=lerp(eL,1.4,tuck);eR=lerp(eR,1.4,tuck);kL=lerp(kL,1.6,tuck);kR=lerp(kR,1.6,tuck)}
-    armL.userData.setBend(eL);armR.userData.setBend(eR);legL.userData.setBend(kL);legR.userData.setBend(kR);
+    {const P=U.pose||{};armL.userData.setBend(eL+(P.elbowL||0));armR.userData.setBend(eR+(P.elbowR||0));legL.userData.setBend(kL+(P.kneeL||0));legR.userData.setBend(kR+(P.kneeR||0))}
 
     // ---- body: lean into the run, nose up / down with the jump, dive forward and bank when gliding
     let rx=lean+airW*(-vN)*.22,rz=-U.move.s*.1*amp,ry=sw*.08*amp;
@@ -370,8 +522,16 @@ export function createCatAvatar(opt={}){
     ears.forEach((e,i)=>e.rotation.x=-amp*.35+sk*.35+airW*(-vN)*.4-gl*.5+Math.sin(time*3+i*2)*.03);
     tail.rotation.x=-.55*amp+sk*.45+airW*(.3-.35*vN)*(1-gl)-.55*gl;tail.rotation.y=Math.sin(time*(2.5+6*amp))*(.3+.15*amp)+wob*.7;
     
+    // ---- layout rotation (maker) + pose / clip rotation, added on top of the procedural motion
+    {const P=U.pose||{},g=k=>P[k]||0,pr=partObj;
+      head.rotation.x+=pr.head.r[0]+g('headRx');head.rotation.y+=pr.head.r[1]+g('headRy');head.rotation.z+=pr.head.r[2]+g('headRz');
+      body.rotation.x=pr.body.r[0]+g('bodyRx');body.rotation.y=pr.body.r[1]+g('bodyRy');body.rotation.z+=g('bodyRz');
+      tail.rotation.x+=g('tailRx');tail.rotation.y+=g('tailRy');tail.rotation.z=pr.tail.r[2]+g('tailRz');
+      [['armL',armL],['armR',armR],['legL',legL],['legR',legR]].forEach(([n,o])=>{o.rotation.x+=g(n+'Rx');o.rotation.y=g(n+'Ry');o.rotation.z+=g(n+'Rz')});
+      cat.position.y+=g('moveY')}
     // ---- physics: whiskers, fur locks, cloak, tail, ears, name plate, collar belt, hood, hair
     ropes.forEach(r=>r.step(dt));if(cloth){cloth.step(dt);lining.step(dt);if(leaves)leaves.lv.place(leaves.P)}tf.update();earMods.forEach(f=>f());
+    if(catGroup.userData.olList)syncOL(catGroup.userData.olList);
     trackHands(dt);
     earPhysics(dt);belt.step(dt);belt.anchor(tag.position);if(hood)hood.step(dt);if(hair)hair.step(dt);
   };
