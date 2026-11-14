@@ -7,6 +7,14 @@ import {mergeGeometries,mergeVertices} from 'three/addons/utils/BufferGeometryUt
 
 export const WIND={uTime:{value:0},uPlayer:{value:new T.Vector3(1e5,0,1e5)},uFade:{value:new T.Vector4(1e5,1e5,1e5,0)},uDim:{value:new T.Vector3(1,1,1)}};   // uDim = colour multiplier for the unlit-style scenery shaders (foliage, grass): (1,1,1) by day, a dark blue tint at night (set every frame in main.js from atm.night)   // uFade = (x,y,z of the cat's body, 1 while a match is on): scenery between the camera and the cat turns see-through
 
+// ------------------------------------------------------------------------------------------------ textures
+// Put leaf.png, leaflong.png and stone.png in this folder (path is relative to the page that loads the game).
+const TEX_PATH='assets/images/env/';
+const LEAF_TINT=.85;   // 0 = show the PNG's own colours, 1 = use only its light/dark pattern and paint it with the tree's colour (keeps the autumn oranges)
+const loadTex=(f,repeat=false)=>{const t=new T.TextureLoader().load(TEX_PATH+f);t.colorSpace=T.SRGBColorSpace;t.anisotropy=4;if(repeat)t.wrapS=t.wrapT=T.RepeatWrapping;return t};
+export const TEX={leaf:loadTex('leaf.png'),needle:loadTex('pinetree.png',true),stone:loadTex('stone.png',true)};
+for(const k of ['leaf','needle']){TEX[k].magFilter=T.NearestFilter;TEX[k].minFilter=T.NearestMipmapNearestFilter}   // crisp: you see the PNG's real pixels, no blur   // TEX.stone: use it on the stone terrain (see ground shader)
+
 export const hash=(x,y=0,z=0)=>{const h=Math.sin(x*127.1+y*311.7+z*74.7)*43758.5453;return h-Math.floor(h)};
 const sm=t=>t*t*(3-2*t);
 export function vnoise(x,y=0,z=0){const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z),fx=sm(x-ix),fy=sm(y-iy),fz=sm(z-iz),L=(a,b,t)=>a+(b-a)*t;
@@ -29,7 +37,11 @@ export function windify(m,{amp=1,flutter=1}={}){
 
 export function windGrass(m,{push=.55}={}){
   m.defines=Object.assign(m.defines||{},{NO_OL:''});   // grass never gets the pixel outline
-  m.onBeforeCompile=sh=>{sh.uniforms.uTime=WIND.uTime;sh.uniforms.uPlayer=WIND.uPlayer;
+  m.onBeforeCompile=sh=>{sh.uniforms.uTime=WIND.uTime;sh.uniforms.uPlayer=WIND.uPlayer;sh.uniforms.uDim=WIND.uDim;
+    // NIGHT: the grass is unlit, so it has to be dimmed explicitly (same uDim as the tree foliage, set every frame from atm.night)
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+      uniform vec3 uDim;`).replace('#include <dithering_fragment>',`gl_FragColor.rgb*=uDim;
+      #include <dithering_fragment>`);
     sh.vertexShader=sh.vertexShader.replace('#include <common>',`#include <common>
       uniform float uTime;uniform vec3 uPlayer;`)
     .replace('#include <project_vertex>',`
@@ -47,7 +59,7 @@ export function windGrass(m,{push=.55}={}){
        mvPosition.xz+=d/(l+1e-3)*pu*w*${push.toFixed(2)};mvPosition.y-=pu*w*.28;}
       mvPosition=modelViewMatrix*mvPosition;
       gl_Position=projectionMatrix*mvPosition;`)};
-  m.customProgramCacheKey=()=>'windGrass'+push;return m}
+  m.customProgramCacheKey=()=>'windGrass_dim'+push;return m}
 
 // SEE-THROUGH SCENERY: anything between the camera and the cat fades out with a smooth, soft-edged circle of real transparency (no dither / checker pattern), so you never lose the cat behind a trunk or canopy.
 export function seeThrough(m){const w0=m.onBeforeCompile,k0=m.customProgramCacheKey;
@@ -63,6 +75,41 @@ export function seeThrough(m){const w0=m.onBeforeCompile,k0=m.customProgramCache
     .replace('vec4 diffuseColor = vec4( diffuse, opacity );','vec4 diffuseColor = vec4( diffuse, opacity*fadeA );')};
   m.customProgramCacheKey=()=>(k0?k0.call(m):'')+'seeThru2';return m}
 
+// TEXTURED LEAF CARDS: quads with leaf.png / leaflong.png. Cut-out by the PNG alpha (discard, so the see-through fade stays soft), swaying via windify.
+function leafMaterial(kind,env){
+  const m=new T.MeshStandardMaterial({map:TEX[kind],vertexColors:true,side:T.DoubleSide,roughness:.85,metalness:0,envMap:env||null,envMapIntensity:.35});
+  const amp=kind==='needle'?.9:1.35,flut=kind==='needle'?.8:1.6;
+  windify(m,{amp,flutter:flut});const w0=m.onBeforeCompile;
+  m.onBeforeCompile=sh=>{w0(sh);sh.uniforms.uDim=WIND.uDim;
+    const k=sh.fragmentShader.includes('#include <opaque_fragment>')?'#include <opaque_fragment>':'#include <output_fragment>';
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
+      uniform vec3 uDim;`)
+    .replace('#include <map_fragment>',`#ifdef USE_MAP
+      vec4 tx=texture2D(map,vMapUv);if(tx.a<.45)discard;
+      float lum=dot(tx.rgb,vec3(.3,.59,.11));
+      diffuseColor.rgb*=mix(tx.rgb,vec3(lum*1.7),${LEAF_TINT.toFixed(2)});
+      #endif`)
+    .replace(k,`{vec3 up=normalize((viewMatrix*vec4(0.,1.,0.,0.)).xyz);float u=dot(normalize(normal),up);
+      float tn=u>.2?1.1:.82;outgoingLight=mix(diffuseColor.rgb*tn,outgoingLight,.25);}
+      outgoingLight*=uDim;
+      `+k)};
+  m.customProgramCacheKey=()=>'leafCard_'+kind+'_'+LEAF_TINT;return m}
+
+// Shadow caster for leaf cards: same wind sway as the visible leaves + alpha cut-out from the PNG, so the shadow on the ground is the moving leaf shape.
+function leafDepthMaterial(kind){
+  const amp=kind==='needle'?.9:1.35,flut=kind==='needle'?.8:1.6;
+  const d=new T.MeshDepthMaterial({depthPacking:T.RGBADepthPacking,map:TEX[kind],alphaTest:.45});
+  d.onBeforeCompile=sh=>{sh.uniforms.uTime=WIND.uTime;
+    sh.vertexShader=sh.vertexShader.replace('#include <common>',`#include <common>
+      attribute vec2 aWind;uniform float uTime;`)
+    .replace('#include <begin_vertex>',`#include <begin_vertex>
+      {float wv=aWind.y*${amp.toFixed(2)},t=uTime*1.25+aWind.x;
+       transformed.x+=(sin(t)+.55*sin(t*2.3+position.z*.35))*wv*.075;
+       transformed.z+=(cos(t*.93+position.x*.3)+.4*sin(t*1.9))*wv*.055;
+       transformed.y+=sin(t*2.1+position.x)*wv*.012;
+       transformed.xyz+=vec3(sin(t*5.+position.y*2.7),sin(t*4.3+position.x*3.1),cos(t*4.7+position.z*2.9))*wv*.02*${flut.toFixed(2)};}`)};
+  d.customProgramCacheKey=()=>'leafDepth_'+kind;return d}
+
 // ------------------------------------------------------------------------------------------------ batch
 const _c=new T.Color(),_p=new T.Vector3(),_n=new T.Vector3(),_nm=new T.Matrix3();
 export class Batch{
@@ -70,7 +117,8 @@ export class Batch{
   /** kind: 'foliage'|'bark'|'rock'|'prop'.  o.grad(x,y,z,nx,ny,nz)->colour multiplier in the part's local space.
    *  o.wind={base,span,gain,phase}: sway weight rises with world height above base over span. */
   add(kind,geo,matrix,color,o={}){
-    let g=geo.clone();if(g.attributes.uv)g.deleteAttribute('uv');if(!g.index)g=mergeVertices(g);
+    const keepUV=kind==='leaf'||kind==='needle';   // textured leaf cards need their UVs
+    let g=geo.clone();if(!keepUV&&g.attributes.uv)g.deleteAttribute('uv');if(!g.index)g=mergeVertices(g);
     const P=g.attributes.position,N=g.attributes.normal,n=P.count,mult=new Float32Array(n);
     const mossT=o.moss?new Float32Array(n):null,mossC=o.moss?new T.Color(o.moss.col):null;
     for(let i=0;i<n;i++){mult[i]=o.grad?o.grad(P.getX(i),P.getY(i),P.getZ(i),N.getX(i),N.getY(i),N.getZ(i)):1;
@@ -86,7 +134,8 @@ export class Batch{
   /** build merged meshes. env: PMREM texture for ambient/reflection on the scenery. */
   build(env){const grp=new T.Group(),R={foliage:.82,bark:.95,rock:.88,prop:.8};
     for(const kind in this.k){const g=mergeGeometries(this.k[kind],false);this.k[kind].forEach(x=>x.dispose());
-      const m=new T.MeshStandardMaterial({vertexColors:true,side:kind==='foliage'?T.DoubleSide:T.FrontSide,roughness:R[kind]??.9,metalness:0,envMap:env||null,envMapIntensity:kind==='foliage'?.35:.3,flatShading:kind!=='foliage'});
+      const isCard=kind==='leaf'||kind==='needle';
+      const m=isCard?leafMaterial(kind,env):new T.MeshStandardMaterial({vertexColors:true,side:kind==='foliage'?T.DoubleSide:T.FrontSide,roughness:R[kind]??.9,metalness:0,envMap:env||null,envMapIntensity:kind==='foliage'?.35:.3,flatShading:kind!=='foliage'});
       if(kind==='foliage'){windify(m,{amp:1,flutter:1});const w0=m.onBeforeCompile;      // FLAT PAINTED FOLIAGE: 3 hard tones by how much the surface faces the sky, no facets
         m.onBeforeCompile=sh=>{w0(sh);const k=sh.fragmentShader.includes('#include <opaque_fragment>')?'#include <opaque_fragment>':'#include <output_fragment>';
           sh.uniforms.uDim=WIND.uDim;
@@ -96,8 +145,9 @@ export class Batch{
             outgoingLight*=uDim;   // the flat paint ignores the scene lights, so the night has to dim it explicitly
             `+k)};
         m.customProgramCacheKey=()=>'windifyFlatFoliage2'}else if(kind==='bark')windify(m,{amp:.35,flutter:0});
-      if(kind==='foliage'||kind==='bark'||kind==='rock')seeThrough(m);
-      const mesh=new T.Mesh(g,m);mesh.castShadow=true;mesh.receiveShadow=(kind==='rock'||kind==='prop');   // trees do NOT receive shadows: only the ground shows one soft shadow
+      if(kind==='foliage'||kind==='bark'||kind==='rock'||isCard)seeThrough(m);
+      const mesh=new T.Mesh(g,m);mesh.castShadow=true;
+      if(isCard)mesh.customDepthMaterial=leafDepthMaterial(kind);   // shadow = the PNG's real shape, swaying with the leavesmesh.receiveShadow=(kind==='rock'||kind==='prop');   // trees do NOT receive shadows: only the ground shows one soft shadow
       mesh.matrixAutoUpdate=false;mesh.name='batch-'+kind;grp.add(mesh)}
     this.k={};return grp}
 }
