@@ -13,6 +13,7 @@
 import * as T from 'three';
 import {WIND,vnoise} from '../batch.js';
 
+export const GRASS_LIFT=1.2;   // brightness of the lit grass (1.2 = same daylight look as before). Lower = darker grass at every time of day, higher = brighter
 export const SWAY_NEAR=14,SWAY_FAR=30;
 export const THIN_NEAR=22,THIN_FAR=62;
 // tuning: GRASS.density multiplies every scatter's tries AND buffer size (more grass); GRASS.giant = share of tall tufts that grow tall enough to hide the cat, giantMin/Max = their size multiplier
@@ -67,14 +68,18 @@ export function swayMaterial({amp=1,push=.5,env=null,tall=false,rigid=false,colo
        mvPosition.xz+=d/(l+1e-3)*pu*w*${push.toFixed(2)};mvPosition.y-=pu*w*.28;}
       mvPosition=modelViewMatrix*mvPosition;
       gl_Position=projectionMatrix*mvPosition;`);
-    // WHITE-SPECKLE GUARD: sun / env highlights on the thin, double-sided blades blow out to pure white. Never let a blade get brighter than its own colour.
-    {const k=sh.fragmentShader.includes('#include <opaque_fragment>')?'#include <opaque_fragment>':'#include <output_fragment>';
-     sh.uniforms.uDim=WIND.uDim;
-     sh.fragmentShader=sh.fragmentShader.replace('#include <common>',`#include <common>
-       uniform vec3 uDim;`).replace(k,`outgoingLight=min(outgoingLight,diffuseColor.rgb*1.04);
-       outgoingLight*=uDim;   // night: CEL_FLAT grass is always "lit", so dim it here
-       `+k)}};
-  m.customProgramCacheKey=()=>'biomeGrass4'+amp+'_'+push+'_'+tall+'_'+rigid+'_'+thin;return m}
+    // NO SPECULAR ON GRASS. Sun / moon / sky highlights on the thin, double-sided blades are huge (they blow out to pure white). The old guard clamped the whole result to
+    // "never brighter than the blade's own colour", and because the highlight was always far above that, the grass was ALWAYS exactly its own colour = effectively unlit,
+    // so at night it glowed (and the highlights shimmered as the camera moved). Now the highlight is simply dropped and the grass is lit by its diffuse light only
+    // (sun / moon + sky ambient), exactly like the ground, so it follows the day / night cycle by itself. No extra night tint is needed.
+    // GRASS_LIFT makes up for the missing highlight so DAYLIGHT looks the same as before (the result is still capped at the blade colour * 1.04, like the old guard).
+    {const k=sh.fragmentShader.includes('#include <opaque_fragment>')?'#include <opaque_fragment>':'#include <output_fragment>',
+       ok=sh.fragmentShader.includes('totalDiffuse')&&sh.fragmentShader.includes('totalEmissiveRadiance');
+     sh.fragmentShader=sh.fragmentShader.replace(k,(ok
+       ?`outgoingLight=min((totalDiffuse+totalEmissiveRadiance)*${GRASS_LIFT.toFixed(2)},diffuseColor.rgb*1.04);`
+       :`outgoingLight=min(outgoingLight,diffuseColor.rgb*1.04);`)+`
+       `+k)}};   // (the fallback branch is the old behaviour, only used if a future three.js renames those variables)
+  m.customProgramCacheKey=()=>'biomeGrass6'+amp+'_'+push+'_'+tall+'_'+rigid+'_'+thin;return m}
 
 export function createBiomeGrass(env=null){
   // many thin blades per tuft = full-looking grass without fat triangles. Blade count / width are the knobs for "thickness".
