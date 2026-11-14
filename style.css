@@ -365,7 +365,7 @@ html body .tmb i{background:var(--cream)}
 html body .tmb.rdy i{background:#ffd98a}
 html body .wplate small,html body .wplate b,html body #score,html body #foeTxt{color:var(--cream)}
 html body .foebar{background:rgba(23,16,14,.85)}
-html body .mini{border:0;box-shadow:0 0 0 2px rgba(241,232,210,.7)}
+html body .mini{border:0;box-shadow:none}
 html body .slot{--sheet:#2a1d1a;--bw:2px;color:var(--cream)}
 html body .slot.on{--sheet:var(--blood-d)}
 html body #banner b{color:var(--cream);-webkit-text-stroke:10px var(--k);text-shadow:none}
