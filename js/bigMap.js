@@ -1,10 +1,7 @@
-// FULL-SCREEN MAP PAGE (press M). A page of its own, not a pop-up: dark top bar (title / where you are / close), the map filling the screen, a bottom bar with the controls.
+// MAP TAB of the inventory card (inventory.js mounts it through hud.mapMount). It is NOT a full-screen page any more and there is no M key.
 //   * The whole world is charted once as a small pixel image (about RES pixels along the long side) and shown with no smoothing, so it looks chunky / pixelated.
-//     Colours come from the biome under each pixel (map.biomeName), shading from the terrain height (map.heightAt) and contour steps; water from map.world.shoreDist when it exists.
-//   * Trees, cacti and rocks are little pixel sprites placed by biome (maps that list every obstacle, like the arena, use the real ones instead).
-//   * Biome names are written on the map (connected areas of the same biome get a label each).
-//   * Wheel / + - zoom, drag or WASD / arrows move, C centres on you. The game stands still while this page is open (main.js checks hud.bigmapOn()).
-// The chart is built in small time slices (a few ms per frame) so the game never stalls; the picture fills in while you look at it.
+//   * Biome colours + hill shading + contour steps, water, tiny pixel trees / cacti / rocks, biome names written on the map.
+//   * Wheel / + - zoom, drag or WASD / arrows move, C centres on you. The chart is built in small time slices so the game never stalls.
 const DISP="Bungee,Impact,sans-serif",RES=420,STEP_MS=9;
 const INK='#17100e',CREAM='#f1e8d2';
 
@@ -24,43 +21,25 @@ const hash=(a,b)=>{let h=Math.imul(a|0,374761393)^Math.imul(b|0,668265263);h=Mat
 const cl=(v,a,b)=>v<a?a:v>b?b:v;
 
 const css=document.createElement('style');css.textContent=`
-body.bigmap #hud{visibility:hidden}
-#bigmap{position:fixed;inset:0;z-index:1100;display:flex;flex-direction:column;color:${CREAM};font-family:var(--font);-webkit-user-select:none;user-select:none;touch-action:none;
-  background:#0f0b09 linear-gradient(rgba(241,232,210,.05) 1px,transparent 1px) 0 0/34px 34px,linear-gradient(90deg,rgba(241,232,210,.05) 1px,transparent 1px) 0 0/34px 34px;animation:bmin .16s ease-out}
-#bigmap[hidden]{display:none}@keyframes bmin{from{opacity:0}}
-#bigmap .bm-top,#bigmap .bm-bot{position:absolute;left:0;right:0;z-index:3;display:flex;align-items:center;gap:18px;padding:0 max(22px,env(safe-area-inset-left));pointer-events:none}
-#bigmap .bm-top{top:max(16px,env(safe-area-inset-top));justify-content:space-between}
-#bigmap .bm-bot{bottom:max(16px,env(safe-area-inset-bottom));justify-content:center}
-#bigmap .bm-top button,#bigmap .bm-bot button{pointer-events:auto}
-#bigmap .bm-top,#bigmap .bm-bot{text-shadow:0 2px 0 rgba(0,0,0,.75),0 0 8px rgba(0,0,0,.6)}
-#bigmap .bm-ti{position:absolute;left:50%;transform:translateX(-50%);font:400 clamp(22px,3.6vmin,32px)/1 var(--disp);letter-spacing:.24em}
-#bigmap .bm-you{font:800 13px var(--font);letter-spacing:.2em;opacity:.9;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:34vw}
+#bigmap{position:absolute;inset:0;color:${CREAM};font-family:var(--font);-webkit-user-select:none;user-select:none;touch-action:none;background:#2a2118;cursor:default}
+#bigmap[hidden]{display:none}
+#bigmap .bm-you{position:absolute;left:12px;top:10px;z-index:3;font:800 12px var(--font);letter-spacing:.18em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%;pointer-events:none;text-shadow:0 2px 0 rgba(0,0,0,.75),0 0 8px rgba(0,0,0,.6)}
 #bigmap .bm-you b{font-weight:800;color:#ffd54a}
-#bigmap .bm-x,#bigmap .bm-b{appearance:none;border:0;cursor:pointer;text-shadow:none;background:rgba(23,16,14,.78);color:${CREAM};font:400 15px var(--disp);letter-spacing:.08em;padding:7px 14px;border-radius:3px;transition:background .12s}
-#bigmap .bm-x:hover,#bigmap .bm-b:hover{background:var(--blood)}
-#bigmap .bm-b{padding:5px 11px;margin-left:6px}
-#bigmap kbd{font:700 11px/1 var(--mono);background:rgba(23,16,14,.75);border:1px solid rgba(241,232,210,.4);border-radius:3px;padding:3px 5px;margin-left:6px;vertical-align:middle;color:${CREAM}}
-#bigmap .bm-bot>span{font:800 12px var(--font);letter-spacing:.12em;opacity:.92;display:flex;align-items:center;gap:2px;margin:0 12px}
-#bigmap .bm-bot b{font-weight:800;color:#ffd54a;letter-spacing:.2em;margin-right:8px}
+#bigmap .bm-ctl{position:absolute;right:12px;bottom:12px;z-index:3;display:flex;gap:6px}
+#bigmap .bm-b{appearance:none;border:0;cursor:pointer;background:rgba(23,16,14,.78);color:${CREAM};font:400 15px var(--disp);letter-spacing:.06em;padding:7px 13px;min-width:38px;transition:background .12s;clip-path:polygon(0 3px,3px 3px,3px 0,calc(100% - 3px) 0,calc(100% - 3px) 3px,100% 3px,100% calc(100% - 3px),calc(100% - 3px) calc(100% - 3px),calc(100% - 3px) 100%,3px 100%,3px calc(100% - 3px),0 calc(100% - 3px))}
+#bigmap .bm-b:hover{background:var(--blood,#b3392b)}
 #bigmap .bm-map{position:absolute;inset:0}
 #bigmap canvas{position:absolute;inset:0;width:100%;height:100%;cursor:grab;image-rendering:pixelated}
 #bigmap canvas:active{cursor:grabbing}
-#bigmap .bm-vig{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 90px rgba(0,0,0,.4)}
-#bigmap .bm-prog{position:absolute;left:50%;top:18px;transform:translateX(-50%);font:400 14px var(--disp);letter-spacing:.2em;background:rgba(23,16,14,.82);padding:7px 16px;border-radius:3px;pointer-events:none}
+#bigmap .bm-prog{position:absolute;left:50%;top:10px;transform:translateX(-50%);font:400 13px var(--disp);letter-spacing:.2em;background:rgba(23,16,14,.82);padding:6px 14px;pointer-events:none;z-index:3;white-space:nowrap}
 #bigmap .bm-prog:empty{display:none}
-body.mobile #bigmap .bm-kb{display:none}
-@media (max-width:760px){#bigmap .bm-bot>span{margin:0 4px}#bigmap .bm-you{display:none}}
 `;document.head.appendChild(css);
 
 export function createBigMap(o={}){
   const root=document.createElement('div');root.id='bigmap';root.hidden=true;
-  root.innerHTML=`<div class="bm-top"><div class="bm-you" id="bmYou"></div><div class="bm-ti">MAP</div><button class="bm-x" data-x="1">CLOSE<kbd class="bm-kb">ESC</kbd></button></div>
-    <div class="bm-map" id="bmMap"><canvas id="bmC"></canvas><div class="bm-vig"></div><div class="bm-prog" id="bmP"></div></div>
-    <div class="bm-bot"><span class="bm-kb"><b>MOVE</b><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>&nbsp;or drag</span>
-      <span><b>ZOOM</b><button class="bm-b" data-z="-1">&minus;</button><button class="bm-b" data-z="1">+</button><span class="bm-kb">&nbsp;&nbsp;wheel</span></span>
-      <span><b>CENTER</b><button class="bm-b" data-c="1">YOU</button><kbd class="bm-kb">C</kbd></span>
-      <span class="bm-kb"><b>BACK</b><kbd>M</kbd></span></div>`;
-  document.body.appendChild(root);
+  root.innerHTML=`<div class="bm-you" id="bmYou"></div>
+    <div class="bm-map" id="bmMap"><canvas id="bmC"></canvas><div class="bm-prog" id="bmP"></div></div>
+    <div class="bm-ctl"><button class="bm-b" data-z="-1" title="Zoom out">&minus;</button><button class="bm-b" data-z="1" title="Zoom in">+</button><button class="bm-b" data-c="1" title="Centre on you">YOU</button></div>`;
   const $=s=>root.querySelector(s),cv=$('#bmC'),g=cv.getContext('2d'),mapEl=$('#bmMap'),youEl=$('#bmYou'),progEl=$('#bmP');
   let on=false,chart=null,cw=1,ch=1,dpr=1,lastP=null,lastT=0,youTxt='';
   const v={cx:0,cz:0,z:1,zmin:1},held={};
@@ -147,16 +126,17 @@ export function createBigMap(o={}){
   function fit(){if(!chart)return;v.zmin=cover();v.z=v.zmin*1.6;center()}   // opens a little closer than the minimum, centred on you
 
   // ---------------------------------------------------------------- input (only while open)
-  root.addEventListener('click',e=>{const b=e.target.closest('[data-x],[data-z],[data-c]');if(!b)return;if(b.dataset.x)set(false);else if(b.dataset.z)zoomBy(b.dataset.z>0?1.5:1/1.5);else center()});
+  root.addEventListener('click',e=>{const b=e.target.closest('[data-z],[data-c]');if(!b)return;if(b.dataset.z)zoomBy(b.dataset.z>0?1.5:1/1.5);else center()});
   cv.addEventListener('wheel',e=>{e.preventDefault();const r=cv.getBoundingClientRect();zoomBy(Math.exp(-e.deltaY*.0016),e.clientX-r.left,e.clientY-r.top)},{passive:false});
   let drag=null;
-  cv.addEventListener('pointerdown',e=>{drag={id:e.pointerId,x:e.clientX,y:e.clientY};try{cv.setPointerCapture(e.pointerId)}catch(_){}});
+  // the map page is its own world: no mouse event may reach the game behind it (a click there used to grab the pointer lock + fire, and the wheel swapped weapons)
+  for(const t of['mousedown','mouseup','mousemove','wheel','contextmenu','dblclick'])root.addEventListener(t,e=>{e.stopPropagation();if(t==='contextmenu')e.preventDefault()});
+  cv.addEventListener('pointerdown',e=>{if(drag||(e.pointerType==='mouse'&&e.button!==0))return;e.preventDefault();drag={id:e.pointerId,x:e.clientX,y:e.clientY};try{cv.setPointerCapture(e.pointerId)}catch(_){}});   // hold the left button and drag = grab the map
   cv.addEventListener('pointermove',e=>{if(!drag||e.pointerId!==drag.id)return;v.cx-=(e.clientX-drag.x)/v.z;v.cz-=(e.clientY-drag.y)/v.z;drag.x=e.clientX;drag.y=e.clientY;clampView()});
   for(const t of['pointerup','pointercancel'])cv.addEventListener(t,e=>{if(drag&&e.pointerId===drag.id)drag=null});
   const PAN={KeyW:[0,-1],ArrowUp:[0,-1],KeyS:[0,1],ArrowDown:[0,1],KeyA:[-1,0],ArrowLeft:[-1,0],KeyD:[1,0],ArrowRight:[1,0]};
   addEventListener('keydown',e=>{if(!on)return;
-    if(e.code==='Escape'||e.code==='KeyM'){if(!e.repeat)set(false)}
-    else if(PAN[e.code])held[e.code]=true;
+    if(PAN[e.code])held[e.code]=true;
     else if(e.code==='Equal'||e.code==='NumpadAdd')zoomBy(1.4);else if(e.code==='Minus'||e.code==='NumpadSubtract')zoomBy(1/1.4);
     else if(e.code==='KeyC'||e.code==='Home')center();
     else return;
@@ -164,9 +144,9 @@ export function createBigMap(o={}){
   addEventListener('keyup',e=>{if(PAN[e.code])delete held[e.code]},true);
   addEventListener('blur',()=>{for(const k in held)delete held[k]});
 
-  function set(b){b=!!b;if(b===on)return;on=b;root.hidden=!b;for(const k in held)delete held[k];drag=null;
-    if(b){lastT=performance.now();youTxt='';if(chart&&lastP)fit()}
-    o.onChange&&o.onChange(b)}
+  // inventory.js puts the map into its card (mount) and takes it out again (unmount); the game's own freeze / camera code reads isOpen()
+  function mount(host){host.appendChild(root);root.hidden=false;if(!on){on=true;lastT=performance.now();youTxt='';drag=null;if(chart&&lastP)fit()}}
+  function unmount(){if(!on&&!root.parentNode)return;on=false;root.hidden=true;if(root.parentNode)root.parentNode.removeChild(root);for(const k in held)delete held[k];drag=null}
 
   // ---------------------------------------------------------------- one frame (called by hud.bigradar while the page is open)
   function draw(P,enemies,pickups,map){
@@ -183,9 +163,8 @@ export function createBigMap(o={}){
     const SX=x=>Math.round(cw/2+(x-v.cx)*v.z),SY=z=>Math.round(ch/2+(z-v.cz)*v.z);
     g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,cw,ch);g.imageSmoothingEnabled=false;
     const x0=SX(-chart.W/2),y0=SY(-chart.H/2),mw=Math.round(chart.W*v.z),mh=Math.round(chart.H*v.z);
-    g.fillStyle='rgba(0,0,0,.5)';g.fillRect(x0+7,y0+9,mw,mh);g.fillStyle='#2a2118';g.fillRect(x0,y0,mw,mh);
+    g.fillStyle='#2a2118';g.fillRect(x0,y0,mw,mh);
     g.drawImage(chart.cv,x0,y0,mw,mh);
-    g.strokeStyle=CREAM;g.globalAlpha=.85;g.lineWidth=3;g.strokeRect(x0-1.5,y0-1.5,mw+3,mh+3);g.globalAlpha=1;
 
     // pickups / enemies: little squares, same size at every zoom
     for(const p of pickups||[]){g.fillStyle='#e8658c';g.fillRect(SX(p.x)-3,SY(p.z)-3,6,6)}
@@ -202,7 +181,7 @@ export function createBigMap(o={}){
       g.save();g.translate(x,y);g.rotate(Math.PI-(P.camYaw||0));g.fillStyle='#fff';g.strokeStyle=INK;g.lineWidth=2.4;g.lineJoin='miter';
       g.beginPath();g.moveTo(0,-14);g.lineTo(10,11);g.lineTo(0,5);g.lineTo(-10,11);g.closePath();g.stroke();g.fill();g.restore()}
     // north marker
-    g.font=`18px ${DISP}`;g.textAlign='center';g.fillStyle=CREAM;g.strokeStyle='rgba(23,16,14,.9)';g.lineWidth=5;g.strokeText('N',cw-34,92);g.fillText('N',cw-34,92);g.beginPath();g.moveTo(cw-34,106);g.lineTo(cw-41,120);g.lineTo(cw-34,116);g.lineTo(cw-27,120);g.closePath();g.stroke();g.fill();
+    g.font=`18px ${DISP}`;g.textAlign='center';g.fillStyle=CREAM;g.strokeStyle='rgba(23,16,14,.9)';g.lineWidth=5;g.strokeText('N',cw-30,36);g.fillText('N',cw-30,36);g.beginPath();g.moveTo(cw-30,50);g.lineTo(cw-37,64);g.lineTo(cw-30,60);g.lineTo(cw-23,64);g.closePath();g.stroke();g.fill();
   }
 
-  return{set,isOpen:()=>on,draw}}
+  return{mount,unmount,set:b=>{if(!b)unmount()},isOpen:()=>on,draw}}
